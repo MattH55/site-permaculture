@@ -114,6 +114,20 @@ function styleOpts(extra = {}) {
   };
 }
 
+function mapGestureOpts(drawing = false) {
+  return {
+    // Always allow pan/zoom; drawing only changes the cursor hint
+    draggable: true,
+    gestureHandling: 'greedy',
+    scrollwheel: true,
+    disableDoubleClickZoom: drawing,
+    draggableCursor: drawing ? 'crosshair' : null,
+    draggingCursor: 'move',
+    clickableIcons: false,
+    keyboardShortcuts: true,
+  };
+}
+
 function initGoogleMap(cfg) {
   state.mode = 'google';
   const el = $('map');
@@ -129,12 +143,11 @@ function initGoogleMap(cfg) {
     streetViewControl: false,
     fullscreenControl: true,
     zoomControl: true,
-    gestureHandling: 'greedy',
-    clickableIcons: false,
+    ...mapGestureOpts(false),
   });
   state.map = map;
 
-  // Finish polygon on double-click (prevent zoom)
+  // Finish polygon on double-click (prevent zoom only while drawing)
   map.addListener('dblclick', (e) => {
     if (state.draw.active && state.draw.kind === 'polygon') {
       e.stop?.();
@@ -142,8 +155,13 @@ function initGoogleMap(cfg) {
     }
   });
 
+  // If the map container was resized (mobile chrome, fonts), force a relayout
+  google.maps.event.addListenerOnce(map, 'idle', () => {
+    google.maps.event.trigger(map, 'resize');
+  });
+
   $('draw-hint').textContent =
-    'Topographic map ready. Click Draw parcel, then click the map to place corners.';
+    'Topographic map ready. Drag to pan · scroll to zoom · Draw parcel to outline land.';
   setDrawButtons(null);
 }
 
@@ -199,7 +217,7 @@ function stopDrawingMode() {
   state.draw.rectStart = null;
   clearPreview();
   setDrawButtons(null);
-  if (state.map) state.map.setOptions({ draggableCursor: null, disableDoubleClickZoom: false });
+  if (state.map) state.map.setOptions(mapGestureOpts(false));
 }
 
 function startDraw(kind) {
@@ -229,10 +247,8 @@ function startDraw(kind) {
   state.draw.rectStart = null;
   setDrawButtons(kind);
 
-  state.map.setOptions({
-    draggableCursor: 'crosshair',
-    disableDoubleClickZoom: kind === 'polygon',
-  });
+  // Keep pan enabled while drawing — only disable double-click zoom for polygons
+  state.map.setOptions(mapGestureOpts(true));
 
   if (kind === 'polygon') {
     $('draw-hint').textContent =
@@ -496,11 +512,61 @@ function initFallbackMap(cfg) {
   resize();
 
   canvas.addEventListener('mousedown', (e) => {
-    if (e.button === 1 || e.shiftKey) {
-      fb.drag = { x: e.clientX, y: e.clientY, c: { ...fb.center } };
+    if (e.button !== 0) return;
+    const ll = screenToLatLng(e, fb, el);
+    // Left-drag pans when not placing corners; while drawing, small moves still pan if drag > threshold
+    fb.pointer = {
+      x: e.clientX,
+      y: e.clientY,
+      c: { ...fb.center },
+      ll,
+      moved: false,
+      isDrawClick: !!(fb.drawing || fb.rectMode),
+    };
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    e.preventDefault();
+    if (fb.drawing && fb.points.length >= 3) {
+      fb.drawing = false;
+      commitFallbackPolygon();
+    }
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!fb.pointer) {
+      if (fb.rectMode && fb.rectStart) {
+        const ll = screenToLatLng(e, fb, el);
+        const a = fb.rectStart;
+        fb.points = [
+          { lng: a.lng, lat: a.lat },
+          { lng: ll.lng, lat: a.lat },
+          { lng: ll.lng, lat: ll.lat },
+          { lng: a.lng, lat: ll.lat },
+        ];
+        drawFallback();
+      }
       return;
     }
-    const ll = screenToLatLng(e, fb, el);
+    const dx = e.clientX - fb.pointer.x;
+    const dy = e.clientY - fb.pointer.y;
+    if (Math.hypot(dx, dy) > 4) fb.pointer.moved = true;
+    // Pan whenever the pointer has moved (works with or without draw mode)
+    if (fb.pointer.moved) {
+      const world = 256 * Math.pow(2, fb.zoom);
+      fb.center.lng = fb.pointer.c.lng - (dx / world) * 360;
+      const cos = Math.cos((fb.pointer.c.lat * Math.PI) / 180) || 0.2;
+      fb.center.lat = fb.pointer.c.lat + (dy / world) * (360 * cos);
+      fb.center.lat = Math.max(-85, Math.min(85, fb.center.lat));
+      drawFallback();
+    }
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+    const p = fb.pointer;
+    fb.pointer = null;
+    if (!p || p.moved) return; // was a pan, not a click
+    const ll = p.ll || screenToLatLng(e, fb, el);
     if (fb.rectMode) {
       if (!fb.rectStart) {
         fb.rectStart = ll;
@@ -527,44 +593,10 @@ function initFallbackMap(cfg) {
     drawFallback();
   });
 
-  canvas.addEventListener('dblclick', (e) => {
-    e.preventDefault();
-    if (fb.drawing && fb.points.length >= 3) {
-      fb.drawing = false;
-      commitFallbackPolygon();
-    }
+  canvas.addEventListener('mouseleave', () => {
+    fb.pointer = null;
   });
 
-  canvas.addEventListener('mousemove', (e) => {
-    if (fb.drag) {
-      const dx = e.clientX - fb.drag.x;
-      const dy = e.clientY - fb.drag.y;
-      const scale = 360 / (256 * Math.pow(2, fb.zoom));
-      const r = el.getBoundingClientRect();
-      fb.center.lng = fb.drag.c.lng - dx * scale * (r.width / 256) * (256 / r.width) * (r.width / (256));
-      // simpler pan:
-      const world = 256 * Math.pow(2, fb.zoom);
-      fb.center.lng = fb.drag.c.lng - (dx / world) * 360;
-      fb.center.lat = fb.drag.c.lat + (dy / world) * 360 * Math.cos((fb.center.lat * Math.PI) / 180);
-      drawFallback();
-      return;
-    }
-    if (fb.rectMode && fb.rectStart) {
-      const ll = screenToLatLng(e, fb, el);
-      const a = fb.rectStart;
-      fb.points = [
-        { lng: a.lng, lat: a.lat },
-        { lng: ll.lng, lat: a.lat },
-        { lng: ll.lng, lat: ll.lat },
-        { lng: a.lng, lat: ll.lat },
-      ];
-      drawFallback();
-    }
-  });
-
-  canvas.addEventListener('mouseup', () => {
-    fb.drag = null;
-  });
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     fb.zoom = Math.min(16, Math.max(5, fb.zoom + (e.deltaY > 0 ? -1 : 1)));
@@ -572,7 +604,7 @@ function initFallbackMap(cfg) {
   }, { passive: false });
 
   $('draw-hint').textContent =
-    'No Google Maps key set — using OpenStreetMap fallback. Draw parcel, double-click to finish. Shift-drag to pan, scroll to zoom. Set GOOGLE_MAPS_API_KEY for full terrain.';
+    'No Google Maps key — OpenStreetMap fallback. Drag to pan, scroll to zoom, Draw parcel for corners.';
   drawFallback();
 }
 

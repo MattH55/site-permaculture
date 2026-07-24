@@ -113,10 +113,10 @@ h3 { font-size: 1.08rem; }
   z-index: 10;
   top: 1rem;
   left: 1rem;
-  max-width: min(400px, calc(100% - 2rem));
+  max-width: min(380px, calc(100% - 2rem));
+  /* Let map pan/zoom through the panel; only controls receive clicks */
   pointer-events: none;
 }
-.map-chrome > * { pointer-events: auto; }
 
 .map-card {
   background: rgba(247, 248, 243, 0.96);
@@ -125,6 +125,19 @@ h3 { font-size: 1.08rem; }
   padding: 1.25rem 1.35rem;
   box-shadow: 0 12px 40px rgba(22, 33, 27, 0.12);
   backdrop-filter: blur(8px);
+  pointer-events: none; /* pan through the frosted panel */
+}
+/* Re-enable only interactive bits so the map stays draggable underneath */
+.map-card input,
+.map-card button,
+.map-card a,
+.map-card select,
+.map-card textarea,
+.map-card label,
+.map-card .draw-tools,
+.map-card .actions,
+.map-card .field {
+  pointer-events: auto;
 }
 .map-card .eyebrow { color: var(--berry); display: block; margin-bottom: 0.75rem; }
 .map-card .lede {
@@ -179,11 +192,11 @@ h3 { font-size: 1.08rem; }
   color: var(--berry);
 }
 
+/* Hint drawing mode without overriding Google’s internal gesture layers
+   (cursor !important on .gm-style can break pan/drag in some browsers). */
 #map.is-drawing {
-  cursor: crosshair !important;
-}
-#map.is-drawing .gm-style {
-  cursor: crosshair !important;
+  outline: 2px solid rgba(91, 58, 115, 0.35);
+  outline-offset: -2px;
 }
 
 .parcel-meta {
