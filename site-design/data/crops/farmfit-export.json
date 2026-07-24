@@ -1,8 +1,386 @@
 {
-  "source": "farmfit export for Expanding Edge site-design",
+  "source": "farmfit CropData export for Expanding Edge site-design",
   "growing_guide": "C:\\Users\\matth\\OneDrive\\Documents\\OpenSourceMed\\Growing Guide",
-  "exported_at": "2026-07-24T23:05:14.362Z",
+  "exported_at": "2026-07-24T23:27:38.095Z",
   "filter": "cold_climate_and_alberta_relevant",
-  "count": 0,
-  "crops": []
+  "count": 11,
+  "crops": [
+    {
+      "id": "zea-mays",
+      "common_name": "Maize / Corn",
+      "scientific_name": "Zea mays",
+      "category": "annual",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "4a",
+      "hardiness_max": "9a",
+      "frost_free_min_days": 70,
+      "precip_min_mm": 400,
+      "precip_max_mm": 2000,
+      "ph_min": 5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "staple",
+        "grain",
+        "cereal",
+        "food_security"
+      ],
+      "regions": [
+        "Global"
+      ],
+      "notes": "Farmfit (_sample-crop-seed.ts) · value-add: Maize flour"
+    },
+    {
+      "id": "echinacea-purpurea",
+      "common_name": "Echinacea / Purple Coneflower",
+      "scientific_name": "Echinacea purpurea",
+      "category": "medicinal",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "2a",
+      "hardiness_max": "8a",
+      "frost_free_min_days": 120,
+      "precip_min_mm": 400,
+      "precip_max_mm": 1500,
+      "ph_min": 5.5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "medicinal",
+        "immune_support",
+        "export"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Echinacea tincture"
+    },
+    {
+      "id": "valeriana-officinalis",
+      "common_name": "Valerian",
+      "scientific_name": "Valeriana officinalis",
+      "category": "medicinal",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "2a",
+      "hardiness_max": "7a",
+      "frost_free_min_days": 150,
+      "precip_min_mm": 500,
+      "precip_max_mm": 2000,
+      "ph_min": 5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "medicinal",
+        "sleep_aid",
+        "export"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Valerian tincture"
+    },
+    {
+      "id": "calendula-officinalis",
+      "common_name": "Calendula / Pot Marigold",
+      "scientific_name": "Calendula officinalis",
+      "category": "medicinal",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "2a",
+      "hardiness_max": "7a",
+      "frost_free_min_days": 45,
+      "precip_min_mm": 300,
+      "precip_max_mm": 1500,
+      "ph_min": 5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "medicinal",
+        "cosmetic",
+        "skin_care"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Calendula salve"
+    },
+    {
+      "id": "mentha-piperita",
+      "common_name": "Peppermint",
+      "scientific_name": "Mentha × piperita",
+      "category": "medicinal",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "2a",
+      "hardiness_max": "7a",
+      "frost_free_min_days": 60,
+      "precip_min_mm": 500,
+      "precip_max_mm": 2500,
+      "ph_min": 5.5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "medicinal",
+        "essential_oil",
+        "tea_herb"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Menthol crystals"
+    },
+    {
+      "id": "syzygium-aromaticum",
+      "common_name": "Clove",
+      "scientific_name": "Syzygium aromaticum",
+      "category": "perennial",
+      "guild_layer": "canopy",
+      "hardiness_min": "7a",
+      "hardiness_max": "9a",
+      "frost_free_min_days": 150,
+      "precip_min_mm": 1500,
+      "precip_max_mm": 4000,
+      "ph_min": 5,
+      "ph_max": 7.5,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": true,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "spice",
+        "export",
+        "essential_oil"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Clove bud oil"
+    },
+    {
+      "id": "rosa-damascena",
+      "common_name": "Damask Rose",
+      "scientific_name": "Rosa × damascena",
+      "category": "perennial",
+      "guild_layer": "shrub",
+      "hardiness_min": "2a",
+      "hardiness_max": "8a",
+      "frost_free_min_days": 60,
+      "precip_min_mm": 300,
+      "precip_max_mm": 1200,
+      "ph_min": 5.5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "essential_oil",
+        "premium",
+        "export",
+        "cosmetic"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Rose water / Rose otto oil"
+    },
+    {
+      "id": "artemisia-annua",
+      "common_name": "Sweet Wormwood / Artemisia",
+      "scientific_name": "Artemisia annua",
+      "category": "medicinal",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "3a",
+      "hardiness_max": "8a",
+      "frost_free_min_days": 90,
+      "precip_min_mm": 400,
+      "precip_max_mm": 1500,
+      "ph_min": 5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "pharmaceutical",
+        "medicinal",
+        "export"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Artemisinin (API)"
+    },
+    {
+      "id": "ocimum-basilicum",
+      "common_name": "Sweet Basil",
+      "scientific_name": "Ocimum basilicum",
+      "category": "annual",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "4a",
+      "hardiness_max": "9a",
+      "frost_free_min_days": 30,
+      "precip_min_mm": 400,
+      "precip_max_mm": 2000,
+      "ph_min": 5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "culinary",
+        "fresh_market",
+        "horticulture"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Fresh pesto"
+    },
+    {
+      "id": "rosmarinus-officinalis",
+      "common_name": "Rosemary",
+      "scientific_name": "Salvia rosmarinus",
+      "category": "perennial",
+      "guild_layer": "shrub",
+      "hardiness_min": "2a",
+      "hardiness_max": "7a",
+      "frost_free_min_days": 60,
+      "precip_min_mm": 250,
+      "precip_max_mm": 1500,
+      "ph_min": 5,
+      "ph_max": 8.5,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "culinary",
+        "essential_oil",
+        "drought_resistant"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Rosemary essential oil"
+    },
+    {
+      "id": "coriandrum-sativum",
+      "common_name": "Coriander / Cilantro",
+      "scientific_name": "Coriandrum sativum",
+      "category": "annual",
+      "guild_layer": "herbaceous",
+      "hardiness_min": "3a",
+      "hardiness_max": "8a",
+      "frost_free_min_days": 35,
+      "precip_min_mm": 300,
+      "precip_max_mm": 1200,
+      "ph_min": 5.5,
+      "ph_max": 8,
+      "textures": [
+        "loam",
+        "sandy_loam",
+        "silt_loam"
+      ],
+      "drainage": [
+        "well",
+        "moderately_well"
+      ],
+      "chinook_sensitive": false,
+      "alberta_native": false,
+      "region_focus": "global_farmfit",
+      "tags": [
+        "specialty",
+        "culinary",
+        "dual_crop",
+        "spice"
+      ],
+      "regions": [],
+      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Ground coriander"
+    }
+  ]
 }

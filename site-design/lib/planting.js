@@ -205,6 +205,20 @@ function attachEconomics(cropId, economics, areaHa, suitabilityScore, inlineEcon
   // Prefer wholesale for "planning mid" when both exist
   const gross_revenue_cad = grossWholesale || grossRetail;
 
+  // farmfit processing ladder value-add (e.g. dried → tincture)
+  const ladder = Array.isArray(e.processing_ladder) ? e.processing_ladder : [];
+  const topStep = ladder.length ? ladder[ladder.length - 1] : null;
+  const valueAdd =
+    grossWholesale && topStep?.value_add_multiplier > 1
+      ? {
+          product: topStep.output_product || topStep.name,
+          multiplier: topStep.value_add_multiplier,
+          gross_mid_cad: round0(
+            (grossWholesale.mid || 0) * Number(topStep.value_add_multiplier)
+          ),
+        }
+      : null;
+
   return {
     currency: economics.currency || 'CAD',
     unit: e.unit || 'kg',
@@ -215,6 +229,8 @@ function attachEconomics(cropId, economics, areaHa, suitabilityScore, inlineEcon
     establishment_years: e.establishment_years ?? null,
     labour_intensity: e.labour_intensity || null,
     non_cash_value: e.non_cash_value || null,
+    processing_ladder: ladder,
+    value_add: valueAdd,
     parcel_area_ha: round2(areaHa),
     suitability_yield_factor: suitFactor,
     yield_on_parcel_kg: yieldParcel,
@@ -222,7 +238,7 @@ function attachEconomics(cropId, economics, areaHa, suitabilityScore, inlineEcon
     gross_revenue_retail_cad: grossRetail,
     gross_revenue_cad,
     notes:
-      'Gross revenue before labour, establishment, packaging, and marketing. Establishment may take multiple years for perennials.',
+      'Gross revenue before labour, establishment, packaging, and marketing. Establishment may take multiple years for perennials. Farmfit price ladder / FAOSTAT benchmarks where noted.',
   };
 }
 

@@ -1,0 +1,527 @@
+{
+  "source": "farmfit yield_benchmark + price_benchmarks (USD→CAD)",
+  "currency": "CAD",
+  "usd_cad_rate": 1.38,
+  "year": 2025,
+  "disclaimer": "Converted from farmfit FAOSTAT/global benchmarks where present. Planning ranges only — not Alberta market guarantees.",
+  "items": {
+    "zea-mays": {
+      "yield_kg_per_ha": {
+        "low": 1500,
+        "high": 12000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 0.23,
+        "high": 0.32
+      },
+      "price_retail_cad_per_kg": {
+        "low": 0.5,
+        "high": 0.83
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "farmgate",
+        "Dried maize grain",
+        "Maize flour"
+      ],
+      "establishment_years": 1,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Drying",
+          "output_product": "Dried maize grain",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Milling",
+          "output_product": "Maize flour",
+          "value_add_multiplier": 1.5,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "FAOSTAT"
+    },
+    "echinacea-purpurea": {
+      "yield_kg_per_ha": {
+        "low": 1000,
+        "high": 6000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 29.33,
+        "high": 39.67
+      },
+      "price_retail_cad_per_kg": {
+        "low": 62.1,
+        "high": 103.5
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh echinacea root",
+        "Dried echinacea root",
+        "Echinacea tincture"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Harvest Roots",
+          "output_product": "Fresh echinacea root",
+          "value_add_multiplier": 1,
+          "difficulty": "moderate"
+        },
+        {
+          "step": 2,
+          "name": "Wash & Dry",
+          "output_product": "Dried echinacea root",
+          "value_add_multiplier": 2,
+          "difficulty": "moderate"
+        },
+        {
+          "step": 3,
+          "name": "Tincture",
+          "output_product": "Echinacea tincture",
+          "value_add_multiplier": 4,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "valeriana-officinalis": {
+      "yield_kg_per_ha": {
+        "low": 800,
+        "high": 5000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 35.19,
+        "high": 47.61
+      },
+      "price_retail_cad_per_kg": {
+        "low": 74.52,
+        "high": 124.2
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh valerian root",
+        "Dried valerian root",
+        "Valerian tincture"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Root Harvest",
+          "output_product": "Fresh valerian root",
+          "value_add_multiplier": 1,
+          "difficulty": "moderate"
+        },
+        {
+          "step": 2,
+          "name": "Washing & Drying",
+          "output_product": "Dried valerian root",
+          "value_add_multiplier": 2,
+          "difficulty": "moderate"
+        },
+        {
+          "step": 3,
+          "name": "Tincture / Extract",
+          "output_product": "Valerian tincture",
+          "value_add_multiplier": 4,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "calendula-officinalis": {
+      "yield_kg_per_ha": {
+        "low": 500,
+        "high": 4000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 23.46,
+        "high": 31.74
+      },
+      "price_retail_cad_per_kg": {
+        "low": 49.68,
+        "high": 82.8
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh calendula flowers",
+        "Dried calendula",
+        "Calendula salve"
+      ],
+      "establishment_years": 1,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Flower Harvest",
+          "output_product": "Fresh calendula flowers",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried calendula",
+          "value_add_multiplier": 2,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Infused Oil / Salve",
+          "output_product": "Calendula salve",
+          "value_add_multiplier": 4,
+          "difficulty": "easy"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "mentha-piperita": {
+      "yield_kg_per_ha": {
+        "low": 5000,
+        "high": 40000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 11.73,
+        "high": 15.87
+      },
+      "price_retail_cad_per_kg": {
+        "low": 24.84,
+        "high": 41.4
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh peppermint",
+        "Dried peppermint",
+        "Peppermint essential oil",
+        "Menthol crystals"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Harvest",
+          "output_product": "Fresh peppermint",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried peppermint",
+          "value_add_multiplier": 1.5,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Essential Oil",
+          "output_product": "Peppermint essential oil",
+          "value_add_multiplier": 4,
+          "difficulty": "moderate"
+        },
+        {
+          "step": 4,
+          "name": "Menthol Crystals",
+          "output_product": "Menthol crystals",
+          "value_add_multiplier": 8,
+          "difficulty": "hard"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "syzygium-aromaticum": {
+      "yield_kg_per_ha": {
+        "low": 100,
+        "high": 1500
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 14.08,
+        "high": 19.04
+      },
+      "price_retail_cad_per_kg": {
+        "low": 29.81,
+        "high": 49.68
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh clove buds",
+        "Dried cloves",
+        "Clove bud oil"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Bud Harvest",
+          "output_product": "Fresh clove buds",
+          "value_add_multiplier": 1,
+          "difficulty": "hard"
+        },
+        {
+          "step": 2,
+          "name": "Sun Drying",
+          "output_product": "Dried cloves",
+          "value_add_multiplier": 2,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Oil Distillation",
+          "output_product": "Clove bud oil",
+          "value_add_multiplier": 5,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "rosa-damascena": {
+      "yield_kg_per_ha": {
+        "low": 1000,
+        "high": 10000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 5.86,
+        "high": 7.93
+      },
+      "price_retail_cad_per_kg": {
+        "low": 12.42,
+        "high": 20.7
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "farmgate",
+        "Fresh rose petals",
+        "Dried rose petals",
+        "Rose water / Rose otto oil"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Flower Harvest",
+          "output_product": "Fresh rose petals",
+          "value_add_multiplier": 1,
+          "difficulty": "hard"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried rose petals",
+          "value_add_multiplier": 1.5,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Steam Distillation",
+          "output_product": "Rose water / Rose otto oil",
+          "value_add_multiplier": 20,
+          "difficulty": "hard"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "artemisia-annua": {
+      "yield_kg_per_ha": {
+        "low": 1500,
+        "high": 10000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 9.38,
+        "high": 12.7
+      },
+      "price_retail_cad_per_kg": {
+        "low": 19.87,
+        "high": 33.12
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh artemisia",
+        "Dried artemisia",
+        "Artemisinin (API)"
+      ],
+      "establishment_years": 1,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Harvest Leaves",
+          "output_product": "Fresh artemisia",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried artemisia",
+          "value_add_multiplier": 1.5,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Artemisinin Extraction",
+          "output_product": "Artemisinin (API)",
+          "value_add_multiplier": 20,
+          "difficulty": "hard"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "ocimum-basilicum": {
+      "yield_kg_per_ha": {
+        "low": 3000,
+        "high": 25000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 9.38,
+        "high": 12.7
+      },
+      "price_retail_cad_per_kg": {
+        "low": 19.87,
+        "high": 33.12
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "farmgate",
+        "Fresh basil",
+        "Dried basil",
+        "Fresh pesto"
+      ],
+      "establishment_years": 1,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Harvest",
+          "output_product": "Fresh basil",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried basil",
+          "value_add_multiplier": 2,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Pesto Production",
+          "output_product": "Fresh pesto",
+          "value_add_multiplier": 3,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "rosmarinus-officinalis": {
+      "yield_kg_per_ha": {
+        "low": 2000,
+        "high": 20000
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 11.73,
+        "high": 15.87
+      },
+      "price_retail_cad_per_kg": {
+        "low": 24.84,
+        "high": 41.4
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "wholesale",
+        "Fresh rosemary",
+        "Dried rosemary",
+        "Rosemary essential oil"
+      ],
+      "establishment_years": 3,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Harvest",
+          "output_product": "Fresh rosemary",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Drying",
+          "output_product": "Dried rosemary",
+          "value_add_multiplier": 1.5,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Essential Oil",
+          "output_product": "Rosemary essential oil",
+          "value_add_multiplier": 5,
+          "difficulty": "moderate"
+        }
+      ],
+      "source": "Market surveys"
+    },
+    "coriandrum-sativum": {
+      "yield_kg_per_ha": {
+        "low": 300,
+        "high": 3500
+      },
+      "price_wholesale_cad_per_kg": {
+        "low": 9.38,
+        "high": 12.7
+      },
+      "price_retail_cad_per_kg": {
+        "low": 19.87,
+        "high": 33.12
+      },
+      "unit": "kg/ha",
+      "market_channels": [
+        "farmgate",
+        "Fresh cilantro",
+        "Coriander seed",
+        "Ground coriander"
+      ],
+      "establishment_years": 1,
+      "labour_intensity": "medium",
+      "processing_ladder": [
+        {
+          "step": 1,
+          "name": "Leaf Harvest (Cilantro)",
+          "output_product": "Fresh cilantro",
+          "value_add_multiplier": 1,
+          "difficulty": "easy"
+        },
+        {
+          "step": 2,
+          "name": "Seed Harvest",
+          "output_product": "Coriander seed",
+          "value_add_multiplier": 1.2,
+          "difficulty": "easy"
+        },
+        {
+          "step": 3,
+          "name": "Ground Coriander",
+          "output_product": "Ground coriander",
+          "value_add_multiplier": 2,
+          "difficulty": "easy"
+        }
+      ],
+      "source": "Market surveys"
+    }
+  },
+  "count": 11
+}
