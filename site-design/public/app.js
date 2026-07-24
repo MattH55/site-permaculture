@@ -987,7 +987,6 @@ function renderReport(r) {
       ${topologySection(topo, a)}
       ${proximitySection(px, water, city, settlement, crime)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth)}
-      ${plantingSection(r.planting_plan)}
 
       ${
         flags.length
@@ -1003,28 +1002,32 @@ function renderReport(r) {
           : ''
       }
 
-      <h2>Placement recommendations</h2>
-      <p class="fine" style="margin-top:-0.3rem">From live layers + the Alberta if→then ruleset. Confidence reflects data completeness and risk.</p>
-      <div class="elements">
-        ${
-          els.length
-            ? els
-                .map(
-                  (e) => `
-          <article class="el">
-            <div class="el-head">
-              <h3>${esc(ELEMENT_LABELS[e.element_type] || e.element_type)}</h3>
-              <span class="badge zone">Zone ${esc(e.zone)}</span>
-              ${confBadge(e.confidence)}
-            </div>
-            <div class="basis">${esc(e.condition_basis)}</div>
-            <p>${esc(e.placement_notes)}</p>
-          </article>`
-                )
-                .join('')
-            : '<p class="fine">No elements matched — try a larger parcel or different ground.</p>'
-        }
-      </div>
+      <section class="report-block">
+        <h2>Placement recommendations</h2>
+        <p class="fine" style="margin-top:-0.3rem">From live layers + the Alberta if→then ruleset. Confidence reflects data completeness and risk.</p>
+        <div class="elements">
+          ${
+            els.length
+              ? els
+                  .map(
+                    (e) => `
+            <article class="el">
+              <div class="el-head">
+                <h3>${esc(ELEMENT_LABELS[e.element_type] || e.element_type)}</h3>
+                <span class="badge zone">Zone ${esc(e.zone)}</span>
+                ${confBadge(e.confidence)}
+              </div>
+              <div class="basis">${esc(e.condition_basis)}</div>
+              <p>${esc(e.placement_notes)}</p>
+            </article>`
+                  )
+                  .join('')
+              : '<p class="fine">No elements matched — try a larger parcel or different ground.</p>'
+          }
+        </div>
+      </section>
+
+      ${plantingSection(r.planting_plan)}
 
       <div class="sources">
         <span class="mono">Data provenance</span>
