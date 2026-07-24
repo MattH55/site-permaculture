@@ -13,6 +13,7 @@ import { gatherSiteLayers } from './sources.js';
 import { gatherProximity } from './proximity.js';
 import { buildTopologyView } from './topology.js';
 import { predictWellDepth } from './well-depth.js';
+import { planPlantings } from './planting.js';
 import { buildSiteRecord } from './rules.js';
 
 const cache = new Map();
@@ -141,6 +142,9 @@ export async function generateSiteReport(input = {}) {
     data_provenance: buildProvenance(layers, proximity, predicted_well_depth),
   };
 
+  // Step 8-style join: EcoCrop / Growing Guide planting plan (after climate+soil assembled)
+  const planting_plan = planPlantings(siteInput, { limit: 18 });
+
   const record = buildSiteRecord(siteInput);
 
   // Attach full proximity / well blocks (incl. disclaimers) for the UI
@@ -149,6 +153,7 @@ export async function generateSiteReport(input = {}) {
     crime_risk: proximity.crime_risk,
   };
   record.predicted_well_depth = predicted_well_depth;
+  record.planting_plan = planting_plan;
 
   const report = {
     ...record,
@@ -184,11 +189,16 @@ export async function generateSiteReport(input = {}) {
       },
       proximity,
       well_depth: predicted_well_depth,
+      planting: {
+        catalog: planting_plan.growing_guide?.catalog_source,
+        recommended_count: planting_plan.recommended?.length || 0,
+      },
       alberta: layers.alberta,
     },
+    planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v3-well-depth',
+      pipeline: 'bbox-live-v4-planting',
       cache: 'miss',
       cache_key: key,
     },
@@ -322,6 +332,13 @@ function buildProvenance(layers, proximity, well) {
       source_url: 'https://groundwater.alberta.ca/WaterWells/d/',
     });
   }
+  rows.push({
+    field: 'planting_plan',
+    source_name:
+      'EcoCrop-style suitability · OpenSourceMed Growing Guide / farmfit catalog approach',
+    source_date: new Date().toISOString().slice(0, 10),
+    source_url: 'https://opensourcemed.info/',
+  });
   rows.push({
     field: 'design_elements',
     source_name: 'EE if→then placement ruleset (Alberta-first)',

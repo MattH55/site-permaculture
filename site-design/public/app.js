@@ -17,7 +17,7 @@ const ELEMENT_LABELS = {
   keyhole_bed: 'Keyhole bed',
 };
 
-const CORE_LABELS = ['Elev', 'Topo', 'Water', 'City', 'Well', 'Safety', 'Rules', 'Report'];
+const CORE_LABELS = ['Elev', 'Topo', 'Water', 'Well', 'Plants', 'Safety', 'Rules', 'Report'];
 const HORIZONS = [
   'var(--h1)', 'var(--h2)', 'var(--h3)', 'var(--h4)',
   'var(--h5)', 'var(--h6)', 'var(--h7)', 'var(--h8)',
@@ -987,6 +987,7 @@ function renderReport(r) {
       ${topologySection(topo, a)}
       ${proximitySection(px, water, city, settlement, crime)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth)}
+      ${plantingSection(r.planting_plan)}
 
       ${
         flags.length
@@ -1253,6 +1254,79 @@ function fmtDistance(m) {
   if (m == null || m === '') return '—';
   if (m < 1000) return `${Math.round(m)} m`;
   return `${(m / 1000).toFixed(2)} km`;
+}
+
+function plantingSection(plan) {
+  if (!plan?.recommended?.length) {
+    return `
+      <section class="report-block">
+        <h2>Planting plan</h2>
+        <p class="fine">No suitable plantings scored for this site profile.</p>
+      </section>`;
+  }
+  const rows = plan.recommended
+    .map(
+      (p) => `
+      <article class="plant-card" data-suit="${esc(p.suitability)}">
+        <div class="plant-head">
+          <h3>${esc(p.common_name)}</h3>
+          <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
+        </div>
+        <div class="basis">${esc(p.scientific_name || '')}${
+          p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
+        }${p.category ? ` · ${esc(p.category)}` : ''}</div>
+        ${
+          p.reasons?.length
+            ? `<p class="plant-ok">${p.reasons.map(esc).join(' · ')}</p>`
+            : ''
+        }
+        ${
+          p.limits?.length
+            ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
+            : ''
+        }
+        ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
+      </article>`
+    )
+    .join('');
+
+  const layers = plan.by_guild_layer
+    ? Object.entries(plan.by_guild_layer)
+        .map(
+          ([layer, items]) =>
+            `<span class="plant-chip"><strong>${esc(layer)}</strong> ${items.length}</span>`
+        )
+        .join('')
+    : '';
+
+  return `
+    <section class="report-block">
+      <h2>Planting plan</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        EcoCrop-style suitability from
+        <strong>OpenSourceMed Growing Guide / farmfit</strong>
+        catalog approach
+        ${plan.growing_guide?.catalog_source ? ` (${esc(plan.growing_guide.catalog_source)})` : ''}.
+        ${esc(plan.phase_note || '')}
+      </p>
+      <div class="plant-chips">${layers}</div>
+      <div class="plant-list">${rows}</div>
+      <p class="fine" style="margin-top:0.8rem">
+        Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
+        ${esc(plan.site_filters?.frost_free_days ?? '—')} frost-free days,
+        ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm precip,
+        ${esc(plan.site_filters?.texture || '—')} /
+        ${esc(plan.site_filters?.drainage_class || '—')} drainage.
+        Full farmfit catalog: export JSON to <code>data/crops/farmfit-export.json</code>
+        or set <code>GROWING_GUIDE_CROPS_PATH</code>.
+      </p>
+    </section>`;
+}
+
+function suitBadgeClass(s) {
+  if (s === 'excellent' || s === 'good') return 'high';
+  if (s === 'fair') return 'moderate';
+  return 'visit';
 }
 
 function wellDepthSection(w) {

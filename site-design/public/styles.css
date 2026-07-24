@@ -638,6 +638,64 @@ h3 { font-size: 1.08rem; }
   margin: 0 0.15em;
 }
 
+.plant-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.75rem 0 1rem;
+}
+.plant-chip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.55rem;
+  background: #fff;
+  color: var(--ink-soft);
+}
+.plant-chip strong { color: var(--berry); margin-right: 0.35rem; }
+
+.plant-list {
+  display: grid;
+  gap: 0.65rem;
+}
+.plant-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 0.85rem 1rem;
+}
+.plant-card[data-suit="excellent"],
+.plant-card[data-suit="good"] {
+  border-left: 3px solid var(--ok);
+}
+.plant-card[data-suit="fair"] {
+  border-left: 3px solid var(--gold);
+}
+.plant-card[data-suit="marginal"],
+.plant-card[data-suit="poor"] {
+  border-left: 3px solid var(--caution);
+}
+.plant-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.85rem;
+}
+.plant-head h3 { margin: 0; flex: 1 1 auto; font-size: 1.05rem; }
+.plant-ok {
+  margin: 0.35rem 0 0;
+  font-size: 0.88rem;
+  color: var(--ok);
+}
+.plant-limit {
+  margin: 0.25rem 0 0;
+  font-size: 0.88rem;
+  color: var(--caution);
+}
+
 @media (max-width: 820px) {
   .topo-layout,
   .prox-grid { grid-template-columns: 1fr; }
