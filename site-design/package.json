@@ -6,7 +6,8 @@
   "engines": { "node": ">=20" },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test lib/rules.test.js"
+    "test": "node --test lib/rules.test.js",
+    "export-crops": "node scripts/export-farmfit-crops.mjs"
   },
   "dependencies": {
     "express": "^4.19.2"

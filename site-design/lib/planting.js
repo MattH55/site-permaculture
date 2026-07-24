@@ -184,10 +184,27 @@ function scoreCrop(crop, ctx) {
     limits.push('Chinook-sensitive woody / early flower');
   }
 
+  // Reject / heavily penalize tropical-leaning crops for Alberta sites
+  if (isTropicalLeaning(crop)) {
+    score -= 50;
+    limits.push('Tropical / warm-climate crop — not suited to Alberta parkland/boreal');
+  }
+
+  // Prefer Alberta natives and cold-hardy region focus
+  if (crop.alberta_native) {
+    score += 8;
+    reasons.push('Alberta native / naturalized prairie-boreal species');
+  } else if (crop.region_focus === 'alberta' || crop.region_focus === 'cold_temperate') {
+    score += 3;
+  }
+
   // Early succession bonus for cover crops / N-fixers
-  // (handled in phase_note; small score nudge)
   if (
-    (crop.category === 'cover_crop' || crop.id === 'caragana' || crop.id === 'sea-buckthorn') &&
+    (crop.category === 'cover_crop' ||
+      crop.id === 'caragana' ||
+      crop.id === 'sea-buckthorn' ||
+      crop.id === 'wolf-willow' ||
+      crop.id === 'buffalo-berry') &&
     score > 40
   ) {
     score += 3;
@@ -203,6 +220,7 @@ function scoreCrop(crop, ctx) {
     scientific_name: crop.scientific_name || null,
     category: crop.category,
     guild_layer: crop.guild_layer,
+    alberta_native: !!crop.alberta_native,
     score,
     suitability,
     reasons,
@@ -211,12 +229,26 @@ function scoreCrop(crop, ctx) {
   };
 }
 
+function isTropicalLeaning(crop) {
+  const zMin = zoneIndex(crop.hardiness_min);
+  // Minimum hardiness zone 8+ means too warm for AB
+  if (zMin >= zoneIndex('8a')) return true;
+  const name = `${crop.common_name || ''} ${crop.scientific_name || ''}`.toLowerCase();
+  return /banana|mango|papaya|cacao|coffee|coconut|cassava|taro|breadfruit|durian|rambutan|lychee|vanilla|pineapple|avocado|guava|sugarcane|teak|rubber|oil palm|passionfruit|dragon fruit|starfruit|manioc|yam\b|citrus|orange tree|lemon tree|lime tree/.test(
+    name
+  );
+}
+
 function loadCatalog() {
   if (catalogCache) return catalogCache;
 
   const byId = new Map();
   const basePath = path.join(__dirname, '..', 'data', 'crops', 'alberta-catalog.json');
   loadInto(byId, basePath, 'alberta-catalog.json');
+
+  // Alberta natives / prairie-hardy pack (overrides same ids, adds many natives)
+  const nativesPath = path.join(__dirname, '..', 'data', 'crops', 'alberta-natives.json');
+  loadInto(byId, nativesPath, 'alberta-natives.json');
 
   const farmfitLocal = path.join(__dirname, '..', 'data', 'crops', 'farmfit-export.json');
   loadInto(byId, farmfitLocal, 'farmfit-export.json');
@@ -276,6 +308,8 @@ function normalizeCrop(c) {
     textures: c.textures || c.soil_textures || [],
     drainage: c.drainage || c.drainage_classes || [],
     chinook_sensitive: !!c.chinook_sensitive,
+    alberta_native: !!(c.alberta_native || c.native_alberta),
+    region_focus: c.region_focus || (c.alberta_native ? 'alberta' : null),
     notes: c.notes || c.description || null,
   };
 }

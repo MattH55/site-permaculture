@@ -17,6 +17,7 @@
       "textures": ["sand", "loamy_sand", "sandy_loam", "loam", "silt_loam", "clay_loam"],
       "drainage": ["rapid", "well", "moderately_well"],
       "chinook_sensitive": false,
+      "alberta_native": true,
       "notes": "Native prairie fruit; food forest understory/shrub layer."
     },
     {
@@ -179,6 +180,7 @@
       "textures": ["sandy_loam", "loam", "silt_loam", "clay_loam"],
       "drainage": ["well", "moderately_well", "imperfect"],
       "chinook_sensitive": false,
+      "alberta_native": true,
       "notes": "Windbreak / Zone 4–5 structure."
     },
     {
@@ -197,6 +199,7 @@
       "textures": ["sandy_loam", "loam", "silt_loam", "clay_loam"],
       "drainage": ["well", "moderately_well", "imperfect"],
       "chinook_sensitive": false,
+      "alberta_native": true,
       "notes": "Pioneer succession; nurse crop for later forest."
     },
     {
@@ -431,6 +434,7 @@
       "textures": ["sand", "loamy_sand", "sandy_loam", "loam", "clay_loam"],
       "drainage": ["rapid", "well", "moderately_well"],
       "chinook_sensitive": false,
+      "alberta_native": true,
       "notes": "Native/naturalized medicinal; dry-tolerant."
     },
     {

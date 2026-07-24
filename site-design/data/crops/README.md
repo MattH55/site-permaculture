@@ -1,53 +1,63 @@
-# Planting catalog (Growing Guide / farmfit integration)
+# Planting catalog (Growing Guide / farmfit + Alberta natives)
 
 Site reports score crops against climate, soil, and hardiness using EcoCrop-style
-rules aligned with **OpenSourceMed Growing Guide → farmfit**
-(`…/OpenSourceMed/Growing Guide/farmfit`).
+rules aligned with **OpenSourceMed Growing Guide → farmfit**, then **boost Alberta
+natives** and **penalize tropical** species.
 
-## Default catalog
+## Default catalogs (bundled)
 
-`alberta-catalog.json` — Alberta-first perennials, food-forest layers, medicinals,
-and cover crops. Parameterized like EcoCrop (hardiness, frost-free days, precip,
-pH, texture, drainage).
+| File | Contents |
+|---|---|
+| `alberta-catalog.json` | Cold-hardy food forest, medicinals, annuals, covers |
+| `alberta-natives.json` | **Alberta-native** trees, shrubs, prairie forbs/grasses |
 
-## Hook up the full Growing Guide catalog
+Load order: base catalog → natives → farmfit export (by `id`).
 
-When OneDrive / the farmfit repo is available:
+## Export from farmfit
 
-1. Export or copy crop records from  
-   `Growing Guide/farmfit/src/lib/data/crop-seed.ts`  
-   and specialty / growable-medicine taxa into JSON.
-2. Save as `data/crops/farmfit-export.json` **or** set:
+From `site-design`:
 
-```
-GROWING_GUIDE_CROPS_PATH=C:\path\to\crops.json
+```bash
+node scripts/export-farmfit-crops.mjs --guide "C:\Users\...\OpenSourceMed\Growing Guide"
 ```
 
-3. Expected JSON shape (array or `{ "crops": [...] }`):
+Or from farmfit (script copied there as `scripts/export-crops-for-site-design.mjs`):
+
+```bash
+cd farmfit
+node scripts/export-crops-for-site-design.mjs --guide ".."
+```
+
+Writes `data/crops/farmfit-export.json` (and `farmfit/public/crops-export.json` if writable).
+
+**Default filter drops tropical / hardiness-min ≥ 8a crops.** Use `--all` to keep everything.
+
+Env: `GROWING_GUIDE_PATH`, `GROWING_GUIDE_CROPS_PATH`.
+
+## JSON shape
 
 ```json
 {
   "crops": [
     {
-      "id": "echinacea-purpurea",
-      "common_name": "Purple coneflower",
-      "scientific_name": "Echinacea purpurea",
-      "category": "medicinal",
-      "guild_layer": "herbaceous",
-      "hardiness_min": "3a",
-      "hardiness_max": "9a",
-      "frost_free_min_days": 100,
-      "precip_min_mm": 350,
-      "precip_max_mm": 1200,
-      "ph_min": 6,
+      "id": "chokecherry",
+      "common_name": "Chokecherry",
+      "scientific_name": "Prunus virginiana",
+      "category": "shrub",
+      "guild_layer": "shrub",
+      "hardiness_min": "2a",
+      "hardiness_max": "7a",
+      "frost_free_min_days": 90,
+      "precip_min_mm": 300,
+      "precip_max_mm": 900,
+      "ph_min": 5.5,
       "ph_max": 7.5,
-      "textures": ["loam", "sandy_loam", "clay_loam"],
+      "textures": ["loam", "sandy_loam"],
       "drainage": ["well", "moderately_well"],
       "chinook_sensitive": false,
+      "alberta_native": true,
       "notes": "…"
     }
   ]
 }
 ```
-
-The loader merges farmfit export **on top of** the Alberta default catalog (by `id`).

@@ -1274,7 +1274,9 @@ function plantingSection(plan) {
         </div>
         <div class="basis">${esc(p.scientific_name || '')}${
           p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
-        }${p.category ? ` · ${esc(p.category)}` : ''}</div>
+        }${p.category ? ` · ${esc(p.category)}` : ''}${
+          p.alberta_native ? ' · Alberta native' : ''
+        }</div>
         ${
           p.reasons?.length
             ? `<p class="plant-ok">${p.reasons.map(esc).join(' · ')}</p>`
