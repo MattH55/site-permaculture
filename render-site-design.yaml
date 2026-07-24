@@ -1,0 +1,22 @@
+# Blueprint for the map → report tool when applying from the Expanding Edge monorepo root.
+# Dashboard → New → Blueprint → this file (or paste path: render-site-design.yaml)
+#
+# Separate from render.yaml (resilience quiz) so the two services don't collide.
+
+services:
+  - type: web
+    name: ee-site-design
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: site-design
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false

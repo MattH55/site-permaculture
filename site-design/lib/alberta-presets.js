@@ -1,0 +1,212 @@
+/**
+ * Alberta-first climate & context presets for common service regions.
+ * Values are planning defaults from ECCC climate normals / NRCan hardiness
+ * ranges — not a substitute for site-level data. Always refine on the ground.
+ */
+
+export const ALBERTA_PRESETS = [
+  {
+    id: 'edmonton',
+    label: 'Edmonton metro / Parkland',
+    municipality: 'Edmonton',
+    nearest_town: 'Edmonton',
+    latitude: 53.5461,
+    longitude: -113.4938,
+    elevation_m: 668,
+    climate: {
+      plant_hardiness_zone: '3b',
+      frost_free_days: 140,
+      growing_degree_days_base5: 1450,
+      prevailing_wind_direction: 'NW',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 456,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'North Saskatchewan River',
+    },
+    notes:
+      'Treaty 6 · North Saskatchewan watershed. Aspen parkland soils; winter northwesterlies.',
+  },
+  {
+    id: 'sturgeon',
+    label: 'Sturgeon County / Morinville',
+    municipality: 'Sturgeon County',
+    nearest_town: 'Morinville',
+    latitude: 53.8022,
+    longitude: -113.6497,
+    elevation_m: 700,
+    climate: {
+      plant_hardiness_zone: '3b',
+      frost_free_days: 135,
+      growing_degree_days_base5: 1400,
+      prevailing_wind_direction: 'NW',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 450,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'North Saskatchewan River',
+    },
+    notes: 'Treaty 6. Core Expanding Edge service area — acreage & rural residential.',
+  },
+  {
+    id: 'red-deer',
+    label: 'Red Deer / Central Parkland',
+    municipality: 'Red Deer',
+    nearest_town: 'Red Deer',
+    latitude: 52.2681,
+    longitude: -113.8112,
+    elevation_m: 855,
+    climate: {
+      plant_hardiness_zone: '3a',
+      frost_free_days: 125,
+      growing_degree_days_base5: 1350,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 486,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'Red Deer River',
+    },
+    notes: 'Central Alberta parkland; transitional chinook influence further west.',
+  },
+  {
+    id: 'calgary',
+    label: 'Calgary / Foothills edge',
+    municipality: 'Calgary',
+    nearest_town: 'Calgary',
+    latitude: 51.0447,
+    longitude: -114.0719,
+    elevation_m: 1045,
+    climate: {
+      plant_hardiness_zone: '3b',
+      frost_free_days: 120,
+      growing_degree_days_base5: 1300,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: true,
+    },
+    hydrology: {
+      annual_precipitation_mm: 419,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'Bow River',
+    },
+    notes:
+      'Chinook corridor — prioritise windbreak; avoid early-flowering woody species.',
+  },
+  {
+    id: 'lethbridge',
+    label: 'Lethbridge / Southern',
+    municipality: 'Lethbridge',
+    nearest_town: 'Lethbridge',
+    latitude: 49.6956,
+    longitude: -112.8451,
+    elevation_m: 910,
+    climate: {
+      plant_hardiness_zone: '4a',
+      frost_free_days: 130,
+      growing_degree_days_base5: 1550,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: true,
+    },
+    hydrology: {
+      annual_precipitation_mm: 380,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'Oldman River',
+    },
+    notes: 'Drier mixed-grass prairie; irrigation culture common; chinook exposure.',
+  },
+  {
+    id: 'medicine-hat',
+    label: 'Medicine Hat / SE prairie',
+    municipality: 'Medicine Hat',
+    nearest_town: 'Medicine Hat',
+    latitude: 50.0405,
+    longitude: -110.6764,
+    elevation_m: 710,
+    climate: {
+      plant_hardiness_zone: '4a',
+      frost_free_days: 135,
+      growing_degree_days_base5: 1700,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 323,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'South Saskatchewan River',
+    },
+    notes: 'One of the warmest, driest Alberta pockets — water harvesting is critical.',
+  },
+  {
+    id: 'grande-prairie',
+    label: 'Grande Prairie / Peace',
+    municipality: 'Grande Prairie',
+    nearest_town: 'Grande Prairie',
+    latitude: 55.1707,
+    longitude: -118.7947,
+    elevation_m: 669,
+    climate: {
+      plant_hardiness_zone: '2b',
+      frost_free_days: 115,
+      growing_degree_days_base5: 1250,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 445,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'Peace River',
+    },
+    notes: 'Peace Country — shorter season, cold-hardy species only.',
+  },
+  {
+    id: 'fort-mcmurray',
+    label: 'Fort McMurray / Boreal',
+    municipality: 'Wood Buffalo',
+    nearest_town: 'Fort McMurray',
+    latitude: 56.7267,
+    longitude: -111.379,
+    elevation_m: 370,
+    climate: {
+      plant_hardiness_zone: '2a',
+      frost_free_days: 100,
+      growing_degree_days_base5: 1100,
+      prevailing_wind_direction: 'W',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 419,
+      seasonal_distribution: 'summer_peak',
+      watershed: 'Athabasca River',
+    },
+    notes: 'Boreal fringe — short frost-free window; microclimate design essential.',
+  },
+  {
+    id: 'custom',
+    label: 'Custom Alberta site (enter all values)',
+    municipality: '',
+    nearest_town: '',
+    latitude: null,
+    longitude: null,
+    elevation_m: null,
+    climate: {
+      plant_hardiness_zone: '3a',
+      frost_free_days: 120,
+      growing_degree_days_base5: 1300,
+      prevailing_wind_direction: 'NW',
+      chinook_exposure: false,
+    },
+    hydrology: {
+      annual_precipitation_mm: 450,
+      seasonal_distribution: 'summer_peak',
+      watershed: '',
+    },
+    notes: 'Start from provincial defaults; replace with parcel-level data when available.',
+  },
+];
+
+export function getPreset(id) {
+  return ALBERTA_PRESETS.find((p) => p.id === id) || null;
+}
