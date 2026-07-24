@@ -240,53 +240,6 @@
       ],
       "source": "Market surveys"
     },
-    "syzygium-aromaticum": {
-      "yield_kg_per_ha": {
-        "low": 100,
-        "high": 1500
-      },
-      "price_wholesale_cad_per_kg": {
-        "low": 14.08,
-        "high": 19.04
-      },
-      "price_retail_cad_per_kg": {
-        "low": 29.81,
-        "high": 49.68
-      },
-      "unit": "kg/ha",
-      "market_channels": [
-        "wholesale",
-        "Fresh clove buds",
-        "Dried cloves",
-        "Clove bud oil"
-      ],
-      "establishment_years": 3,
-      "labour_intensity": "medium",
-      "processing_ladder": [
-        {
-          "step": 1,
-          "name": "Bud Harvest",
-          "output_product": "Fresh clove buds",
-          "value_add_multiplier": 1,
-          "difficulty": "hard"
-        },
-        {
-          "step": 2,
-          "name": "Sun Drying",
-          "output_product": "Dried cloves",
-          "value_add_multiplier": 2,
-          "difficulty": "easy"
-        },
-        {
-          "step": 3,
-          "name": "Oil Distillation",
-          "output_product": "Clove bud oil",
-          "value_add_multiplier": 5,
-          "difficulty": "moderate"
-        }
-      ],
-      "source": "Market surveys"
-    },
     "rosa-damascena": {
       "yield_kg_per_ha": {
         "low": 1000,
@@ -523,5 +476,5 @@
       "source": "Market surveys"
     }
   },
-  "count": 11
+  "count": 10
 }

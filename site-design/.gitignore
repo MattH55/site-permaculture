@@ -4,3 +4,6 @@ node_modules/
 leads.jsonl
 .DS_Store
 data/wells/local-wells.json
+
+scripts/_sample-*.ts
+

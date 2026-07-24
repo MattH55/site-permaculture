@@ -1322,6 +1322,14 @@ function plantingSection(plan) {
   const rows = plan.recommended
     .map((p) => {
       const e = p.economics;
+      const valueAdd =
+        e?.value_add?.gross_mid_cad
+          ? `<br><span class="fine">Value-add (${esc(
+              e.value_add.product || 'processed'
+            )}): ~${fmtMoney(e.value_add.gross_mid_cad)} if ×${esc(
+              e.value_add.multiplier
+            )} processing step</span>`
+          : '';
       const econLine = e
         ? e.gross_revenue_cad
           ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
@@ -1336,6 +1344,7 @@ function plantingSection(plan) {
                  ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>`
                  : ''
              }
+             ${valueAdd}
            </p>`
           : e.non_cash_value
             ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`

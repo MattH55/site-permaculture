@@ -322,7 +322,7 @@ function isColdClimateRelevant(c) {
   const name = `${c.common_name} ${c.scientific_name || ''}`.toLowerCase();
   if (/tropical|subtropical/.test(tags + regions)) return false;
   if (
-    /rice|oryza|banana|mango|cassava|taro|cacao|coffee|coconut|papaya|sugarcane|yam\b|manioc|pineapple|avocado|citrus|orange|lemon/.test(
+    /rice|oryza|banana|mango|cassava|taro|cacao|coffee|coconut|papaya|sugarcane|yam\b|manioc|pineapple|avocado|citrus|orange|lemon|clove|syzygium|cinnamon|vanilla|black pepper|tea tree|neem|moringa|turmeric|ginger|cardamom|allspice|nutmeg/.test(
       name
     )
   )

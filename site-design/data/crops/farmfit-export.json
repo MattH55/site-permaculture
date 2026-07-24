@@ -1,9 +1,9 @@
 {
   "source": "farmfit CropData export for Expanding Edge site-design",
   "growing_guide": "C:\\Users\\matth\\OneDrive\\Documents\\OpenSourceMed\\Growing Guide",
-  "exported_at": "2026-07-24T23:27:38.095Z",
+  "exported_at": "2026-07-24T23:28:11.158Z",
   "filter": "cold_climate_and_alberta_relevant",
-  "count": 11,
+  "count": 10,
   "crops": [
     {
       "id": "zea-mays",
@@ -176,40 +176,6 @@
       ],
       "regions": [],
       "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Menthol crystals"
-    },
-    {
-      "id": "syzygium-aromaticum",
-      "common_name": "Clove",
-      "scientific_name": "Syzygium aromaticum",
-      "category": "perennial",
-      "guild_layer": "canopy",
-      "hardiness_min": "7a",
-      "hardiness_max": "9a",
-      "frost_free_min_days": 150,
-      "precip_min_mm": 1500,
-      "precip_max_mm": 4000,
-      "ph_min": 5,
-      "ph_max": 7.5,
-      "textures": [
-        "loam",
-        "sandy_loam",
-        "silt_loam"
-      ],
-      "drainage": [
-        "well",
-        "moderately_well"
-      ],
-      "chinook_sensitive": true,
-      "alberta_native": false,
-      "region_focus": "global_farmfit",
-      "tags": [
-        "specialty",
-        "spice",
-        "export",
-        "essential_oil"
-      ],
-      "regions": [],
-      "notes": "Farmfit (crop-seed-specialty.ts) · value-add: Clove bud oil"
     },
     {
       "id": "rosa-damascena",
