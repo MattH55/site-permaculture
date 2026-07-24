@@ -225,7 +225,6 @@ async function nearestWaterOverpass(lat, lng, radiusM) {
 out center tags 60;
 `.trim();
 
-  // Primary + mirrors (Overpass public instance is often rate-limited)
   const endpoints = [
     'https://overpass-api.de/api/interpreter',
     'https://overpass.kumi.systems/api/interpreter',
@@ -240,28 +239,15 @@ out center tags 60;
         method: 'POST',
         body: `data=${encodeURIComponent(query)}`,
         signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+          'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture site report)',
+        },
       });
       if (!res.ok) throw new Error(`Overpass ${res.status}`);
       const data = await res.json();
-      const els = data.elements || [];
-      let best = null;
-      for (const el of els) {
-        const clat = el.lat ?? el.center?.lat;
-        const clng = el.lon ?? el.center?.lon;
-        if (clat == null || clng == null) continue;
-        const d = haversineM(lat, lng, clat, clng);
-        const tags = el.tags || {};
-        const feature_type = classifyWater(tags);
-        const feature_name = tags.name || tags.waterway || tags.water || null;
-        if (!best || d < best.distance_m) {
-          best = {
-            distance_m: Math.round(d),
-            feature_type,
-            feature_name,
-          };
-        }
-      }
+      const best = pickNearestWaterElement(data.elements || [], lat, lng);
       if (best) return best;
     } catch (e) {
       lastErr = e;
@@ -271,6 +257,27 @@ out center tags 60;
   }
   if (lastErr) throw lastErr;
   return null;
+}
+
+function pickNearestWaterElement(els, lat, lng) {
+  let best = null;
+  for (const el of els) {
+    const clat = el.lat ?? el.center?.lat;
+    const clng = el.lon ?? el.center?.lon;
+    if (clat == null || clng == null) continue;
+    const d = haversineM(lat, lng, clat, clng);
+    const tags = el.tags || {};
+    const feature_type = classifyWater(tags);
+    const feature_name = tags.name || tags.waterway || tags.water || null;
+    if (!best || d < best.distance_m) {
+      best = {
+        distance_m: Math.round(d),
+        feature_type,
+        feature_name,
+      };
+    }
+  }
+  return best;
 }
 
 function classifyWater(tags) {
@@ -288,56 +295,77 @@ function classifyWater(tags) {
 }
 
 async function nearestWaterAlberta(lat, lng, bbox) {
-  // Expand search to ~10 km pad
-  const pad = 0.12;
-  const search = {
-    west: bbox.west - pad,
-    south: bbox.south - pad,
-    east: bbox.east + pad,
-    north: bbox.north + pad,
-  };
-  // Layer 103 = Stream (20K) is often queryable; try 78 Sandbar/Wetland too via 1
-  const layers = [103, 78, 1];
-  let best = null;
-
-  for (const layer of layers) {
-    const url = `${AB}/environment/base_water_feature/MapServer/${layer}/query`;
-    const body = new URLSearchParams({
-      geometry: esriEnvelope(search),
-      geometryType: 'esriGeometryEnvelope',
-      inSR: '4326',
-      spatialRel: 'esriSpatialRelIntersects',
-      outFields: '*',
+  // Identify works on this MapServer; many sublayers reject /query with 400.
+  const pad = 0.15;
+  const mapExtent = [
+    bbox.west - pad,
+    bbox.south - pad,
+    bbox.east + pad,
+    bbox.north + pad,
+  ].join(',');
+  const url =
+    `${AB}/environment/base_water_feature/MapServer/identify?` +
+    new URLSearchParams({
+      geometry: `${lng},${lat}`,
+      geometryType: 'esriGeometryPoint',
+      sr: '4326',
+      layers: 'all',
+      tolerance: '80',
+      mapExtent,
+      imageDisplay: '800,600,96',
       returnGeometry: 'true',
-      outSR: '4326',
       f: 'json',
-      resultRecordCount: '25',
+    }).toString();
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 15000);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/json' },
     });
-    try {
-      const data = await fetchJsonPost(url, body, 12000);
-      for (const f of data.features || []) {
-        const c = featureCentroid(f.geometry);
-        if (!c) continue;
-        const d = haversineM(lat, lng, c.lat, c.lng);
-        const a = f.attributes || {};
-        const name =
-          a.NAME || a.NAME_EN || a.HYDRO_NAME || a.LABEL || a.RIVER_NAME || null;
-        const feature_type =
-          layer === 78 ? 'wetland' : layer === 1 ? 'lake' : 'stream';
-        if (!best || d < best.distance_m) {
-          best = {
-            distance_m: Math.round(d),
-            feature_type,
-            feature_name: name,
-          };
-        }
+    if (!res.ok) throw new Error(`identify ${res.status}`);
+    const data = await res.json();
+    let best = null;
+    for (const r of data.results || []) {
+      const c = featureCentroid(r.geometry);
+      if (!c) continue;
+      const d = haversineM(lat, lng, c.lat, c.lng);
+      const a = r.attributes || {};
+      const name =
+        nullIfNull(a.Name) ||
+        nullIfNull(a.NAME) ||
+        nullIfNull(a.NAME_EN) ||
+        nullIfNull(r.value) ||
+        null;
+      const ft = String(a['Feature Type'] || r.layerName || '').toLowerCase();
+      let feature_type = 'lake';
+      if (ft.includes('stream') || ft.includes('river') && ft.includes('line'))
+        feature_type = 'stream';
+      else if (ft.includes('river')) feature_type = 'river';
+      else if (ft.includes('wet') || ft.includes('sand')) feature_type = 'wetland';
+      else if (ft.includes('lake') || ft.includes('pond')) feature_type = 'lake';
+      else if (ft.includes('stream')) feature_type = 'stream';
+
+      if (!best || d < best.distance_m) {
+        best = {
+          distance_m: Math.round(d),
+          feature_type,
+          feature_name: name && String(name) !== String(r.value) ? name : name,
+        };
       }
-      if (best && best.distance_m < 500) break;
-    } catch {
-      /* try next layer */
     }
+    return best;
+  } finally {
+    clearTimeout(t);
   }
-  return best;
+}
+
+function nullIfNull(v) {
+  if (v == null) return null;
+  const s = String(v).trim();
+  if (!s || s.toLowerCase() === 'null') return null;
+  return s;
 }
 
 function featureCentroid(geom) {
