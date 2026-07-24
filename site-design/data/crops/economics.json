@@ -1,0 +1,623 @@
+{
+  "source": "Alberta / prairie planning economics for Expanding Edge site reports — farmfit-style price ladder (wholesale–retail). Indicative CAD; not a guarantee of market access.",
+  "currency": "CAD",
+  "year": 2025,
+  "disclaimer": "Prices and yields are planning ranges for conversation, not a business plan. Wholesale herb and specialty crop markets are thin and quality-dependent. Confirm with local buyers before planting at scale.",
+  "items": {
+    "saskatoon": {
+      "yield_kg_per_ha": { "low": 2000, "high": 6000 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 8 },
+      "price_retail_cad_per_kg": { "low": 10, "high": 18 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "farmers market", "frozen wholesale", "value-add jam"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "haskap": {
+      "yield_kg_per_ha": { "low": 3000, "high": 8000 },
+      "price_wholesale_cad_per_kg": { "low": 5, "high": 10 },
+      "price_retail_cad_per_kg": { "low": 12, "high": 22 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["frozen wholesale", "winery/juice", "farmers market"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "sour-cherry": {
+      "yield_kg_per_ha": { "low": 4000, "high": 12000 },
+      "price_wholesale_cad_per_kg": { "low": 2.5, "high": 5 },
+      "price_retail_cad_per_kg": { "low": 6, "high": 12 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "pie filling", "farmers market"],
+      "establishment_years": 4,
+      "labour_intensity": "medium"
+    },
+    "apple-prairie": {
+      "yield_kg_per_ha": { "low": 5000, "high": 15000 },
+      "price_wholesale_cad_per_kg": { "low": 1.5, "high": 3 },
+      "price_retail_cad_per_kg": { "low": 3, "high": 6 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "cider", "farmers market"],
+      "establishment_years": 5,
+      "labour_intensity": "medium"
+    },
+    "plum-prairie": {
+      "yield_kg_per_ha": { "low": 3000, "high": 10000 },
+      "price_wholesale_cad_per_kg": { "low": 2, "high": 4.5 },
+      "price_retail_cad_per_kg": { "low": 5, "high": 10 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "farmers market", "value-add"],
+      "establishment_years": 4,
+      "labour_intensity": "medium"
+    },
+    "raspberry": {
+      "yield_kg_per_ha": { "low": 4000, "high": 10000 },
+      "price_wholesale_cad_per_kg": { "low": 6, "high": 12 },
+      "price_retail_cad_per_kg": { "low": 12, "high": 22 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "farmers market", "frozen"],
+      "establishment_years": 2,
+      "labour_intensity": "high"
+    },
+    "currant": {
+      "yield_kg_per_ha": { "low": 3000, "high": 8000 },
+      "price_wholesale_cad_per_kg": { "low": 5, "high": 10 },
+      "price_retail_cad_per_kg": { "low": 10, "high": 18 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["jelly/juice wholesale", "farmers market"],
+      "establishment_years": 2,
+      "labour_intensity": "medium"
+    },
+    "sea-buckthorn": {
+      "yield_kg_per_ha": { "low": 2000, "high": 7000 },
+      "price_wholesale_cad_per_kg": { "low": 6, "high": 14 },
+      "price_retail_cad_per_kg": { "low": 15, "high": 30 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["juice/oil specialty", "nutraceutical", "export"],
+      "establishment_years": 3,
+      "labour_intensity": "high"
+    },
+    "chokecherry": {
+      "yield_kg_per_ha": { "low": 1500, "high": 5000 },
+      "price_wholesale_cad_per_kg": { "low": 3, "high": 7 },
+      "price_retail_cad_per_kg": { "low": 8, "high": 14 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["jelly syrup", "farmers market", "wine"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "pin-cherry": {
+      "yield_kg_per_ha": { "low": 800, "high": 3000 },
+      "price_wholesale_cad_per_kg": { "low": 3, "high": 6 },
+      "price_retail_cad_per_kg": { "low": 7, "high": 12 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["jelly", "wildlife / non-cash"],
+      "establishment_years": 3,
+      "labour_intensity": "low"
+    },
+    "buffalo-berry": {
+      "yield_kg_per_ha": { "low": 500, "high": 2500 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 10 },
+      "price_retail_cad_per_kg": { "low": 10, "high": 20 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["specialty sauce", "farmers market", "N-fix / non-cash"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "silver-buffaloberry": {
+      "yield_kg_per_ha": { "low": 800, "high": 3000 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 9 },
+      "price_retail_cad_per_kg": { "low": 10, "high": 18 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["specialty", "shelterbelt multi-function"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "highbush-cranberry": {
+      "yield_kg_per_ha": { "low": 1000, "high": 4000 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 8 },
+      "price_retail_cad_per_kg": { "low": 9, "high": 16 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["jelly", "farmers market"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "nannyberry": {
+      "yield_kg_per_ha": { "low": 1000, "high": 3500 },
+      "price_wholesale_cad_per_kg": { "low": 3, "high": 7 },
+      "price_retail_cad_per_kg": { "low": 8, "high": 14 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["fresh market", "value-add"],
+      "establishment_years": 3,
+      "labour_intensity": "low"
+    },
+    "beaked-hazelnut": {
+      "yield_kg_per_ha": { "low": 200, "high": 800 },
+      "price_wholesale_cad_per_kg": { "low": 12, "high": 25 },
+      "price_retail_cad_per_kg": { "low": 25, "high": 45 },
+      "unit": "kg in-shell nuts",
+      "market_channels": ["specialty nut", "farmers market"],
+      "establishment_years": 5,
+      "labour_intensity": "medium"
+    },
+    "strawberry": {
+      "yield_kg_per_ha": { "low": 5000, "high": 15000 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 8 },
+      "price_retail_cad_per_kg": { "low": 8, "high": 16 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "farmers market"],
+      "establishment_years": 1,
+      "labour_intensity": "high"
+    },
+    "wild-strawberry": {
+      "yield_kg_per_ha": { "low": 200, "high": 800 },
+      "price_wholesale_cad_per_kg": { "low": 15, "high": 30 },
+      "price_retail_cad_per_kg": { "low": 30, "high": 50 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["specialty foraged-style", "nursery plugs"],
+      "establishment_years": 1,
+      "labour_intensity": "high"
+    },
+    "raspberry": {
+      "yield_kg_per_ha": { "low": 4000, "high": 10000 },
+      "price_wholesale_cad_per_kg": { "low": 6, "high": 12 },
+      "price_retail_cad_per_kg": { "low": 12, "high": 22 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["u-pick", "farmers market"],
+      "establishment_years": 2,
+      "labour_intensity": "high"
+    },
+    "rhubarb": {
+      "yield_kg_per_ha": { "low": 8000, "high": 20000 },
+      "price_wholesale_cad_per_kg": { "low": 2, "high": 4 },
+      "price_retail_cad_per_kg": { "low": 4, "high": 8 },
+      "unit": "kg petioles",
+      "market_channels": ["farmers market", "restaurant"],
+      "establishment_years": 2,
+      "labour_intensity": "low"
+    },
+    "asparagus": {
+      "yield_kg_per_ha": { "low": 2000, "high": 5000 },
+      "price_wholesale_cad_per_kg": { "low": 6, "high": 12 },
+      "price_retail_cad_per_kg": { "low": 12, "high": 20 },
+      "unit": "kg spears",
+      "market_channels": ["farmers market", "CSA", "restaurant"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "garlic": {
+      "yield_kg_per_ha": { "low": 4000, "high": 9000 },
+      "price_wholesale_cad_per_kg": { "low": 8, "high": 14 },
+      "price_retail_cad_per_kg": { "low": 16, "high": 28 },
+      "unit": "kg cured bulbs",
+      "market_channels": ["farmers market", "CSA", "seed garlic"],
+      "establishment_years": 1,
+      "labour_intensity": "high"
+    },
+    "potato": {
+      "yield_kg_per_ha": { "low": 15000, "high": 35000 },
+      "price_wholesale_cad_per_kg": { "low": 0.4, "high": 0.9 },
+      "price_retail_cad_per_kg": { "low": 1.5, "high": 3.5 },
+      "unit": "kg tubers",
+      "market_channels": ["wholesale", "farmers market", "CSA"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "kale": {
+      "yield_kg_per_ha": { "low": 8000, "high": 20000 },
+      "price_wholesale_cad_per_kg": { "low": 2, "high": 4 },
+      "price_retail_cad_per_kg": { "low": 6, "high": 12 },
+      "unit": "kg leaves",
+      "market_channels": ["CSA", "farmers market", "restaurant"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "carrot": {
+      "yield_kg_per_ha": { "low": 20000, "high": 50000 },
+      "price_wholesale_cad_per_kg": { "low": 0.8, "high": 1.8 },
+      "price_retail_cad_per_kg": { "low": 2.5, "high": 5 },
+      "unit": "kg roots",
+      "market_channels": ["wholesale", "CSA", "farmers market"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "bean-bush": {
+      "yield_kg_per_ha": { "low": 1500, "high": 3500 },
+      "price_wholesale_cad_per_kg": { "low": 3, "high": 6 },
+      "price_retail_cad_per_kg": { "low": 6, "high": 12 },
+      "unit": "kg pods or dry",
+      "market_channels": ["farmers market", "CSA"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "squash-winter": {
+      "yield_kg_per_ha": { "low": 10000, "high": 25000 },
+      "price_wholesale_cad_per_kg": { "low": 0.8, "high": 1.5 },
+      "price_retail_cad_per_kg": { "low": 2, "high": 4 },
+      "unit": "kg fruit",
+      "market_channels": ["farmers market", "CSA", "storage wholesale"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "sunflower": {
+      "yield_kg_per_ha": { "low": 800, "high": 2000 },
+      "price_wholesale_cad_per_kg": { "low": 0.5, "high": 1.2 },
+      "price_retail_cad_per_kg": { "low": 3, "high": 8 },
+      "unit": "kg seed",
+      "market_channels": ["birdseed", "oil", "cut flowers"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "echinacea-purpurea": {
+      "yield_kg_per_ha": { "low": 200, "high": 600 },
+      "price_wholesale_cad_per_kg": { "low": 25, "high": 55 },
+      "price_retail_cad_per_kg": { "low": 60, "high": 120 },
+      "unit": "kg dried root/aerial",
+      "market_channels": ["herbal wholesale", "tincture brand", "online"],
+      "establishment_years": 2,
+      "labour_intensity": "medium"
+    },
+    "calendula": {
+      "yield_kg_per_ha": { "low": 150, "high": 400 },
+      "price_wholesale_cad_per_kg": { "low": 30, "high": 60 },
+      "price_retail_cad_per_kg": { "low": 70, "high": 140 },
+      "unit": "kg dried flowers",
+      "market_channels": ["herbal wholesale", "skincare", "farmers market"],
+      "establishment_years": 1,
+      "labour_intensity": "high"
+    },
+    "yarrow": {
+      "yield_kg_per_ha": { "low": 200, "high": 500 },
+      "price_wholesale_cad_per_kg": { "low": 15, "high": 35 },
+      "price_retail_cad_per_kg": { "low": 40, "high": 80 },
+      "unit": "kg dried aerial",
+      "market_channels": ["herbal wholesale", "tea blend"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "mint": {
+      "yield_kg_per_ha": { "low": 1500, "high": 4000 },
+      "price_wholesale_cad_per_kg": { "low": 8, "high": 18 },
+      "price_retail_cad_per_kg": { "low": 20, "high": 40 },
+      "unit": "kg dried leaf",
+      "market_channels": ["tea", "fresh restaurant", "herbal"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "wild-bergamot": {
+      "yield_kg_per_ha": { "low": 200, "high": 500 },
+      "price_wholesale_cad_per_kg": { "low": 20, "high": 40 },
+      "price_retail_cad_per_kg": { "low": 45, "high": 90 },
+      "unit": "kg dried aerial",
+      "market_channels": ["herbal tea", "native plant nursery"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "fireweed": {
+      "yield_kg_per_ha": { "low": 100, "high": 300 },
+      "price_wholesale_cad_per_kg": { "low": 25, "high": 50 },
+      "price_retail_cad_per_kg": { "low": 50, "high": 100 },
+      "unit": "kg dried / honey association",
+      "market_channels": ["specialty tea", "honey partnership"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "goldenrod": {
+      "yield_kg_per_ha": { "low": 150, "high": 400 },
+      "price_wholesale_cad_per_kg": { "low": 12, "high": 28 },
+      "price_retail_cad_per_kg": { "low": 30, "high": 60 },
+      "unit": "kg dried aerial",
+      "market_channels": ["herbal", "dye"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "comfrey": {
+      "yield_kg_per_ha": { "low": 5000, "high": 15000 },
+      "price_wholesale_cad_per_kg": { "low": 2, "high": 5 },
+      "price_retail_cad_per_kg": { "low": 8, "high": 15 },
+      "unit": "kg fresh leaf (fertility crop)",
+      "market_channels": ["on-farm fertility", "compost tea", "limited plant sales"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "horseradish": {
+      "yield_kg_per_ha": { "low": 3000, "high": 8000 },
+      "price_wholesale_cad_per_kg": { "low": 4, "high": 8 },
+      "price_retail_cad_per_kg": { "low": 10, "high": 18 },
+      "unit": "kg root",
+      "market_channels": ["specialty grocery", "farmers market"],
+      "establishment_years": 2,
+      "labour_intensity": "medium"
+    },
+    "lingonberry": {
+      "yield_kg_per_ha": { "low": 500, "high": 2000 },
+      "price_wholesale_cad_per_kg": { "low": 10, "high": 20 },
+      "price_retail_cad_per_kg": { "low": 20, "high": 40 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["specialty berry", "export-style retail"],
+      "establishment_years": 3,
+      "labour_intensity": "medium"
+    },
+    "cloudberry": {
+      "yield_kg_per_ha": { "low": 50, "high": 300 },
+      "price_wholesale_cad_per_kg": { "low": 40, "high": 80 },
+      "price_retail_cad_per_kg": { "low": 80, "high": 150 },
+      "unit": "kg fresh fruit",
+      "market_channels": ["ultra-specialty", "tourism"],
+      "establishment_years": 4,
+      "labour_intensity": "high"
+    },
+    "labrador-tea": {
+      "yield_kg_per_ha": { "low": 50, "high": 200 },
+      "price_wholesale_cad_per_kg": { "low": 30, "high": 60 },
+      "price_retail_cad_per_kg": { "low": 60, "high": 120 },
+      "unit": "kg dried leaf",
+      "market_channels": ["specialty tea", "ethical wildcraft alternative"],
+      "establishment_years": 3,
+      "labour_intensity": "low"
+    },
+    "clover-red": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "soil service (N fixation)",
+      "market_channels": ["on-farm fertility", "forage"],
+      "establishment_years": 1,
+      "labour_intensity": "low",
+      "non_cash_value": "Nitrogen fixation and soil organic matter — value as reduced fertilizer / cover, not cash crop"
+    },
+    "field-pea": {
+      "yield_kg_per_ha": { "low": 1500, "high": 3500 },
+      "price_wholesale_cad_per_kg": { "low": 0.3, "high": 0.6 },
+      "price_retail_cad_per_kg": { "low": 1.5, "high": 3 },
+      "unit": "kg dry seed",
+      "market_channels": ["commodity / cover dual", "forage"],
+      "establishment_years": 1,
+      "labour_intensity": "low"
+    },
+    "caragana": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "shelterbelt service",
+      "market_channels": ["shelterbelt grant programs", "nursery stock"],
+      "establishment_years": 3,
+      "labour_intensity": "low",
+      "non_cash_value": "Wind protection, N fixation, snow capture — multi-function, limited direct cash"
+    },
+    "white-spruce": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "timber / shelter (long cycle)",
+      "market_channels": ["shelterbelt", "long-term timber"],
+      "establishment_years": 20,
+      "labour_intensity": "low",
+      "non_cash_value": "Windbreak and microclimate — economic via protected crop yield"
+    },
+    "aspen": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "succession / fiber",
+      "market_channels": ["pulp long-term", "ecological service"],
+      "establishment_years": 15,
+      "labour_intensity": "low",
+      "non_cash_value": "Pioneer nurse crop; limited short-term cash"
+    },
+    "wolf-willow": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "N-fix / habitat",
+      "market_channels": ["native nursery stock"],
+      "establishment_years": 2,
+      "labour_intensity": "low",
+      "non_cash_value": "Native N-fixer and shelter understory"
+    },
+    "prickly-rose": {
+      "yield_kg_per_ha": { "low": 100, "high": 400 },
+      "price_wholesale_cad_per_kg": { "low": 15, "high": 35 },
+      "price_retail_cad_per_kg": { "low": 35, "high": 70 },
+      "unit": "kg dried hips",
+      "market_channels": ["tea", "vitamin C specialty"],
+      "establishment_years": 2,
+      "labour_intensity": "medium"
+    },
+    "red-osier-dogwood": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "restoration / stems",
+      "market_channels": ["native nursery", "erosion contracts"],
+      "establishment_years": 2,
+      "labour_intensity": "low",
+      "non_cash_value": "Riparian restoration and wildlife value"
+    },
+    "comfrey": {
+      "yield_kg_per_ha": { "low": 5000, "high": 15000 },
+      "price_wholesale_cad_per_kg": { "low": 2, "high": 5 },
+      "price_retail_cad_per_kg": { "low": 8, "high": 15 },
+      "unit": "kg fresh leaf",
+      "market_channels": ["on-farm fertility"],
+      "establishment_years": 1,
+      "labour_intensity": "low",
+      "non_cash_value": "Dynamic accumulator — mainly non-cash fertility"
+    },
+    "dandelion": {
+      "yield_kg_per_ha": { "low": 200, "high": 800 },
+      "price_wholesale_cad_per_kg": { "low": 10, "high": 25 },
+      "price_retail_cad_per_kg": { "low": 25, "high": 50 },
+      "unit": "kg dried root/leaf",
+      "market_channels": ["herbal wholesale", "coffee substitute"],
+      "establishment_years": 1,
+      "labour_intensity": "medium"
+    },
+    "blue-grama": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "seed / turf service",
+      "market_channels": ["native seed", "low-input lawn"],
+      "establishment_years": 2,
+      "labour_intensity": "low",
+      "non_cash_value": "Drought lawn alternative; seed sales secondary"
+    },
+    "northern-wheatgrass": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "forage / reclamation",
+      "market_channels": ["reclamation contracts", "forage"],
+      "establishment_years": 1,
+      "labour_intensity": "low",
+      "non_cash_value": "Soil stabilization"
+    },
+    "western-wheatgrass": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "forage / reclamation",
+      "market_channels": ["reclamation", "pasture"],
+      "establishment_years": 1,
+      "labour_intensity": "low",
+      "non_cash_value": "Sod-forming reclamation grass"
+    },
+    "june-grass": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "native seed",
+      "market_channels": ["native seed mix"],
+      "establishment_years": 2,
+      "labour_intensity": "low",
+      "non_cash_value": "Prairie restoration component"
+    },
+    "balsam-poplar": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "fiber long-term",
+      "market_channels": ["riparian restoration"],
+      "establishment_years": 15,
+      "labour_intensity": "low",
+      "non_cash_value": "Riparian structure"
+    },
+    "paper-birch": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "specialty wood long-term",
+      "market_channels": ["ornamental", "craft wood"],
+      "establishment_years": 20,
+      "labour_intensity": "low",
+      "non_cash_value": "Amenity and habitat"
+    },
+    "black-spruce": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "timber long-term",
+      "market_channels": ["wetland edge restoration"],
+      "establishment_years": 40,
+      "labour_intensity": "low",
+      "non_cash_value": "Boreal structure on wet/acid sites"
+    },
+    "tamarack": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "timber long-term",
+      "market_channels": ["specialty lumber long-term"],
+      "establishment_years": 40,
+      "labour_intensity": "low",
+      "non_cash_value": "Wetland-edge structure"
+    },
+    "lodgepole-pine": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "timber / posts long-term",
+      "market_channels": ["shelterbelt", "posts"],
+      "establishment_years": 25,
+      "labour_intensity": "low",
+      "non_cash_value": "Foothills wind structure"
+    },
+    "jack-pine": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "timber long-term",
+      "market_channels": ["sandy-site forestry"],
+      "establishment_years": 30,
+      "labour_intensity": "low",
+      "non_cash_value": "Sandy site cover"
+    },
+    "manitoba-maple": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "sap / firewood",
+      "market_channels": ["small-scale syrup", "fuel"],
+      "establishment_years": 10,
+      "labour_intensity": "low",
+      "non_cash_value": "Fast shade; modest syrup potential"
+    },
+    "bur-oak": {
+      "yield_kg_per_ha": { "low": 0, "high": 500 },
+      "price_wholesale_cad_per_kg": { "low": 5, "high": 15 },
+      "price_retail_cad_per_kg": { "low": 15, "high": 30 },
+      "unit": "kg acorns (specialty)",
+      "market_channels": ["specialty food", "nursery"],
+      "establishment_years": 15,
+      "labour_intensity": "low"
+    },
+    "green-ash": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "shelterbelt",
+      "market_channels": ["shelterbelt programs"],
+      "establishment_years": 15,
+      "labour_intensity": "low",
+      "non_cash_value": "Wind protection value to protected crops"
+    },
+    "bearberry": {
+      "yield_kg_per_ha": { "low": 50, "high": 200 },
+      "price_wholesale_cad_per_kg": { "low": 20, "high": 40 },
+      "price_retail_cad_per_kg": { "low": 40, "high": 80 },
+      "unit": "kg dried leaf",
+      "market_channels": ["herbal", "native landscaping plugs"],
+      "establishment_years": 3,
+      "labour_intensity": "low"
+    },
+    "showy-aster": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "nursery plugs / seed",
+      "market_channels": ["native plant sales"],
+      "establishment_years": 1,
+      "labour_intensity": "low",
+      "non_cash_value": "Pollinator service"
+    },
+    "prairie-crocus": {
+      "yield_kg_per_ha": { "low": 0, "high": 0 },
+      "price_wholesale_cad_per_kg": { "low": 0, "high": 0 },
+      "price_retail_cad_per_kg": { "low": 0, "high": 0 },
+      "unit": "nursery plants",
+      "market_channels": ["native plant sales"],
+      "establishment_years": 2,
+      "labour_intensity": "low",
+      "non_cash_value": "Flagship prairie amenity species"
+    },
+    "silverweed": {
+      "yield_kg_per_ha": { "low": 100, "high": 400 },
+      "price_wholesale_cad_per_kg": { "low": 8, "high": 18 },
+      "price_retail_cad_per_kg": { "low": 18, "high": 35 },
+      "unit": "kg root (niche)",
+      "market_channels": ["specialty / heritage"],
+      "establishment_years": 2,
+      "labour_intensity": "high"
+    }
+  }
+}

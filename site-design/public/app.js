@@ -1267,9 +1267,81 @@ function plantingSection(plan) {
         <p class="fine">No suitable plantings scored for this site profile.</p>
       </section>`;
   }
+
+  const areaHa = plan.site_filters?.footprint_ha;
+  const cash = plan.top_cash_crops || [];
+  const cashBlock =
+    cash.length > 0
+      ? `
+    <div class="econ-summary">
+      <span class="mono">Top cash-oriented fits (gross CAD on ~${esc(
+        areaHa != null ? Number(areaHa).toFixed(2) : '0.10'
+      )} ha)</span>
+      <div class="econ-table-wrap">
+        <table class="econ-table">
+          <thead>
+            <tr>
+              <th>Crop</th>
+              <th>Suit.</th>
+              <th>Wholesale $/kg</th>
+              <th>Yield / ha</th>
+              <th>Gross / parcel</th>
+              <th>Channels</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${cash
+              .map((c) => {
+                const e = c.economics || {};
+                const w = e.price_wholesale_cad_per_kg;
+                const y = e.yield_kg_per_ha;
+                const g = e.gross_revenue_cad;
+                return `<tr>
+                  <td><strong>${esc(c.common_name)}</strong></td>
+                  <td>${esc(c.suitability)} (${esc(c.score)})</td>
+                  <td>${w ? `${fmtMoney(w.low)}–${fmtMoney(w.high)}` : '—'}</td>
+                  <td>${y ? `${esc(y.low)}–${esc(y.high)} kg` : '—'}</td>
+                  <td class="econ-rev">${
+                    g
+                      ? `${fmtMoney(g.low)}–${fmtMoney(g.high)}`
+                      : e.non_cash_value
+                        ? 'Non-cash'
+                        : '—'
+                  }</td>
+                  <td class="fine">${esc((e.market_channels || []).slice(0, 3).join(', ') || '—')}</td>
+                </tr>`;
+              })
+              .join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="fine">${esc(plan.economics_disclaimer || '')}</p>
+    </div>`
+      : '';
+
   const rows = plan.recommended
-    .map(
-      (p) => `
+    .map((p) => {
+      const e = p.economics;
+      const econLine = e
+        ? e.gross_revenue_cad
+          ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
+              e.gross_revenue_cad.mid
+            )}/yr</strong> on parcel
+             (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)}
+             wholesale ladder · ${esc(e.unit || 'kg')}
+             ${e.establishment_years ? ` · ~${esc(e.establishment_years)} yr establish` : ''}
+             ${e.labour_intensity ? ` · labour ${esc(e.labour_intensity)}` : ''})
+             ${
+               e.market_channels?.length
+                 ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>`
+                 : ''
+             }
+           </p>`
+          : e.non_cash_value
+            ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+            : ''
+        : '';
+      return `
       <article class="plant-card" data-suit="${esc(p.suitability)}">
         <div class="plant-head">
           <h3>${esc(p.common_name)}</h3>
@@ -1290,9 +1362,10 @@ function plantingSection(plan) {
             ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
             : ''
         }
+        ${econLine}
         ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
-      </article>`
-    )
+      </article>`;
+    })
     .join('');
 
   const layers = plan.by_guild_layer
@@ -1308,24 +1381,35 @@ function plantingSection(plan) {
     <section class="report-block">
       <h2>Planting plan</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        EcoCrop-style suitability from
-        <strong>OpenSourceMed Growing Guide / farmfit</strong>
-        catalog approach
-        ${plan.growing_guide?.catalog_source ? ` (${esc(plan.growing_guide.catalog_source)})` : ''}.
+        EcoCrop-style suitability + <strong>farmfit-style economics</strong>
+        (price ladder &amp; yield ranges)
+        ${plan.growing_guide?.catalog_source ? ` · catalog ${esc(plan.growing_guide.catalog_source)}` : ''}.
         ${esc(plan.phase_note || '')}
       </p>
       <div class="plant-chips">${layers}</div>
+      ${cashBlock}
       <div class="plant-list">${rows}</div>
       <p class="fine" style="margin-top:0.8rem">
         Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
         ${esc(plan.site_filters?.frost_free_days ?? '—')} frost-free days,
         ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm precip,
         ${esc(plan.site_filters?.texture || '—')} /
-        ${esc(plan.site_filters?.drainage_class || '—')} drainage.
-        Full farmfit catalog: export JSON to <code>data/crops/farmfit-export.json</code>
-        or set <code>GROWING_GUIDE_CROPS_PATH</code>.
+        ${esc(plan.site_filters?.drainage_class || '—')} drainage,
+        parcel ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha.
+        Gross revenue excludes labour, establishment, and packing. Perennials may take years to full yield.
       </p>
     </section>`;
+}
+
+function fmtMoney(n) {
+  if (n == null || n === '') return '—';
+  const x = Number(n);
+  if (!Number.isFinite(x)) return '—';
+  return new Intl.NumberFormat('en-CA', {
+    style: 'currency',
+    currency: 'CAD',
+    maximumFractionDigits: x >= 100 ? 0 : 2,
+  }).format(x);
 }
 
 function suitBadgeClass(s) {

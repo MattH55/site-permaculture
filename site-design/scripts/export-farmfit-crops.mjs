@@ -228,7 +228,7 @@ function normalizeFarmfitRecord(o, file) {
     zoneFromTemp(o.temp_max ?? o.tmax, true) ||
     '8a';
 
-  return {
+  const crop = {
     id,
     common_name: common || scientific,
     scientific_name: scientific || null,
@@ -256,6 +256,62 @@ function normalizeFarmfitRecord(o, file) {
     notes: o.notes || o.description || `Exported from farmfit (${file})`,
     source_file: file,
   };
+
+  // Pull farmfit economic / price-ladder fields when present
+  const econ = extractEconomics(o);
+  if (econ) crop.economics = econ;
+  return crop;
+}
+
+function extractEconomics(o) {
+  const y =
+    o.yield_kg_per_ha ||
+    o.yieldKgPerHa ||
+    o.yield ||
+    o.expected_yield;
+  const w =
+    o.price_wholesale_cad_per_kg ||
+    o.wholesale_price ||
+    o.price_wholesale ||
+    o.priceLadder?.wholesale;
+  const r =
+    o.price_retail_cad_per_kg ||
+    o.retail_price ||
+    o.price_retail ||
+    o.priceLadder?.retail;
+  const channels =
+    o.market_channels || o.channels || o.selling_channels || o.markets;
+
+  const has =
+    y != null ||
+    w != null ||
+    r != null ||
+    (Array.isArray(channels) && channels.length);
+  if (!has) return null;
+
+  return {
+    yield_kg_per_ha: normalizeRange(y),
+    price_wholesale_cad_per_kg: normalizeRange(w),
+    price_retail_cad_per_kg: normalizeRange(r),
+    unit: o.unit || o.yield_unit || 'kg',
+    market_channels: arr(channels) || [],
+    establishment_years: num(o.establishment_years ?? o.years_to_yield),
+    labour_intensity: o.labour_intensity || o.labor || null,
+    non_cash_value: o.non_cash_value || null,
+  };
+}
+
+function normalizeRange(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return { low: v, high: v };
+  if (typeof v === 'object') {
+    const low = num(v.low ?? v.min ?? v[0]);
+    const high = num(v.high ?? v.max ?? v[1]);
+    if (low == null && high == null) return null;
+    return { low: low ?? high, high: high ?? low };
+  }
+  const n = num(v);
+  return n == null ? null : { low: n, high: n };
 }
 
 function mapCategory(o) {

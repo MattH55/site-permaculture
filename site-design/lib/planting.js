@@ -21,6 +21,7 @@ const ZONE_ORDER = [
 
 let catalogCache = null;
 let catalogSourceLabel = 'alberta-catalog.json';
+let economicsCache = null;
 
 /**
  * @param {object} site — buildSiteRecord-like fields + climate/soil/terrain
@@ -29,16 +30,37 @@ let catalogSourceLabel = 'alberta-catalog.json';
 export function planPlantings(site = {}, opts = {}) {
   const limit = opts.limit ?? 16;
   const crops = loadCatalog();
+  const economics = loadEconomics();
   const ctx = siteContext(site);
+  const areaHa = Math.max(num(site.footprint_ha) || 0.1, 0.01);
 
   const scored = crops
-    .map((crop) => scoreCrop(crop, ctx))
+    .map((crop) => {
+      const row = scoreCrop(crop, ctx);
+      row.economics = attachEconomics(
+        crop.id,
+        economics,
+        areaHa,
+        row.score,
+        crop._inline_economics
+      );
+      return row;
+    })
     .filter((r) => r.score > 0)
     .sort((a, b) => b.score - a.score || a.common_name.localeCompare(b.common_name));
 
   const top = scored.slice(0, limit);
   const byLayer = groupBy(top, (r) => r.guild_layer || 'other');
   const byCategory = groupBy(top, (r) => r.category || 'other');
+
+  // Cash-crop shortlist for planning (has wholesale price)
+  const cash = top
+    .filter((r) => r.economics?.gross_revenue_cad?.mid != null && r.economics.gross_revenue_cad.mid > 0)
+    .slice()
+    .sort(
+      (a, b) =>
+        (b.economics.gross_revenue_cad.mid || 0) - (a.economics.gross_revenue_cad.mid || 0)
+    );
 
   // Succession-aware framing
   const succession = site.existing_vegetation?.successional_stage;
@@ -55,14 +77,17 @@ export function planPlantings(site = {}, opts = {}) {
     phase_note +=
       ' Chinook exposure: deprioritize early-flowering woody species even if hardiness matches.';
   }
+  phase_note +=
+    ' Economics are farmfit-style price-ladder planning ranges (CAD), scaled to your parcel area — not a business plan.';
 
   return {
-    engine: 'ee-ecocrop-style-v1',
+    engine: 'ee-ecocrop-style-v1-economics',
     growing_guide: {
       project: 'OpenSourceMed Growing Guide / farmfit',
       catalog_source: catalogCache?._source || 'alberta-catalog.json',
+      economics_source: economics?._source || 'economics.json',
       notes:
-        'Aligned with farmfit EcoCrop scoring approach. Swap in farmfit-export.json for full Growing Guide catalog.',
+        'Aligned with farmfit EcoCrop + price-ladder approach. Export farmfit crops/prices when available.',
     },
     site_filters: {
       plant_hardiness_zone: ctx.zone,
@@ -72,17 +97,149 @@ export function planPlantings(site = {}, opts = {}) {
       drainage_class: ctx.drainage,
       chinook_exposure: ctx.chinook,
       successional_stage: succession || null,
+      footprint_ha: areaHa,
     },
     phase_note,
+    economics_disclaimer:
+      economics?.disclaimer ||
+      'Indicative CAD price and yield ranges for planning only. Confirm markets before planting at scale.',
     recommended: top,
+    top_cash_crops: cash.slice(0, 6).map((r) => ({
+      id: r.id,
+      common_name: r.common_name,
+      score: r.score,
+      suitability: r.suitability,
+      economics: r.economics,
+    })),
     by_guild_layer: byLayer,
     by_category: byCategory,
     totals: {
       catalog_size: crops.length,
       scored_positive: scored.length,
       returned: top.length,
+      with_economics: top.filter((r) => r.economics).length,
     },
   };
+}
+
+function loadEconomics() {
+  if (economicsCache) return economicsCache;
+  const p = path.join(__dirname, '..', 'data', 'crops', 'economics.json');
+  try {
+    if (fs.existsSync(p)) {
+      const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
+      economicsCache = {
+        items: raw.items || raw || {},
+        disclaimer: raw.disclaimer,
+        currency: raw.currency || 'CAD',
+        year: raw.year,
+        _source: 'economics.json',
+      };
+      // Optional overlay from farmfit export economics
+      const farmfitEcon = path.join(__dirname, '..', 'data', 'crops', 'farmfit-economics.json');
+      if (fs.existsSync(farmfitEcon)) {
+        const fe = JSON.parse(fs.readFileSync(farmfitEcon, 'utf8'));
+        const items = fe.items || fe;
+        economicsCache.items = { ...economicsCache.items, ...items };
+        economicsCache._source = 'economics.json + farmfit-economics.json';
+      }
+      return economicsCache;
+    }
+  } catch (e) {
+    console.warn('economics load failed', e.message);
+  }
+  economicsCache = { items: {}, _source: 'none' };
+  return economicsCache;
+}
+
+/**
+ * farmfit-style price ladder → parcel-scaled gross revenue range.
+ * Revenue is gross only (no establishment/labour costs).
+ */
+function attachEconomics(cropId, economics, areaHa, suitabilityScore, inlineEcon) {
+  const e = {
+    ...(economics?.items?.[cropId] || {}),
+    ...(inlineEcon || {}),
+  };
+  if (!e || (!e.yield_kg_per_ha && !e.price_wholesale_cad_per_kg && !e.non_cash_value && !e.price_retail_cad_per_kg)) {
+    return null;
+  }
+
+  const yLo = rangeVal(e.yield_kg_per_ha, 'low');
+  const yHi = rangeVal(e.yield_kg_per_ha, 'high');
+  const wLo = rangeVal(e.price_wholesale_cad_per_kg, 'low');
+  const wHi = rangeVal(e.price_wholesale_cad_per_kg, 'high');
+  const rLo = rangeVal(e.price_retail_cad_per_kg, 'low');
+  const rHi = rangeVal(e.price_retail_cad_per_kg, 'high');
+
+  const hasCash =
+    yHi > 0 && ((wHi > 0 && wLo > 0) || (rHi > 0 && rLo > 0));
+
+  // Suitability dampens yield expectation (marginal sites → lower expected yield)
+  const suitFactor =
+    suitabilityScore >= 80 ? 1 : suitabilityScore >= 65 ? 0.9 : suitabilityScore >= 50 ? 0.75 : 0.55;
+
+  const yieldParcel = hasCash
+    ? {
+        low_kg: round1(yLo * areaHa * suitFactor),
+        high_kg: round1(yHi * areaHa * suitFactor),
+      }
+    : null;
+
+  const grossWholesale = hasCash && wHi > 0
+    ? {
+        low: round0(yLo * areaHa * suitFactor * wLo),
+        high: round0(yHi * areaHa * suitFactor * wHi),
+        mid: round0(((yLo + yHi) / 2) * areaHa * suitFactor * ((wLo + wHi) / 2)),
+      }
+    : null;
+
+  const grossRetail = hasCash && rHi > 0
+    ? {
+        low: round0(yLo * areaHa * suitFactor * rLo),
+        high: round0(yHi * areaHa * suitFactor * rHi),
+        mid: round0(((yLo + yHi) / 2) * areaHa * suitFactor * ((rLo + rHi) / 2)),
+      }
+    : null;
+
+  // Prefer wholesale for "planning mid" when both exist
+  const gross_revenue_cad = grossWholesale || grossRetail;
+
+  return {
+    currency: economics.currency || 'CAD',
+    unit: e.unit || 'kg',
+    yield_kg_per_ha: e.yield_kg_per_ha || null,
+    price_wholesale_cad_per_kg: e.price_wholesale_cad_per_kg || null,
+    price_retail_cad_per_kg: e.price_retail_cad_per_kg || null,
+    market_channels: e.market_channels || [],
+    establishment_years: e.establishment_years ?? null,
+    labour_intensity: e.labour_intensity || null,
+    non_cash_value: e.non_cash_value || null,
+    parcel_area_ha: round2(areaHa),
+    suitability_yield_factor: suitFactor,
+    yield_on_parcel_kg: yieldParcel,
+    gross_revenue_wholesale_cad: grossWholesale,
+    gross_revenue_retail_cad: grossRetail,
+    gross_revenue_cad,
+    notes:
+      'Gross revenue before labour, establishment, packaging, and marketing. Establishment may take multiple years for perennials.',
+  };
+}
+
+function rangeVal(r, which) {
+  if (r == null) return 0;
+  if (typeof r === 'number') return r;
+  return num(r[which]) ?? 0;
+}
+
+function round0(n) {
+  return Math.round(n);
+}
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }
 
 function siteContext(site) {
@@ -292,7 +449,7 @@ function loadInto(map, filePath, label) {
 }
 
 function normalizeCrop(c) {
-  return {
+  const crop = {
     id: c.id,
     common_name: c.common_name || c.name || c.id,
     scientific_name: c.scientific_name || c.latin || null,
@@ -312,6 +469,8 @@ function normalizeCrop(c) {
     region_focus: c.region_focus || (c.alberta_native ? 'alberta' : null),
     notes: c.notes || c.description || null,
   };
+  if (c.economics) crop._inline_economics = c.economics;
+  return crop;
 }
 
 function normalizeZone(z) {
