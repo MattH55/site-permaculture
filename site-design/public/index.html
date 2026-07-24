@@ -68,15 +68,34 @@
 
   <!-- REPORT (hidden until generated) -->
   <main id="report-stage" class="report-stage" hidden>
-    <div class="wrap report-wrap">
+    <div class="report-tabs" role="tablist" aria-label="Report panes">
+      <button type="button" class="report-tab is-active" role="tab" id="tab-site" aria-selected="true" aria-controls="pane-site">
+        Site design
+      </button>
+      <button type="button" class="report-tab" role="tab" id="tab-plant" aria-selected="false" aria-controls="pane-plant">
+        Planting plan
+      </button>
+      <button type="button" class="btn-quiet" id="btn-back-map-top">← Map</button>
+    </div>
+    <div class="wrap report-wrap report-dual">
       <aside class="rail">
         <span class="mono rail-label">Site core</span>
         <div class="steps" id="report-core"></div>
         <button type="button" class="btn btn-secondary" id="btn-back-map" style="margin-top:1rem;width:100%">
           ← Back to map
         </button>
+        <button type="button" class="btn btn-secondary" id="btn-open-plant" style="margin-top:0.5rem;width:100%">
+          Planting plan →
+        </button>
       </aside>
-      <section id="report" aria-live="polite"></section>
+      <div class="report-panes">
+        <section id="pane-site" class="report-pane is-active" role="tabpanel" aria-labelledby="tab-site">
+          <div id="report" aria-live="polite"></div>
+        </section>
+        <section id="pane-plant" class="report-pane" role="tabpanel" aria-labelledby="tab-plant" hidden>
+          <div id="planting-pane" aria-live="polite"></div>
+        </section>
+      </div>
     </div>
   </main>
 
@@ -105,7 +124,8 @@
     </p>
     <p class="fine">
       Planning guidance only — not engineered drawings or a Water Act approval.
-      <a href="/schema/site-design-schema.json">Schema</a> ·
+      <a href="/schema/site-design-schema.json">Site schema</a> ·
+      <a href="/schema/crop.schema.json">Crop schema</a> ·
       <a href="/schema/design-rules-and-data-sources.md">Rules &amp; sources</a>
     </p>
   </footer>

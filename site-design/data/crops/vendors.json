@@ -1,0 +1,215 @@
+{
+  "source": "Alberta / Canada seed, nursery, and fertility vendors for Expanding Edge planting plans",
+  "disclaimer": "Links are shopping searches or vendor home pages for convenience — not endorsements. Check hardiness, stock, and shipping before ordering. Prices change.",
+  "vendors": {
+    "ttseeds": {
+      "name": "T&T Seeds",
+      "region": "Manitoba / ships Canada",
+      "kinds": ["seeds", "saplings"],
+      "search_url": "https://www.ttseeds.com/search?q={query}"
+    },
+    "veseys": {
+      "name": "Veseys",
+      "region": "PEI / ships Canada",
+      "kinds": ["seeds", "saplings"],
+      "search_url": "https://www.veseys.com/search?q={query}"
+    },
+    "earlyseed": {
+      "name": "Early's Farm & Garden",
+      "region": "Saskatchewan / ships Canada",
+      "kinds": ["seeds"],
+      "search_url": "https://www.earlysgarden.com/search?type=product&q={query}"
+    },
+    "richters": {
+      "name": "Richters Herbs",
+      "region": "Ontario / ships Canada",
+      "kinds": ["seeds", "saplings"],
+      "search_url": "https://www.richters.com/Web_store/web_store.cgi?keywords={query}&search=Search"
+    },
+    "treetime": {
+      "name": "TreeTime.ca",
+      "region": "Alberta / ships Canada",
+      "kinds": ["saplings"],
+      "search_url": "https://treetime.ca/search?q={query}"
+    },
+    "bowpoint": {
+      "name": "Bow Point Nursery",
+      "region": "Alberta (native plants)",
+      "kinds": ["saplings", "seeds"],
+      "home_url": "https://www.bowpointnursery.com/",
+      "search_url": "https://www.bowpointnursery.com/?s={query}"
+    },
+    "wildaboutflowers": {
+      "name": "Wild About Flowers",
+      "region": "Alberta (native wildflowers)",
+      "kinds": ["seeds", "saplings"],
+      "home_url": "https://www.wildaboutflowers.ca/",
+      "search_url": "https://www.wildaboutflowers.ca/search?q={query}"
+    },
+    "prairieoriginals": {
+      "name": "Prairie Originals",
+      "region": "Manitoba (native seed)",
+      "kinds": ["seeds"],
+      "home_url": "https://www.prairieoriginals.com/",
+      "search_url": "https://www.prairieoriginals.com/?s={query}"
+    },
+    "westcoastseeds": {
+      "name": "West Coast Seeds",
+      "region": "BC / ships Canada",
+      "kinds": ["seeds"],
+      "search_url": "https://www.westcoastseeds.com/search?q={query}"
+    },
+    "oscseeds": {
+      "name": "OSC Seeds",
+      "region": "Ontario / ships Canada",
+      "kinds": ["seeds"],
+      "search_url": "https://www.oscseeds.com/search?type=product&q={query}"
+    },
+    "plantworld": {
+      "name": "Plant World (Edmonton)",
+      "region": "Edmonton, Alberta",
+      "kinds": ["saplings", "fertilizer"],
+      "home_url": "https://plantworld.ca/",
+      "search_url": "https://plantworld.ca/?s={query}"
+    },
+    "greenland": {
+      "name": "Greenland Garden Centre",
+      "region": "Sherwood Park, Alberta",
+      "kinds": ["saplings", "fertilizer", "seeds"],
+      "home_url": "https://www.greenlandgarden.com/",
+      "search_url": "https://www.greenlandgarden.com/search?q={query}"
+    },
+    "sunnymart": {
+      "name": "Sunnybrook Farm Museum shop / local farm supply",
+      "region": "Central Alberta",
+      "kinds": ["fertilizer"],
+      "home_url": "https://www.peakfuels.com/",
+      "notes": "Regional farm supply — check local co-ops for bulk amendments"
+    },
+    "uap": {
+      "name": "UAP / local ag retail",
+      "region": "Prairie Canada",
+      "kinds": ["fertilizer"],
+      "home_url": "https://www.uap.ca/",
+      "notes": "Commercial ag inputs via local branch"
+    },
+    "gaia_green": {
+      "name": "Gaia Green Organics",
+      "region": "Canada organic amendments",
+      "kinds": ["fertilizer"],
+      "search_url": "https://www.gaiagreen.com/search?q={query}",
+      "home_url": "https://www.gaiagreen.com/"
+    },
+    "earths_best": {
+      "name": "Earth's Best / organic garden retail",
+      "region": "Canada",
+      "kinds": ["fertilizer"],
+      "search_url": "https://www.amazon.ca/s?k={query}+organic+fertilizer"
+    },
+    "amazon_ca": {
+      "name": "Amazon.ca (search)",
+      "region": "Canada",
+      "kinds": ["seeds", "fertilizer"],
+      "search_url": "https://www.amazon.ca/s?k={query}"
+    },
+    "google_shopping": {
+      "name": "Google Shopping (Canada)",
+      "region": "Canada",
+      "kinds": ["seeds", "saplings", "fertilizer"],
+      "search_url": "https://www.google.com/search?tbm=shop&q={query}+Canada"
+    }
+  },
+  "defaults": {
+    "seeds": ["ttseeds", "veseys", "westcoastseeds", "oscseeds", "google_shopping"],
+    "saplings": ["treetime", "bowpoint", "greenland", "plantworld", "google_shopping"],
+    "fertilizer": ["gaia_green", "greenland", "plantworld", "amazon_ca"],
+    "native_seeds": ["wildaboutflowers", "prairieoriginals", "bowpoint", "ttseeds"],
+    "native_saplings": ["treetime", "bowpoint", "wildaboutflowers", "greenland"],
+    "medicinal_seeds": ["richters", "westcoastseeds", "veseys", "ttseeds"],
+    "herbs": ["richters", "westcoastseeds", "veseys"]
+  },
+  "fertilizer_queries": {
+    "default": "organic all purpose fertilizer Canada",
+    "fruit": "fruit tree fertilizer berry fertilizer Canada",
+    "acid": "acid loving plant fertilizer Canada",
+    "vegetable": "vegetable garden fertilizer Canada",
+    "nitrogen_fixer": "inoculant rhizobium legume Canada",
+    "native": "mycorrhizae inoculant native plants Canada",
+    "cover_crop": "cover crop seed mix Alberta"
+  },
+  "crop_overrides": {
+    "saskatoon": {
+      "seeds": ["ttseeds", "veseys"],
+      "saplings": ["treetime", "bowpoint", "greenland"],
+      "search": { "seeds": "saskatoon serviceberry seed", "saplings": "saskatoon bush bare root Alberta" }
+    },
+    "haskap": {
+      "seeds": ["ttseeds", "veseys"],
+      "saplings": ["treetime", "greenland", "plantworld"],
+      "search": { "seeds": "haskap honeyberry", "saplings": "haskap plant Alberta" }
+    },
+    "echinacea-purpurea": {
+      "seeds": ["richters", "westcoastseeds", "veseys"],
+      "saplings": ["richters", "greenland"],
+      "search": { "seeds": "Echinacea purpurea seed", "saplings": "coneflower plant" }
+    },
+    "calendula": {
+      "seeds": ["richters", "westcoastseeds", "veseys", "oscseeds"],
+      "search": { "seeds": "calendula officinalis seed" }
+    },
+    "white-spruce": {
+      "saplings": ["treetime", "bowpoint"],
+      "search": { "saplings": "white spruce seedling Alberta" }
+    },
+    "aspen": {
+      "saplings": ["treetime", "bowpoint"],
+      "search": { "saplings": "trembling aspen seedling" }
+    },
+    "chokecherry": {
+      "seeds": ["prairieoriginals", "bowpoint"],
+      "saplings": ["treetime", "bowpoint"],
+      "search": { "saplings": "chokecherry seedling Alberta", "seeds": "chokecherry seed" }
+    },
+    "caragana": {
+      "saplings": ["treetime"],
+      "search": { "saplings": "caragana shelterbelt seedling" }
+    },
+    "garlic": {
+      "seeds": ["ttseeds", "veseys", "earlyseed"],
+      "search": { "seeds": "hardneck garlic seed Alberta" }
+    },
+    "potato": {
+      "seeds": ["ttseeds", "earlyseed", "veseys"],
+      "search": { "seeds": "seed potatoes Alberta" }
+    },
+    "sea-buckthorn": {
+      "saplings": ["treetime", "greenland"],
+      "search": { "saplings": "sea buckthorn plant" }
+    },
+    "beaked-hazelnut": {
+      "saplings": ["treetime", "bowpoint"],
+      "search": { "saplings": "beaked hazelnut seedling" }
+    },
+    "lingonberry": {
+      "saplings": ["treetime", "veseys"],
+      "search": { "saplings": "lingonberry plant" }
+    },
+    "wild-bergamot": {
+      "seeds": ["wildaboutflowers", "prairieoriginals", "richters"],
+      "search": { "seeds": "Monarda fistulosa wild bergamot" }
+    },
+    "blue-grama": {
+      "seeds": ["prairieoriginals", "wildaboutflowers"],
+      "search": { "seeds": "blue grama Bouteloua gracilis seed" }
+    },
+    "clover-red": {
+      "seeds": ["ttseeds", "earlyseed", "oscseeds"],
+      "fertilizer": ["gaia_green"],
+      "search": { "seeds": "red clover cover crop seed", "fertilizer": "legume inoculant" }
+    },
+    "field-pea": {
+      "seeds": ["ttseeds", "earlyseed"],
+      "search": { "seeds": "field pea cover crop seed Alberta", "fertilizer": "pea inoculant" }
+    }
+  }
+}

@@ -11,6 +11,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveSuppliers } from './vendors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -44,6 +45,7 @@ export function planPlantings(site = {}, opts = {}) {
         row.score,
         crop._inline_economics
       );
+      row.suppliers = resolveSuppliers(crop);
       return row;
     })
     .filter((r) => r.score > 0)
@@ -81,13 +83,14 @@ export function planPlantings(site = {}, opts = {}) {
     ' Economics are farmfit-style price-ladder planning ranges (CAD), scaled to your parcel area — not a business plan.';
 
   return {
-    engine: 'ee-ecocrop-style-v1-economics',
+    engine: 'ee-ecocrop-style-v1-economics-vendors',
+    schema: 'https://opensourcemed.info/schemas/permaculture-crop.schema.json',
     growing_guide: {
       project: 'OpenSourceMed Growing Guide / farmfit',
       catalog_source: catalogCache?._source || 'alberta-catalog.json',
       economics_source: economics?._source || 'economics.json',
       notes:
-        'Aligned with farmfit EcoCrop + price-ladder approach. Export farmfit crops/prices when available.',
+        'Aligned with farmfit EcoCrop + price-ladder approach. Suppliers resolved via crop.schema + vendors.json.',
     },
     site_filters: {
       plant_hardiness_zone: ctx.zone,

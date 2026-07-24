@@ -331,6 +331,41 @@ h3 { font-size: 1.08rem; }
 /* ---------- report ---------- */
 
 .report-stage { padding-bottom: 2rem; }
+
+.report-tabs {
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0.85rem var(--step) 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  position: sticky;
+  top: 0;
+  z-index: 15;
+}
+.report-tab {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  padding: 0.65rem 1rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.report-tab:hover { color: var(--ink); }
+.report-tab.is-active {
+  color: var(--berry);
+  border-bottom-color: var(--berry);
+  background: rgba(91, 58, 115, 0.06);
+}
+.report-tabs .btn-quiet { margin-left: auto; }
+
 .report-wrap {
   max-width: var(--max);
   margin: 0 auto;
@@ -339,6 +374,41 @@ h3 { font-size: 1.08rem; }
   grid-template-columns: 200px 1fr;
   gap: calc(var(--step) * 1.6);
   align-items: start;
+}
+.report-panes { min-width: 0; }
+.report-pane[hidden] { display: none !important; }
+.report-pane.is-active { display: block; }
+
+.supplier-block {
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(22, 33, 27, 0.03);
+}
+.supplier-title {
+  display: block;
+  color: var(--berry);
+  margin-bottom: 0.45rem;
+}
+.supplier-kind { margin-bottom: 0.55rem; }
+.supplier-kind > .mono {
+  color: var(--ink-soft);
+  font-size: 0.62rem;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+.supplier-links {
+  margin: 0;
+  padding-left: 1.05rem;
+  font-size: 0.88rem;
+}
+.supplier-links a { color: var(--berry); }
+.supplier-links li { margin: 0.15rem 0; }
+
+.plant-cta.panel {
+  background: rgba(91, 58, 115, 0.06);
+  border-color: rgba(91, 58, 115, 0.25);
 }
 
 .rail { position: sticky; top: var(--step); }

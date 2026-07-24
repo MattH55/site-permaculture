@@ -67,12 +67,34 @@ async function main() {
   $('btn-clear').onclick = clearShape;
   $('btn-report').onclick = generateReport;
   $('btn-back-map').onclick = showMap;
+  $('btn-back-map-top')?.addEventListener('click', showMap);
+  $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
+  $('tab-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('btn-cancel-load')?.addEventListener('click', () => {
     state._reportAbort?.abort();
     clearInterval(state._loadTimer);
     showLoading(false);
     setError('Cancelled.');
   });
+}
+
+function switchReportPane(which) {
+  const site = $('pane-site');
+  const plant = $('pane-plant');
+  const tabSite = $('tab-site');
+  const tabPlant = $('tab-plant');
+  if (!site || !plant) return;
+  const isPlant = which === 'plant';
+  site.classList.toggle('is-active', !isPlant);
+  plant.classList.toggle('is-active', isPlant);
+  site.hidden = isPlant;
+  plant.hidden = !isPlant;
+  tabSite?.classList.toggle('is-active', !isPlant);
+  tabPlant?.classList.toggle('is-active', isPlant);
+  tabSite?.setAttribute('aria-selected', String(!isPlant));
+  tabPlant?.setAttribute('aria-selected', String(isPlant));
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function loadGoogleMaps(key) {
@@ -926,6 +948,7 @@ function setError(msg) {
 function showReport() {
   $('map-stage').hidden = true;
   $('report-stage').hidden = false;
+  switchReportPane('site');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1027,7 +1050,15 @@ function renderReport(r) {
         </div>
       </section>
 
-      ${plantingSection(r.planting_plan)}
+      <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
+        <span class="mono eyebrow">Next</span>
+        <h2 style="font-size:1.25rem;margin:0.2rem 0 0.4rem">Planting plan</h2>
+        <p class="fine" style="margin:0 0 0.8rem">
+          Open the separate planting pane for Alberta-suited crops, economics, and vendor links
+          for seeds, saplings, and fertilizer.
+        </p>
+        <button type="button" class="btn" id="btn-goto-plant">Open planting plan →</button>
+      </div>
 
       <div class="sources">
         <span class="mono">Data provenance</span>
@@ -1082,6 +1113,8 @@ function renderReport(r) {
     clearShape();
     showMap();
   };
+  $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
+  renderPlantingPane(r.planting_plan);
   $('copy-json').onclick = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(exportObj, null, 2));
@@ -1259,13 +1292,19 @@ function fmtDistance(m) {
   return `${(m / 1000).toFixed(2)} km`;
 }
 
-function plantingSection(plan) {
+function renderPlantingPane(plan) {
+  const el = $('planting-pane');
+  if (!el) return;
   if (!plan?.recommended?.length) {
-    return `
-      <section class="report-block">
-        <h2>Planting plan</h2>
-        <p class="fine">No suitable plantings scored for this site profile.</p>
-      </section>`;
+    el.innerHTML = `
+      <div class="panel fade">
+        <span class="mono eyebrow">Planting plan</span>
+        <h1>No suitable plantings</h1>
+        <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage.</p>
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+      </div>`;
+    $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+    return;
   }
 
   const areaHa = plan.site_filters?.footprint_ha;
@@ -1372,6 +1411,7 @@ function plantingSection(plan) {
             : ''
         }
         ${econLine}
+        ${supplierBlock(p.suppliers)}
         ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
       </article>`;
     })
@@ -1386,28 +1426,76 @@ function plantingSection(plan) {
         .join('')
     : '';
 
-  return `
-    <section class="report-block">
-      <h2>Planting plan</h2>
-      <p class="fine" style="margin-top:-0.35rem">
-        EcoCrop-style suitability + <strong>farmfit-style economics</strong>
-        (price ladder &amp; yield ranges)
-        ${plan.growing_guide?.catalog_source ? ` · catalog ${esc(plan.growing_guide.catalog_source)}` : ''}.
-        ${esc(plan.phase_note || '')}
+  el.innerHTML = `
+    <div class="panel fade">
+      <span class="mono eyebrow">Planting plan · crop schema + suppliers</span>
+      <h1>What to plant</h1>
+      <p class="lede">
+        EcoCrop-style suitability, farmfit economics, and vendor links for
+        <strong>seeds</strong>, <strong>saplings</strong>, and <strong>fertilizer</strong>.
       </p>
+      <p class="fine">${esc(plan.phase_note || '')}</p>
       <div class="plant-chips">${layers}</div>
       ${cashBlock}
       <div class="plant-list">${rows}</div>
-      <p class="fine" style="margin-top:0.8rem">
+      <p class="fine" style="margin-top:1rem">
         Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
-        ${esc(plan.site_filters?.frost_free_days ?? '—')} frost-free days,
-        ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm precip,
+        ${esc(plan.site_filters?.frost_free_days ?? '—')} FFD,
+        ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm,
         ${esc(plan.site_filters?.texture || '—')} /
-        ${esc(plan.site_filters?.drainage_class || '—')} drainage,
-        parcel ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha.
-        Gross revenue excludes labour, establishment, and packing. Perennials may take years to full yield.
+        ${esc(plan.site_filters?.drainage_class || '—')},
+        ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha.
+        Schema:
+        <a href="/schema/crop.schema.json" target="_blank" rel="noopener">crop.schema.json</a>.
+        Vendor links are search starting points — verify stock and hardiness.
       </p>
-    </section>`;
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+        <button type="button" class="btn-quiet" id="btn-plant-map">Map</button>
+      </div>
+    </div>`;
+
+  $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('btn-plant-map')?.addEventListener('click', showMap);
+}
+
+function supplierBlock(sup) {
+  if (!sup) return '';
+  const kinds = [
+    ['seeds', 'Seeds'],
+    ['saplings', 'Saplings / plants'],
+    ['fertilizer', 'Fertilizer / amendments'],
+  ];
+  const parts = kinds
+    .map(([key, label]) => {
+      const links = sup[key] || [];
+      if (!links.length) return '';
+      return `
+        <div class="supplier-kind">
+          <span class="mono">${esc(label)}</span>
+          <ul class="supplier-links">
+            ${links
+              .map(
+                (l) => `
+              <li>
+                <a href="${esc(l.url)}" target="_blank" rel="noopener noreferrer">${esc(l.name)}</a>
+                ${l.region ? `<span class="fine"> · ${esc(l.region)}</span>` : ''}
+                ${l.product_hint ? `<span class="fine"> — ${esc(l.product_hint)}</span>` : ''}
+              </li>`
+              )
+              .join('')}
+          </ul>
+        </div>`;
+    })
+    .filter(Boolean)
+    .join('');
+  if (!parts) return '';
+  return `
+    <div class="supplier-block">
+      <span class="mono supplier-title">Where to buy</span>
+      ${parts}
+      ${sup.disclaimer ? `<p class="fine" style="margin:0.4rem 0 0">${esc(sup.disclaimer)}</p>` : ''}
+    </div>`;
 }
 
 function fmtMoney(n) {

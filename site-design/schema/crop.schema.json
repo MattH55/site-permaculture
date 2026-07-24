@@ -1,0 +1,185 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opensourcemed.info/schemas/permaculture-crop.schema.json",
+  "title": "Permaculture Crop & Supply Schema (Alberta-first)",
+  "description": "Crop suitability, economics, and supply links (seeds, saplings, fertilizer) for Expanding Edge site planting plans. Compatible with farmfit CropData exports and the site-design planting scorer.",
+  "type": "object",
+  "required": ["id", "common_name"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable slug identifier, e.g. saskatoon, echinacea-purpurea."
+    },
+    "common_name": { "type": "string" },
+    "scientific_name": { "type": ["string", "null"] },
+    "category": {
+      "type": "string",
+      "enum": [
+        "annual", "perennial", "tree", "shrub", "medicinal",
+        "cover_crop", "vine", "other"
+      ]
+    },
+    "guild_layer": {
+      "type": "string",
+      "enum": [
+        "canopy", "understory", "shrub", "herbaceous",
+        "groundcover", "vine", "root", "other"
+      ]
+    },
+    "alberta_native": { "type": "boolean" },
+    "region_focus": {
+      "type": "string",
+      "enum": ["alberta", "cold_temperate", "global_farmfit", "other"]
+    },
+    "hardiness_min": { "type": "string", "description": "e.g. 2a" },
+    "hardiness_max": { "type": "string" },
+    "frost_free_min_days": { "type": ["number", "null"] },
+    "precip_min_mm": { "type": ["number", "null"] },
+    "precip_max_mm": { "type": ["number", "null"] },
+    "ph_min": { "type": ["number", "null"] },
+    "ph_max": { "type": ["number", "null"] },
+    "textures": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "sand", "loamy_sand", "sandy_loam", "loam", "silt_loam",
+          "clay_loam", "clay", "organic"
+        ]
+      }
+    },
+    "drainage": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "rapid", "well", "moderately_well", "imperfect",
+          "poor", "very_poor"
+        ]
+      }
+    },
+    "chinook_sensitive": { "type": "boolean" },
+    "notes": { "type": ["string", "null"] },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "economics": {
+      "type": "object",
+      "description": "Farmfit-style price ladder and yields (CAD planning ranges).",
+      "properties": {
+        "yield_kg_per_ha": {
+          "type": "object",
+          "properties": {
+            "low": { "type": "number" },
+            "high": { "type": "number" }
+          }
+        },
+        "price_wholesale_cad_per_kg": {
+          "type": "object",
+          "properties": {
+            "low": { "type": "number" },
+            "high": { "type": "number" }
+          }
+        },
+        "price_retail_cad_per_kg": {
+          "type": "object",
+          "properties": {
+            "low": { "type": "number" },
+            "high": { "type": "number" }
+          }
+        },
+        "unit": { "type": "string" },
+        "market_channels": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "establishment_years": { "type": ["integer", "null"] },
+        "labour_intensity": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", null]
+        },
+        "non_cash_value": { "type": ["string", "null"] },
+        "processing_ladder": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": { "type": "integer" },
+              "name": { "type": "string" },
+              "output_product": { "type": "string" },
+              "value_add_multiplier": { "type": "number" },
+              "difficulty": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "suppliers": {
+      "type": "object",
+      "description": "Curated or generated vendor links for obtaining the crop and related inputs.",
+      "properties": {
+        "seeds": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/supplier_link" }
+        },
+        "saplings": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/supplier_link" },
+          "description": "Bare-root, potted plants, plugs, or nursery stock."
+        },
+        "fertilizer": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/supplier_link" },
+          "description": "Soil amendments and fertility products appropriate to the crop."
+        }
+      }
+    },
+    "search_terms": {
+      "type": "object",
+      "description": "Preferred search strings for vendor URL templates.",
+      "properties": {
+        "seeds": { "type": "string" },
+        "saplings": { "type": "string" },
+        "fertilizer": { "type": "string" }
+      }
+    }
+  },
+  "definitions": {
+    "supplier_link": {
+      "type": "object",
+      "required": ["name", "url", "kind"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Vendor or product label."
+        },
+        "url": {
+          "type": "string",
+          "format": "uri"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["seeds", "saplings", "fertilizer", "other"]
+        },
+        "vendor_id": {
+          "type": "string",
+          "description": "Key into the vendors registry."
+        },
+        "region": {
+          "type": "string",
+          "description": "e.g. Alberta, Canada, Ships CA"
+        },
+        "product_hint": {
+          "type": "string",
+          "description": "What to look for on the page (cultivar, bare-root, etc.)."
+        },
+        "notes": { "type": "string" },
+        "affiliate": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    }
+  }
+}
