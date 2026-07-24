@@ -398,6 +398,8 @@ export function buildSiteRecord(input = {}) {
       successional_stage:
         input.existing_vegetation?.successional_stage || undefined,
     },
+    proximity_context: input.proximity_context || undefined,
+    predicted_well_depth: input.predicted_well_depth || undefined,
     footprint_ha: num(input.footprint_ha),
   };
 
@@ -416,6 +418,8 @@ export function buildSiteRecord(input = {}) {
     soil: site.soil,
     climate: site.climate,
     existing_vegetation: site.existing_vegetation,
+    proximity_context: site.proximity_context,
+    predicted_well_depth: site.predicted_well_depth,
     design_elements,
     data_provenance,
     _meta: {

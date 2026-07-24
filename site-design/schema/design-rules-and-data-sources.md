@@ -46,7 +46,26 @@ Secondary / supplementary:
 - **Topographic base mapping** — Natural Resources Canada CanVec / Toporama for general reference layers (roads, hydrography lines) alongside the DEM.
 - **Ecodistrict/ecoregion context** — Natural Regions and Subregions of Alberta classification, useful as a coarse sanity check on native vegetation and expected precipitation regime.
 
-## 3. Suggested pipeline
+## 2b. Proximity, amenities, and crime — sources and a caveat
+
+- **Nearest water source** — same Alberta hydrography / Wet Areas Mapping ArcGIS REST endpoints already listed above, queried as a nearest-feature (not intersects) search from the site centroid.
+- **Nearest city, with name** — Statistics Canada Population Centres (POPCTR) boundary file for population-based classification, or the Alberta municipal boundary layer (AltaLIS/geodiscover) for named polygons + centroids.
+- **Nearest settlement (any size)** — GeoNames Canada or the StatCan Geographic Attribute File, cross-checked against the province's own hamlet lists (Alberta has many unincorporated hamlets inside Specialized and Rural Municipalities that don't show up as "cities" but matter for local supply runs).
+- **Amenities** (grocery, hardware, hospital, fuel, school, vet, fire/police) — OpenStreetMap via the Overpass API is free and needs no key, though rural POI coverage can be patchy; Google Places API is more complete/current but has per-request billing. Worth prototyping on OSM first and only paying for Places if coverage gaps show up in testing.
+- **Crime risk** — **caveat: this cannot be a point-level estimate.** Canadian police-reported crime data (Statistics Canada Table 35-10-0177-01, and the annual Crime Severity Index) is published by *police service / detachment jurisdiction*, not by address or parcel. The best you can honestly give a user is "your property falls within [jurisdiction]'s reporting area, which had a Crime Severity Index of X in [year], and rural Alberta as a whole runs meaningfully higher than urban Alberta." Precise RCMP detachment boundary polygons aren't reliably published, so in practice this likely resolves to nearest municipality/rural-crime-watch-zone as a proxy — flag that approximation in the UI rather than presenting a false sense of precision.
+
+## 3. Well depth prediction — methodology and sources
+
+**Do not predict well depth from topography alone.** The signal that matters is nearby actual well records; topography and regional bedrock modeling are secondary covariates that help interpolate between them.
+
+- **Primary source**: Alberta Water Well Information Database — real drilled depth + static water level for existing wells, queryable by area. This is the main input.
+- **Secondary covariate**: AGS "Bedrock Topography of Alberta, Version 2" (Map 610) — a geostatistical grid already built from well litholog data + oil/gas stratigraphic picks + outcrop locations + a coarse DEM. Use its value at the target point as one feature, not as the estimate itself.
+- **Secondary covariate**: AGS provincial hydrostratigraphic mapping (hydraulic head, unit geometry by formation) where available, to name a likely target aquifer/formation.
+- **Method**: regression-kriging (or IDW if starting simple) over nearby Water Well Information Database records within a search radius, with surface elevation and the AGS bedrock-topography grid value as additional regression covariates. Output a depth range, not a point estimate.
+- **Confidence tiering**: base confidence on `nearby_well_count` within the search radius — dense well control (many nearby records) = trustworthy range; sparse control = wider range, flagged; zero nearby wells = fall back to the regional bedrock-topography grid alone and mark lowest confidence.
+- **Always pair with a disclaimer** recommending a local licensed driller for a site-specific quote — geological heterogeneity (buried channels, lens pinch-outs) means real depth can vary sharply over short distances even with dense well control nearby.
+
+## 4. Suggested pipeline
 
 1. Geocode site → ATS legal description + lat/long.
 2. Pull DEM tile → derive slope, aspect, landform position, keypoint candidates.
@@ -54,5 +73,7 @@ Secondary / supplementary:
 4. Query AMWI + flood hazard + HYDAT/river basins → hydrology block.
 5. Query nearest ECCC climate station + NRCan hardiness zone raster → climate block.
 6. Query ABMI land cover → existing_vegetation block.
+6b. Query hydrography (nearest-feature), POPCTR/municipal boundaries, GeoNames, Overpass/Places, and the StatCan crime table by jurisdiction → populate `proximity_context`.
+6c. Query nearby Water Well Information Database records + AGS bedrock topography grid value at the point → run regression-kriging → populate `predicted_well_depth`.
 7. Run the if→then ruleset (Section 1) against the assembled record → populate `design_elements`.
 8. Join on the same site_id against the EcoCrop crop-suitability schema to filter guild/food-forest species by what's actually viable at that hardiness zone and soil type.

@@ -10,6 +10,9 @@ import {
   cacheKey,
 } from './geo.js';
 import { gatherSiteLayers } from './sources.js';
+import { gatherProximity } from './proximity.js';
+import { buildTopologyView } from './topology.js';
+import { predictWellDepth } from './well-depth.js';
 import { buildSiteRecord } from './rules.js';
 
 const cache = new Map();
@@ -30,13 +33,17 @@ export async function generateSiteReport(input = {}) {
     }
   }
 
-  const layers = await gatherSiteLayers({
-    ring,
-    bbox,
-    site_name: input.site_name,
-  });
-
   const centre = centroid(ring);
+
+  const [layers, proximity] = await Promise.all([
+    gatherSiteLayers({
+      ring,
+      bbox,
+      site_name: input.site_name,
+    }),
+    gatherProximity(centre, bbox),
+  ]);
+
   const areaHa = polygonAreaHa(ring);
   const t = layers.terrain;
   const soils = layers.soils || {};
@@ -45,11 +52,34 @@ export async function generateSiteReport(input = {}) {
   const watershed = layers.watershed || {};
   const wetAreas = layers.wetAreas || {};
 
-  // Prefer atlas erosion if present
-  const erosion_risk =
-    soils.erosion_risk || t.erosion_risk || 'low';
+  const topology = buildTopologyView(
+    layers.elevation?.elevations || [],
+    {
+      rows: layers.elevation?.rows || 0,
+      cols: layers.elevation?.cols || 0,
+    },
+    t
+  );
 
+  // Step 6c — well depth prediction (AWWI nearby + bedrock covariate / IDW)
+  const predicted_well_depth = predictWellDepth(centre, {
+    elevation_m: t.elevation_m,
+    search_radius_km: 5,
+  });
+
+  const waterDist =
+    proximity.nearest_water_source?.distance_m ??
+    (wetAreas.predicted_stream_count > 0 ? 50 : null);
+
+  const erosion_risk = soils.erosion_risk || t.erosion_risk || 'low';
   const drainage_class = inferDrainage(wetlands, soils, t);
+
+  // Prefer live nearest settlement for location labels
+  const nearestName =
+    proximity.nearest_settlement?.name ||
+    proximity.nearest_city?.name ||
+    layers.preset?.nearest_town ||
+    '';
 
   const siteInput = {
     site_name: input.site_name || layers.preset?.label || 'Drawn parcel',
@@ -60,7 +90,7 @@ export async function generateSiteReport(input = {}) {
       longitude: centre.longitude,
       elevation_m: t.elevation_m,
       municipality: layers.preset?.municipality || '',
-      nearest_town: layers.preset?.nearest_town || '',
+      nearest_town: nearestName,
     },
     terrain: {
       slope_percent: t.slope_percent,
@@ -72,8 +102,7 @@ export async function generateSiteReport(input = {}) {
     hydrology: {
       annual_precipitation_mm: climate.annual_precipitation_mm,
       seasonal_distribution: climate.seasonal_distribution || 'summer_peak',
-      distance_to_nearest_watercourse_m:
-        wetAreas.predicted_stream_count > 0 ? 50 : null,
+      distance_to_nearest_watercourse_m: waterDist,
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
       water_table_depth_m: null,
@@ -96,14 +125,30 @@ export async function generateSiteReport(input = {}) {
       chinook_exposure: climate.chinook_exposure,
     },
     existing_vegetation: {
-      // Without land-cover API yet — conservative early succession
       cover_type: wetlands.present ? 'wetland_vegetation' : 'tame_pasture',
-      successional_stage: wetlands.present ? 'mid_successional' : 'early_successional',
+      successional_stage: wetlands.present
+        ? 'mid_successional'
+        : 'early_successional',
     },
-    data_provenance: buildProvenance(layers),
+    proximity_context: {
+      nearest_water_source: proximity.nearest_water_source,
+      nearest_city: proximity.nearest_city,
+      nearest_settlement: proximity.nearest_settlement,
+      amenities: proximity.amenities || [],
+      crime_risk: stripCrimeForSchema(proximity.crime_risk),
+    },
+    predicted_well_depth: stripWellForSchema(predicted_well_depth),
+    data_provenance: buildProvenance(layers, proximity, predicted_well_depth),
   };
 
   const record = buildSiteRecord(siteInput);
+
+  // Attach full proximity / well blocks (incl. disclaimers) for the UI
+  record.proximity_context = {
+    ...siteInput.proximity_context,
+    crime_risk: proximity.crime_risk,
+  };
+  record.predicted_well_depth = predicted_well_depth;
 
   const report = {
     ...record,
@@ -113,6 +158,7 @@ export async function generateSiteReport(input = {}) {
       bbox: [bbox.west, bbox.south, bbox.east, bbox.north],
       area_ha: siteInput.footprint_ha,
     },
+    topology,
     analysis: {
       elevation: {
         mean_m: t.elevation_m,
@@ -136,11 +182,13 @@ export async function generateSiteReport(input = {}) {
         texture: soils.texture,
         erosion_risk: soils.erosion_risk,
       },
+      proximity,
+      well_depth: predicted_well_depth,
       alberta: layers.alberta,
     },
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v1',
+      pipeline: 'bbox-live-v3-well-depth',
       cache: 'miss',
       cache_key: key,
     },
@@ -148,6 +196,30 @@ export async function generateSiteReport(input = {}) {
 
   putCache(key, report);
   return report;
+}
+
+function stripCrimeForSchema(crime) {
+  if (!crime) return null;
+  return {
+    reporting_jurisdiction: crime.reporting_jurisdiction,
+    crime_severity_index: crime.crime_severity_index,
+    rural_or_urban_classification: crime.rural_or_urban_classification,
+    data_year: crime.data_year,
+  };
+}
+
+function stripWellForSchema(w) {
+  if (!w) return null;
+  return {
+    estimated_depth_m: w.estimated_depth_m,
+    estimated_depth_range_m: w.estimated_depth_range_m,
+    estimated_static_water_level_m: w.estimated_static_water_level_m,
+    target_hydrostratigraphic_unit: w.target_hydrostratigraphic_unit,
+    nearby_well_count: w.nearby_well_count,
+    nearby_well_search_radius_km: w.nearby_well_search_radius_km,
+    confidence: w.confidence,
+    disclaimer_required: true,
+  };
 }
 
 function inferDrainage(wetlands, soils, terrain) {
@@ -159,11 +231,11 @@ function inferDrainage(wetlands, soils, terrain) {
   return 'well';
 }
 
-function buildProvenance(layers) {
+function buildProvenance(layers, proximity, well) {
   const rows = [];
   if (layers.elevation) {
     rows.push({
-      field: 'terrain, location.elevation_m',
+      field: 'terrain, location.elevation_m, topology',
       source_name: layers.elevation.source,
       source_date: new Date().toISOString().slice(0, 10),
       source_url: layers.elevation.source_url,
@@ -215,6 +287,39 @@ function buildProvenance(layers) {
       source_name: layers.climate.source_name,
       source_date: new Date().toISOString().slice(0, 10),
       source_url: layers.climate.source_url,
+    });
+  }
+  if (proximity?._sources?.water) {
+    rows.push({
+      field: 'proximity_context.nearest_water_source',
+      source_name: proximity._sources.water,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: 'https://overpass-api.de/',
+    });
+  }
+  if (proximity?._sources?.places) {
+    rows.push({
+      field: 'proximity_context.nearest_city, nearest_settlement',
+      source_name: proximity._sources.places,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: 'https://www12.statcan.gc.ca/',
+    });
+  }
+  if (proximity?._sources?.crime) {
+    rows.push({
+      field: 'proximity_context.crime_risk',
+      source_name: proximity._sources.crime,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url:
+        'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510017701',
+    });
+  }
+  if (well) {
+    rows.push({
+      field: 'predicted_well_depth',
+      source_name: `Well depth IDW (${well._meta?.well_data_source || 'wells'}) · AGS Map 610 bedrock proxy`,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: 'https://groundwater.alberta.ca/WaterWells/d/',
     });
   }
   rows.push({

@@ -17,7 +17,7 @@ const ELEMENT_LABELS = {
   keyhole_bed: 'Keyhole bed',
 };
 
-const CORE_LABELS = ['Elev', 'Slope', 'Water', 'Soil', 'Wind', 'Cover', 'Rules', 'Report'];
+const CORE_LABELS = ['Elev', 'Topo', 'Water', 'City', 'Well', 'Safety', 'Rules', 'Report'];
 const HORIZONS = [
   'var(--h1)', 'var(--h2)', 'var(--h3)', 'var(--h4)',
   'var(--h5)', 'var(--h6)', 'var(--h7)', 'var(--h8)',
@@ -943,8 +943,19 @@ function renderReport(r) {
   const els = r.design_elements || [];
   const flags = r._meta?.flags || [];
   const a = r.analysis || {};
-  const exportObj = { ...r };
+  const topo = r.topology || {};
+  const px = r.proximity_context || a.proximity || {};
+  const water = px.nearest_water_source;
+  const city = px.nearest_city;
+  const settlement = px.nearest_settlement;
+  const crime = px.crime_risk;
+
+  // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
+  const exportObj = JSON.parse(JSON.stringify(r));
   delete exportObj._meta;
+  if (exportObj.topology?.grid?.elevations_m) {
+    // keep normalized grid for re-use; drop raw if needed later
+  }
 
   $('report').innerHTML = `
     <div class="panel fade">
@@ -955,7 +966,7 @@ function renderReport(r) {
         <span class="score-of">design elements recommended</span>
       </div>
       <p class="lede">
-        ${esc(r.location?.municipality || r.location?.nearest_town || 'Alberta')}
+        ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
         ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
         ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
@@ -963,15 +974,19 @@ function renderReport(r) {
       </p>
 
       <div class="summary-grid">
-        <div class="stat"><span class="k">Elevation</span><strong>${fmt(a.elevation?.mean_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
         <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
         <div class="stat"><span class="k">Landform</span><strong>${esc((r.terrain?.landform_position || '—').replace(/_/g, ' '))}</strong></div>
-        <div class="stat"><span class="k">Wetland</span><strong>${a.wetlands?.present ? esc(a.wetlands.class || 'yes') : 'none detected'}</strong></div>
-        <div class="stat"><span class="k">Soil group</span><strong>${esc(a.soils?.group || r.soil?.soil_series || '—')}</strong></div>
-        <div class="stat"><span class="k">Wind</span><strong>${esc(r.climate?.prevailing_wind_direction || '—')}</strong></div>
-        <div class="stat"><span class="k">Precip (est.)</span><strong>${fmt(r.hydrology?.annual_precipitation_mm, 'mm')}</strong></div>
+        <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
+        <div class="stat"><span class="k">Context</span><strong>${crime ? esc(crime.rural_or_urban_classification) : '—'}</strong></div>
       </div>
+
+      ${topologySection(topo, a)}
+      ${proximitySection(px, water, city, settlement, crime)}
+      ${wellDepthSection(r.predicted_well_depth || a.well_depth)}
 
       ${
         flags.length
@@ -1025,21 +1040,12 @@ function renderReport(r) {
             .join('')}
           ${
             a.elevation?.source
-              ? `<li>DEM samples: ${esc(a.elevation.source)} (${esc(a.elevation.grid)} grid, ${esc(a.elevation.samples)} pts)</li>`
+              ? `<li>DEM samples: ${esc(a.elevation.source)} (${esc(a.elevation.grid)} grid)</li>`
               : ''
           }
           ${
             a.hrdem?.note
-              ? `<li>HRDEM: ${esc(a.hrdem.note)}${
-                  a.hrdem.projects?.length
-                    ? ` [${a.hrdem.projects.map(esc).join(', ')}]`
-                    : ''
-                }</li>`
-              : ''
-          }
-          ${
-            a.wet_areas?.predicted_stream_count != null
-              ? `<li>Predicted streams in box: ${esc(a.wet_areas.predicted_stream_count)}</li>`
+              ? `<li>HRDEM: ${esc(a.hrdem.note)}</li>`
               : ''
           }
         </ul>
@@ -1061,7 +1067,7 @@ function renderReport(r) {
         <a class="btn btn-secondary" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener">Book a design consult</a>
       </div>
       <p class="fine" style="margin-top:1rem">
-        Planning guidance for conversation with Expanding Edge — not engineered drawings.
+        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment for a parcel.
         (780) 236-3630 · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a>
         ${r._meta?.duration_ms ? ` · generated in ${Math.round(r._meta.duration_ms / 100) / 10}s` : ''}
         ${r._meta?.cache === 'hit' ? ' · cached' : ''}
@@ -1089,6 +1095,225 @@ function renderReport(r) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+}
+
+function topologySection(topo, a) {
+  if (!topo || topo.elevation_m == null) {
+    return `<h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p>`;
+  }
+  const heat = topoHeatHtml(topo);
+  const profile = topoProfileSvg(topo.profile || []);
+  return `
+    <section class="report-block">
+      <h2>Topology</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Derived from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Relief ${fmt(topo.relief_m, 'm')} ·
+        ${topo.keypoint_present ? 'keypoint candidate present' : 'no clear keypoint'} ·
+        erosion ${esc(topo.erosion_risk || '—')}
+      </p>
+      <div class="topo-layout">
+        <div class="topo-heat-wrap">
+          <span class="mono topo-label">Elevation surface (sample grid)</span>
+          ${heat}
+          <div class="topo-scale mono">
+            <span>${fmt(topo.elevation_min_m, 'm')}</span>
+            <span>low → high</span>
+            <span>${fmt(topo.elevation_max_m, 'm')}</span>
+          </div>
+        </div>
+        <div class="topo-profile-wrap">
+          <span class="mono topo-label">W → E cross-section (mid parcel)</span>
+          ${profile}
+        </div>
+      </div>
+      <div class="summary-grid" style="margin-top:1rem">
+        <div class="stat"><span class="k">Min elev</span><strong>${fmt(topo.elevation_min_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Mean elev</span><strong>${fmt(topo.elevation_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Slope p90</span><strong>${fmt(topo.slope_stats?.p90, '%')}</strong></div>
+      </div>
+    </section>`;
+}
+
+function topoHeatHtml(topo) {
+  const g = topo.grid || {};
+  const { rows, cols, values } = g;
+  if (!rows || !cols || !values?.length) return '<p class="fine">No grid.</p>';
+  const cells = values
+    .map((v) => {
+      if (v == null) return '<i class="topo-cell empty"></i>';
+      const t = Math.round(30 + v * 55);
+      // parkland soil horizon palette: dark low → gold high
+      const bg = `hsl(32, ${35 + v * 25}%, ${t}%)`;
+      return `<i class="topo-cell" style="background:${bg}"></i>`;
+    })
+    .join('');
+  return `<div class="topo-heat" style="--cols:${cols}">${cells}</div>`;
+}
+
+function topoProfileSvg(profile) {
+  if (!profile.length) return '<p class="fine">No profile.</p>';
+  const w = 320;
+  const h = 100;
+  const min = Math.min(...profile);
+  const max = Math.max(...profile);
+  const span = max - min || 1;
+  const pts = profile
+    .map((z, i) => {
+      const x = (i / Math.max(profile.length - 1, 1)) * (w - 16) + 8;
+      const y = h - 12 - ((z - min) / span) * (h - 28);
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return `
+    <svg class="topo-profile" viewBox="0 0 ${w} ${h}" role="img" aria-label="Elevation cross section">
+      <rect x="0" y="0" width="${w}" height="${h}" fill="#f7f8f3" stroke="#c8cec1"/>
+      <polyline fill="none" stroke="#5b3a73" stroke-width="2" points="${pts}"/>
+      <text x="8" y="14" class="svg-label">${max.toFixed(0)} m</text>
+      <text x="8" y="${h - 6}" class="svg-label">${min.toFixed(0)} m</text>
+    </svg>`;
+}
+
+function proximitySection(px, water, city, settlement, crime) {
+  return `
+    <section class="report-block">
+      <h2>Proximity &amp; context</h2>
+      <div class="prox-grid">
+        <article class="prox-card">
+          <span class="mono">Nearest water</span>
+          ${
+            water
+              ? `<strong>${fmtDistance(water.distance_m)}</strong>
+                 <p>${esc(water.feature_type || 'water')}${
+                   water.feature_name ? ` · ${esc(water.feature_name)}` : ''
+                 }</p>`
+              : `<strong>—</strong><p class="fine">No surface water found within search radius.</p>`
+          }
+        </article>
+        <article class="prox-card">
+          <span class="mono">Nearest city centre</span>
+          ${
+            city
+              ? `<strong>${esc(city.name)}</strong>
+                 <p>${fmt(city.distance_km, 'km')}${
+                   city.population != null
+                     ? ` · pop. ~${Number(city.population).toLocaleString('en-CA')}`
+                     : ''
+                 }</p>`
+              : `<strong>—</strong><p class="fine">No city match.</p>`
+          }
+        </article>
+        <article class="prox-card">
+          <span class="mono">Nearest settlement</span>
+          ${
+            settlement
+              ? `<strong>${esc(settlement.name)}</strong>
+                 <p>${fmt(settlement.distance_km, 'km')} · ${esc(
+                   (settlement.settlement_type || '').replace(/_/g, ' ')
+                 )}</p>`
+              : `<strong>—</strong><p class="fine">—</p>`
+          }
+        </article>
+      </div>
+
+      <div class="crime-card">
+        <span class="mono">Safety context (jurisdiction — not parcel-level)</span>
+        ${
+          crime
+            ? `
+          <div class="summary-grid" style="margin:0.6rem 0">
+            <div class="stat"><span class="k">Classification</span><strong>${esc(
+              crime.rural_or_urban_classification
+            )}</strong></div>
+            <div class="stat"><span class="k">Crime Severity Index</span><strong>${
+              crime.crime_severity_index != null ? esc(crime.crime_severity_index) : '—'
+            }</strong></div>
+            <div class="stat"><span class="k">Data year</span><strong>${esc(
+              crime.data_year || '—'
+            )}</strong></div>
+          </div>
+          <p class="fine"><strong>Reporting area:</strong> ${esc(
+            crime.reporting_jurisdiction || '—'
+          )}</p>
+          <div class="flag" data-severity="caution" style="margin-top:0.75rem">
+            <strong>Important caveat</strong>
+            <p>${esc(
+              crime.disclaimer ||
+                'Canadian crime statistics are published by police service, not by address. This is jurisdiction-level context only — not a safety score for your parcel.'
+            )}</p>
+          </div>`
+            : `<p class="fine">Crime context unavailable.</p>`
+        }
+      </div>
+    </section>`;
+}
+
+function fmtDistance(m) {
+  if (m == null || m === '') return '—';
+  if (m < 1000) return `${Math.round(m)} m`;
+  return `${(m / 1000).toFixed(2)} km`;
+}
+
+function wellDepthSection(w) {
+  if (!w) {
+    return `
+      <section class="report-block">
+        <h2>Predicted well depth</h2>
+        <p class="fine">No estimate available for this site.</p>
+      </section>`;
+  }
+  const low = w.estimated_depth_range_m?.low_m;
+  const high = w.estimated_depth_range_m?.high_m;
+  const confLabel = {
+    well_control_dense: 'Dense nearby well control',
+    well_control_sparse: 'Sparse nearby well control',
+    no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock model only',
+  }[w.confidence] || w.confidence;
+
+  return `
+    <section class="report-block well-depth-block">
+      <h2>Predicted well depth</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Interpolated from nearby drilled records (primary) with bedrock topography as a covariate —
+        not a topography-only guess. Always shown as a <strong>range</strong>.
+      </p>
+
+      <div class="well-range-card">
+        <span class="mono">Estimated drilled depth range</span>
+        <div class="well-range-value">
+          ${fmt(low, 'm')} <span class="well-range-sep">–</span> ${fmt(high, 'm')}
+        </div>
+        <p class="fine">
+          Midpoint estimate ${fmt(w.estimated_depth_m, 'm')}
+          ${w.estimated_static_water_level_m != null
+            ? ` · static water level ~${fmt(w.estimated_static_water_level_m, 'm')} below grade`
+            : ''}
+        </p>
+      </div>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(
+          w.nearby_well_count ?? '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Search radius</span><strong>${fmt(
+          w.nearby_well_search_radius_km,
+          'km'
+        )}</strong></div>
+        <div class="stat"><span class="k">Confidence</span><strong>${esc(confLabel)}</strong></div>
+        <div class="stat"><span class="k">Target unit</span><strong>${esc(
+          w.target_hydrostratigraphic_unit || '—'
+        )}</strong></div>
+      </div>
+
+      <div class="flag" data-severity="caution" style="margin-top:1rem">
+        <strong>Required — consult a licensed driller</strong>
+        <p>${esc(
+          w.disclaimer ||
+            'This is an estimate range only, not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
+        )}</p>
+      </div>
+    </section>`;
 }
 
 function paintCore(done) {

@@ -1,0 +1,43 @@
+{
+  "description": "Interim regional well-control seeds for Alberta demo until AWWI bulk import. Depths are literature-typical productive domestic wells by hydrogeological setting — replace with real Water Well Information Database records for production.",
+  "source": "Interim seed — not AWWI. See data/wells/README.md",
+  "wells": [
+    { "lat": 53.802, "lng": -113.650, "depth_m": 26, "swl_m": 11, "formation": "Quaternary drift / Empress (parkland)", "source": "seed" },
+    { "lat": 53.790, "lng": -113.640, "depth_m": 32, "swl_m": 14, "formation": "Quaternary drift / Empress (parkland)", "source": "seed" },
+    { "lat": 53.815, "lng": -113.670, "depth_m": 22, "swl_m": 9, "formation": "Quaternary drift (parkland)", "source": "seed" },
+    { "lat": 53.820, "lng": -113.620, "depth_m": 38, "swl_m": 16, "formation": "Buried channel sand (typical)", "source": "seed" },
+    { "lat": 53.770, "lng": -113.680, "depth_m": 29, "swl_m": 12, "formation": "Quaternary drift (parkland)", "source": "seed" },
+    { "lat": 53.760, "lng": -113.600, "depth_m": 35, "swl_m": 15, "formation": "Quaternary drift (parkland)", "source": "seed" },
+    { "lat": 53.830, "lng": -113.700, "depth_m": 24, "swl_m": 10, "formation": "Quaternary drift (parkland)", "source": "seed" },
+    { "lat": 53.850, "lng": -113.630, "depth_m": 41, "swl_m": 18, "formation": "Buried channel (typical)", "source": "seed" },
+    { "lat": 53.740, "lng": -113.720, "depth_m": 27, "swl_m": 11, "formation": "Quaternary drift (parkland)", "source": "seed" },
+    { "lat": 53.780, "lng": -113.580, "depth_m": 33, "swl_m": 13, "formation": "Quaternary drift (parkland)", "source": "seed" },
+
+    { "lat": 53.546, "lng": -113.494, "depth_m": 30, "swl_m": 12, "formation": "Edmonton Formation / drift", "source": "seed" },
+    { "lat": 53.560, "lng": -113.520, "depth_m": 28, "swl_m": 11, "formation": "Edmonton Formation / drift", "source": "seed" },
+    { "lat": 53.530, "lng": -113.470, "depth_m": 36, "swl_m": 15, "formation": "Edmonton Formation / drift", "source": "seed" },
+    { "lat": 53.580, "lng": -113.550, "depth_m": 25, "swl_m": 10, "formation": "Quaternary drift", "source": "seed" },
+    { "lat": 53.510, "lng": -113.450, "depth_m": 42, "swl_m": 17, "formation": "Buried channel (typical)", "source": "seed" },
+
+    { "lat": 53.630, "lng": -113.626, "depth_m": 27, "swl_m": 11, "formation": "Quaternary drift (St. Albert)", "source": "seed" },
+    { "lat": 53.650, "lng": -113.610, "depth_m": 31, "swl_m": 13, "formation": "Quaternary drift", "source": "seed" },
+    { "lat": 53.610, "lng": -113.640, "depth_m": 23, "swl_m": 9, "formation": "Quaternary drift", "source": "seed" },
+
+    { "lat": 52.268, "lng": -113.811, "depth_m": 34, "swl_m": 14, "formation": "Central parkland drift", "source": "seed" },
+    { "lat": 52.280, "lng": -113.790, "depth_m": 29, "swl_m": 12, "formation": "Central parkland drift", "source": "seed" },
+    { "lat": 52.250, "lng": -113.830, "depth_m": 40, "swl_m": 16, "formation": "Central parkland drift", "source": "seed" },
+
+    { "lat": 51.045, "lng": -114.072, "depth_m": 45, "swl_m": 18, "formation": "Paskapoo / foothills edge", "source": "seed" },
+    { "lat": 51.060, "lng": -114.050, "depth_m": 52, "swl_m": 20, "formation": "Paskapoo / foothills edge", "source": "seed" },
+    { "lat": 51.030, "lng": -114.090, "depth_m": 38, "swl_m": 15, "formation": "Paskapoo / drift", "source": "seed" },
+    { "lat": 51.080, "lng": -114.100, "depth_m": 48, "swl_m": 19, "formation": "Paskapoo", "source": "seed" },
+
+    { "lat": 49.696, "lng": -112.845, "depth_m": 55, "swl_m": 22, "formation": "Southern plains aquifer systems", "source": "seed" },
+    { "lat": 49.710, "lng": -112.860, "depth_m": 48, "swl_m": 20, "formation": "Southern plains aquifer systems", "source": "seed" },
+    { "lat": 49.680, "lng": -112.830, "depth_m": 62, "swl_m": 25, "formation": "Southern plains aquifer systems", "source": "seed" },
+
+    { "lat": 50.041, "lng": -110.676, "depth_m": 58, "swl_m": 24, "formation": "SE prairie systems", "source": "seed" },
+    { "lat": 55.171, "lng": -118.795, "depth_m": 36, "swl_m": 14, "formation": "Peace Country drift", "source": "seed" },
+    { "lat": 56.727, "lng": -111.379, "depth_m": 44, "swl_m": 16, "formation": "Boreal / Athabasca area", "source": "seed" }
+  ]
+}
