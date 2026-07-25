@@ -1029,6 +1029,9 @@ function renderReport(r) {
   const settlement = px.nearest_settlement;
   const crime = px.crime_risk;
   const nearestCrimes = px.nearest_crimes || a.nearest_crimes || r.nearest_crimes;
+  const centre = r.location?.latitude != null && r.location?.longitude != null
+    ? { latitude: r.location.latitude, longitude: r.location.longitude }
+    : null;
   const solar = r.solar || a.solar;
   const landValue = r.land_value || a.land_value;
   const hardiness = r.hardiness || a.hardiness;
@@ -1097,8 +1100,8 @@ function renderReport(r) {
       ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
       ${solarSection(solar)}
       ${landValueSection(landValue)}
-      ${proximitySection(px, water, city, settlement, crime, nearestCrimes)}
-      ${wellDepthSection(r.predicted_well_depth || a.well_depth)}
+      ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
+      ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
 
       ${
         flags.length
@@ -1132,6 +1135,8 @@ function renderReport(r) {
         </div>
         ${servicesCtaSection(services)}
       </section>
+
+      ${quoteSection(r.service_quote || a.service_quote)}
 
       <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
         <span class="mono eyebrow">Next</span>
@@ -1296,7 +1301,7 @@ function topoProfileSvg(profile) {
     </svg>`;
 }
 
-function proximitySection(px, water, city, settlement, crime, nearestCrimes) {
+function proximitySection(px, water, city, settlement, crime, nearestCrimes, centre) {
   return `
     <section class="report-block">
       <h2>Proximity &amp; context</h2>
@@ -1366,12 +1371,12 @@ function proximitySection(px, water, city, settlement, crime, nearestCrimes) {
           </div>`
             : `<p class="fine">Crime context unavailable.</p>`
         }
-        ${nearestCrimesSection(nearestCrimes)}
+        ${nearestCrimesSection(nearestCrimes, centre)}
       </div>
     </section>`;
 }
 
-function nearestCrimesSection(nc) {
+function nearestCrimesSection(nc, centre) {
   if (!nc) return '';
   if (!nc.available) {
     return `
@@ -1417,6 +1422,7 @@ function nearestCrimesSection(nc) {
     <div class="crime-nearest" style="margin-top:1.1rem">
       <span class="mono">20 nearest EPS-reported occurrences</span>
       <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}</p>
+      ${crimeMinimap(nc, centre)}
       ${chips ? `<div class="plant-chips">${chips}</div>` : ''}
       <div class="econ-table-wrap crime-table-wrap">
         <table class="econ-table crime-table">
@@ -2414,7 +2420,121 @@ function suitBadgeClass(s) {
   return 'visit';
 }
 
-function wellDepthSection(w) {
+/**
+ * Small inline-SVG scatter minimap: site centre + nearby points, colour-coded
+ * by a magnitude value on a single-hue sequential ramp (validated against the
+ * paper background — see dataviz skill's ordinal-ramp check).
+ *
+ * @param {{ latitude:number, longitude:number }} centre
+ * @param {Array<{ lat:number, lng:number, value:number, tooltip:string }>} points
+ * @param {{ ramp:string[], legendLo:string, legendHi:string, unitLabel:string }} opts
+ */
+function pointsMinimap(centre, points, opts) {
+  const { ramp, legendLo, legendHi } = opts;
+  const clean = (points || []).filter(
+    (p) => Number.isFinite(p.lat) && Number.isFinite(p.lng)
+  );
+  if (!clean.length) return '';
+
+  const W = 240;
+  const H = 200;
+  const PAD = 22;
+
+  const mPerDegLat = 111320;
+  const mPerDegLng = 111320 * Math.cos((centre.latitude * Math.PI) / 180);
+  const toXY = (lat, lng) => ({
+    x: (lng - centre.longitude) * mPerDegLng,
+    y: (centre.latitude - lat) * mPerDegLat, // north is up
+  });
+
+  const pts = clean.map((p) => ({ ...toXY(p.lat, p.lng), value: p.value, tooltip: p.tooltip }));
+  const maxAbs = Math.max(
+    10,
+    ...pts.map((p) => Math.max(Math.abs(p.x), Math.abs(p.y)))
+  );
+  const scale = (Math.min(W, H) / 2 - PAD) / maxAbs;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  const values = pts.map((p) => p.value).filter(Number.isFinite);
+  const vMin = Math.min(...values);
+  const vMax = Math.max(...values);
+  const steps = ramp.length;
+  const bucketColor = (v) => {
+    if (!Number.isFinite(v) || vMax === vMin) return ramp[0];
+    const t = (v - vMin) / (vMax - vMin);
+    const idx = Math.min(steps - 1, Math.floor(t * steps));
+    return ramp[idx];
+  };
+
+  const dots = pts
+    .map((p) => {
+      const x = (cx + p.x * scale).toFixed(1);
+      const y = (cy + p.y * scale).toFixed(1);
+      const fill = bucketColor(p.value);
+      return `<circle cx="${x}" cy="${y}" r="4.5" fill="${fill}" stroke="var(--paper)" stroke-width="1.2"><title>${esc(p.tooltip)}</title></circle>`;
+    })
+    .join('');
+
+  const spanKm = ((maxAbs * 2) / 1000).toFixed(1);
+
+  return `
+    <div class="minimap">
+      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Minimap of nearby points around the site">
+        <rect x="0" y="0" width="${W}" height="${H}" fill="var(--paper)" stroke="var(--line)" />
+        ${dots}
+        <circle cx="${cx}" cy="${cy}" r="5.5" fill="var(--gold)" stroke="var(--ink)" stroke-width="1.2"><title>Site centre</title></circle>
+      </svg>
+      <div class="minimap-legend">
+        <span class="minimap-legend-swatch" style="background:var(--gold)"></span>
+        <span class="fine">Site</span>
+        <span class="minimap-ramp">
+          ${ramp.map((c) => `<span style="background:${c}"></span>`).join('')}
+        </span>
+        <span class="fine">${esc(legendLo)} → ${esc(legendHi)}</span>
+        <span class="fine minimap-span">· ~${spanKm} km across</span>
+      </div>
+    </div>`;
+}
+
+const WELL_DEPTH_RAMP = ['#2e2118', '#4a3524', '#64492f', '#7d5e3d', '#96784f', '#ac9268'];
+const CRIME_DISTANCE_RAMP = ['#5b3a73', '#7e5a96', '#9c7cb3', '#b09bc4']; // near→far (dark→light)
+
+function wellsMinimap(w, centre) {
+  const wells = w?.nearby_wells;
+  if (!wells?.length || !centre) return '';
+  const points = wells.map((well) => ({
+    lat: well.lat,
+    lng: well.lng,
+    value: well.depth_m,
+    tooltip: `${well.depth_m} m deep · ${well.distance_km} km away`,
+  }));
+  return pointsMinimap(centre, points, {
+    ramp: WELL_DEPTH_RAMP,
+    legendLo: 'Shallower',
+    legendHi: 'Deeper',
+  });
+}
+
+function crimeMinimap(nearestCrimes, centre) {
+  const list = nearestCrimes?.nearest;
+  if (!list?.length || !centre) return '';
+  const points = list
+    .filter((c) => Number.isFinite(c.latitude) && Number.isFinite(c.longitude))
+    .map((c) => ({
+      lat: c.latitude,
+      lng: c.longitude,
+      value: c.distance_m,
+      tooltip: `${c.occurrence_type || c.occurrence_category || 'Occurrence'} · ${Math.round(c.distance_m)} m away`,
+    }));
+  return pointsMinimap(centre, points, {
+    ramp: CRIME_DISTANCE_RAMP,
+    legendLo: 'Closer',
+    legendHi: 'Farther',
+  });
+}
+
+function wellDepthSection(w, centre) {
   if (!w) {
     return `
       <section class="report-block">
@@ -2465,12 +2585,80 @@ function wellDepthSection(w) {
         )}</strong></div>
       </div>
 
+      ${wellsMinimap(w, centre)}
+
       <div class="flag" data-severity="caution" style="margin-top:1rem">
         <strong>Required — consult a licensed driller</strong>
         <p>${esc(
           w.disclaimer ||
             'This is an estimate range only, not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
         )}</p>
+      </div>
+    </section>`;
+}
+
+function quoteSection(q) {
+  if (!q || !q.items?.length) return '';
+
+  return `
+    <section class="report-block quote-block">
+      <h2>Estimated investment</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Rough planning-level cost built from published day rates for the recommendations above —
+        not a firm quote. Final scope, site conditions, and materials are always confirmed on a site walk.
+      </p>
+
+      <div class="quote-items">
+        ${q.items
+          .map(
+            (it) => `
+          <div class="quote-item">
+            <div class="quote-item-head">
+              <span class="quote-item-name">${esc(it.serviceName)}</span>
+              <span class="quote-item-size mono">${esc(it.size)} ${esc(it.unit === 'flat' ? '' : it.unit)}</span>
+            </div>
+            <div class="quote-item-lines">
+              ${it.lineItems
+                .map(
+                  (l) => `
+                <div class="quote-line">
+                  <span>${esc(l.label)}</span>
+                  <span class="mono">${fmtCad(l.cost)}</span>
+                </div>`
+                )
+                .join('')}
+              ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round(it.materialsPct * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
+              <div class="quote-line quote-line-sub"><span>Mob/demob + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>
+            </div>
+            <div class="quote-item-total">
+              <span>Subtotal</span>
+              <span class="mono">${fmtCad(it.subtotal)}</span>
+            </div>
+            <p class="fine quote-item-range">likely range ${fmtCad(it.rangeLow)} – ${fmtCad(it.rangeHigh)} · ≈ ${it.fieldDays} field day${it.fieldDays === 1 ? '' : 's'}</p>
+            ${
+              it.valueProps?.length
+                ? it.valueProps
+                    .map(
+                      (vp) => `
+              <p class="fine quote-value-prop"><b>[${esc(vp.confidence)}]</b> ${esc(vp.headline)}${vp.caveat ? ` — ${esc(vp.caveat)}` : ''}</p>`
+                    )
+                    .join('')
+                : ''
+            }
+          </div>`
+          )
+          .join('')}
+      </div>
+
+      <div class="quote-total-card">
+        <span class="mono">Estimated total (${q.itemCount} item${q.itemCount === 1 ? '' : 's'}, ≈ ${q.totalFieldDays} field day${q.totalFieldDays === 1 ? '' : 's'})</span>
+        <div class="quote-total-value">${fmtCad(q.subtotal)}</div>
+        <p class="fine">likely range ${fmtCad(q.rangeLow)} – ${fmtCad(q.rangeHigh)}</p>
+      </div>
+
+      <div class="flag" data-severity="info" style="margin-top:1rem">
+        <strong>Planning estimate only</strong>
+        <p>${esc(q.disclaimer)}</p>
       </div>
     </section>`;
 }

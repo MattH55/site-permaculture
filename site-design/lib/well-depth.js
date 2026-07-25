@@ -134,6 +134,12 @@ export function predictWellDepth(centre, opts = {}) {
     target_hydrostratigraphic_unit: formation,
     nearby_well_count: count,
     nearby_well_search_radius_km: usedRadius,
+    nearby_wells: used.slice(0, 40).map((w) => ({
+      lat: round4(w.lat),
+      lng: round4(w.lng),
+      depth_m: w.depth_m,
+      distance_km: round1(w.distance_km),
+    })),
     confidence,
     disclaimer_required: true,
     disclaimer:
@@ -297,4 +303,8 @@ function num(v) {
 
 function round1(n) {
   return Math.round(n * 10) / 10;
+}
+
+function round4(n) {
+  return Math.round(n * 10000) / 10000;
 }

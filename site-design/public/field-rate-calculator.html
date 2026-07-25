@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expanding Edge — Field Rate Calculator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --paper:#EFE9DA;
+  --paper-deep:#E4DDC8;
+  --ink:#24301F;
+  --ink-soft:#5B6350;
+  --moss:#7C8B4F;
+  --moss-deep:#5C6A3A;
+  --clay:#A85C32;
+  --teal:#3C6E71;
+  --line:#C7BEA0;
+}
+
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;}
+.wrap{max-width:1180px;margin:0 auto;padding:36px 24px 80px;}
+
+.contour-band{position:relative;height:120px;overflow:hidden;margin-bottom:8px;}
+.contour-band svg{position:absolute;top:0;left:0;width:100%;height:100%;}
+
+header{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  border-bottom:3px solid var(--ink);padding-bottom:18px;margin-bottom:6px;
+  flex-wrap:wrap;gap:16px;
+}
+.title-block h1{font-family:'Zilla Slab',serif;font-weight:700;font-size:2.5rem;margin:0 0 4px;letter-spacing:-0.01em;}
+.title-block .sub{font-family:'IBM Plex Mono',monospace;font-size:0.8rem;color:var(--ink-soft);letter-spacing:0.04em;text-transform:uppercase;}
+.stamp{
+  font-family:'IBM Plex Mono',monospace;font-size:0.72rem;text-align:right;color:var(--moss-deep);
+  border:1.5px solid var(--moss-deep);border-radius:3px;padding:8px 12px;line-height:1.5;transform:rotate(-1.2deg);
+}
+.stamp b{color:var(--clay);}
+
+.grid{display:grid;grid-template-columns:1.05fr 0.95fr;gap:28px;margin-top:28px;}
+@media (max-width:860px){ .grid{grid-template-columns:1fr;} }
+
+.panel{background:var(--paper);border:1.5px solid var(--ink);position:relative;}
+.panel-head{
+  font-family:'IBM Plex Mono',monospace;font-size:0.72rem;text-transform:uppercase;letter-spacing:0.08em;
+  color:var(--paper);background:var(--ink);padding:8px 14px;display:flex;justify-content:space-between;
+}
+.panel-body{padding:20px;}
+
+.svc-list{display:flex;flex-direction:column;gap:8px;}
+.svc-card{
+  border:1px solid var(--line);background:var(--paper-deep);padding:12px 14px;cursor:pointer;
+  transition:border-color .15s, background .15s;display:flex;justify-content:space-between;align-items:center;gap:10px;
+}
+.svc-card:hover{border-color:var(--moss-deep);}
+.svc-card.active{border-color:var(--clay);background:#F3E7DC;box-shadow:inset 3px 0 0 var(--clay);}
+.svc-name{font-family:'Zilla Slab',serif;font-weight:600;font-size:1.02rem;}
+.svc-unit{font-family:'IBM Plex Mono',monospace;font-size:0.68rem;color:var(--ink-soft);text-transform:uppercase;}
+
+.field{margin-top:18px;}
+.field label{display:block;font-family:'IBM Plex Mono',monospace;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);margin-bottom:6px;}
+.field input[type=range]{width:100%;accent-color:var(--clay);}
+.range-val{font-family:'IBM Plex Mono',monospace;font-size:0.85rem;color:var(--clay);}
+.check-row{display:flex;align-items:center;gap:8px;margin-top:16px;}
+.check-row input{accent-color:var(--clay);width:16px;height:16px;}
+.check-row label{font-family:'Inter';font-size:0.85rem;color:var(--ink);margin:0;text-transform:none;letter-spacing:0;}
+.note{margin-top:18px;font-size:0.8rem;color:var(--ink-soft);border-top:1px dashed var(--line);padding-top:12px;line-height:1.5;}
+
+.legend-line{
+  display:flex;justify-content:space-between;align-items:baseline;padding:9px 0;
+  border-bottom:1px dotted var(--line);font-family:'IBM Plex Mono',monospace;font-size:0.85rem;
+}
+.legend-line .l{color:var(--ink);}
+.legend-line .r{color:var(--ink-soft);font-variant-numeric:tabular-nums;}
+.legend-line.sub .l{color:var(--ink-soft);padding-left:14px;}
+.legend-total{margin-top:14px;padding-top:14px;border-top:2.5px solid var(--ink);display:flex;justify-content:space-between;align-items:baseline;}
+.legend-total .l{font-family:'Zilla Slab',serif;font-weight:600;font-size:1.1rem;}
+.legend-total .r{font-family:'IBM Plex Mono',monospace;font-weight:600;font-size:1.5rem;color:var(--clay);}
+.range-band{margin-top:6px;font-family:'IBM Plex Mono',monospace;font-size:0.78rem;color:var(--teal);text-align:right;}
+.days-badge{
+  display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;background:var(--moss);
+  color:var(--paper);padding:2px 8px;border-radius:2px;margin-top:10px;
+}
+
+.export-row{display:flex;gap:10px;margin-top:18px;}
+.export-btn{
+  flex:1;font-family:'IBM Plex Mono',monospace;font-size:0.75rem;text-transform:uppercase;letter-spacing:0.04em;
+  background:var(--ink);color:var(--paper);border:none;padding:10px 12px;cursor:pointer;transition:background .15s;
+}
+.export-btn:hover{background:var(--moss-deep);}
+.export-btn.secondary{background:transparent;color:var(--ink);border:1px solid var(--ink);}
+.export-btn.secondary:hover{background:var(--paper-deep);}
+.export-msg{font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--teal);margin-top:8px;min-height:1em;}
+
+footer{margin-top:36px;font-family:'IBM Plex Mono',monospace;font-size:0.72rem;color:var(--ink-soft);text-align:center;letter-spacing:0.03em;}
+</style>
+</head>
+<body>
+
+<div class="contour-band">
+  <svg viewBox="0 0 1200 120" preserveAspectRatio="none">
+    <path d="M0,90 C150,40 300,120 450,70 C600,20 750,100 900,60 C1050,20 1150,80 1200,50" fill="none" stroke="#7C8B4F" stroke-width="1.4" opacity="0.55"/>
+    <path d="M0,70 C150,20 300,100 450,50 C600,0 750,80 900,40 C1050,0 1150,60 1200,30" fill="none" stroke="#7C8B4F" stroke-width="1.4" opacity="0.4"/>
+    <path d="M0,110 C150,60 300,140 450,90 C600,40 750,120 900,80 C1050,40 1150,100 1200,70" fill="none" stroke="#7C8B4F" stroke-width="1.4" opacity="0.7"/>
+    <path d="M0,50 C150,0 300,80 450,30 C600,-20 750,60 900,20 C1050,-20 1150,40 1200,10" fill="none" stroke="#A85C32" stroke-width="1.6" opacity="0.5"/>
+  </svg>
+</div>
+
+<div class="wrap">
+
+  <header>
+    <div class="title-block">
+      <h1>Field Rate Calculator</h1>
+      <div class="sub">Expanding Edge Permaculture Inc. · Rough Planning Estimates</div>
+    </div>
+    <div class="stamp">SOURCE&nbsp;: 2024 SHEET, +8% EST.<br>MODE&nbsp;&nbsp;: <b>PLANNING ONLY</b><br>REV.&nbsp;&nbsp;&nbsp;: FIELD ESTIMATE v2</div>
+  </header>
+
+  <div class="grid">
+
+    <div class="panel">
+      <div class="panel-head"><span>01 — Select Service</span><span id="unitTag"></span></div>
+      <div class="panel-body">
+        <div class="svc-list" id="svcList"></div>
+
+        <div id="sizeField" class="field">
+          <label id="sizeLabel">Size</label>
+          <input type="range" id="sizeRange" min="1" max="100" value="10">
+          <div class="range-val" id="sizeVal"></div>
+        </div>
+
+        <div class="field">
+          <label>One-way travel distance (km from Stony Plain)</label>
+          <input type="range" id="kmRange" min="0" max="400" value="40">
+          <div class="range-val" id="kmVal">40 km</div>
+        </div>
+
+        <div class="check-row">
+          <input type="checkbox" id="overnight">
+          <label for="overnight">Overnight stay required (living-out allowance)</label>
+        </div>
+
+        <div class="note" id="svcNote"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><span>02 — Estimate Breakdown</span><span id="jobDays"></span></div>
+      <div class="panel-body">
+        <div id="legendBody"></div>
+        <div class="export-row">
+          <button class="export-btn" id="copyBtn">Copy JSON</button>
+          <button class="export-btn secondary" id="downloadBtn">Download JSON</button>
+        </div>
+        <div class="export-msg" id="exportMsg"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer>
+    Estimates only — built from published day rates and rough production-rate assumptions. Machine day-rates already include the operator ("man &amp; machine" pricing), so no separate operator line is added. Final scope, site conditions, and materials always confirmed on a site walk before quoting.
+  </footer>
+
+</div>
+
+<script>
+// ---------------------------------------------------------------
+// Rate engine (same logic as rate_engine.js, inlined for a
+// dependency-free single-file artifact). Keep the two in sync if
+// you edit production-rate assumptions or base pricing.
+// ---------------------------------------------------------------
+const RATES = {
+  designerDay: 1025,
+  technicianDay: 600,
+  crew1Day: 1600,
+  crew2Day: 2150,
+  excavatorDay: 2700,
+  ctlDay: 1300,
+  mobDemob: 275,
+  kmRate: 1.85,
+  livingOutDay: 240
+};
+
+const CLAIMS = {
+  swale: {
+    confidence: 'moderate',
+    headline: 'Substantially reduces runoff and increases infiltration during normal rainfall events.',
+    caveat: 'Effectiveness drops sharply in extreme storms; site-specific to soil, slope, and watershed.'
+  },
+  pondCatchment: {
+    confidence: 'high',
+    headline: 'Harvestable volume is calculated directly for this property, not estimated generically.',
+    caveat: null
+  },
+  aquaculture: {
+    confidence: 'moderate-high',
+    headline: 'Unfed ponds typically yield ~50-100 lbs trout/acre on natural food alone; fed ponds can exceed 1,000 lbs/acre.',
+    caveat: 'Present as a range — local water quality and management heavily affect real results.'
+  },
+  windbreaks: {
+    confidence: 'moderate-high',
+    headline: 'Reduces wind speed and evapotranspiration roughly 10x the windbreak\'s height downwind.',
+    caveat: null
+  },
+  nitrogenFixers: {
+    confidence: 'moderate',
+    headline: 'Nitrogen-fixing support species build soil fertility as roots and leaf litter break down.',
+    caveat: 'Rate varies by species, climate, and soil — mechanism, not a universal number.'
+  }
+};
+function getClaims(refs){ return (refs||[]).map(id=>CLAIMS[id]).filter(Boolean); }
+
+const SERVICES = {
+  assessment: {
+    name:'Site Assessment & Land Report', unit:'flat', min:1,max:1,def:1,step:1,
+    note:'Flat-rate site walk, public topo/well-record pull, and a written summary report.',
+    claimRefs:[],
+    calc(){ return { lines:[{label:'Permaculture Technician · 1 day', cost:RATES.technicianDay, days:1}], materialsPct:0.05 }; }
+  },
+  swale: {
+    name:'Swale Design & Install', unit:'metres of swale', min:20,max:2000,def:200,step:10,
+    note:'Assumes ~150 m/day excavation (CTL excavator, operator included in rate) plus a matched Crew I day for shaping and berm planting, and a fixed 1-day contour layout visit.',
+    claimRefs:['swale'],
+    calc(size){
+      const digDays = Math.max(1, Math.ceil(size/150));
+      return { lines:[
+        {label:'Permaculture Designer · 1 day (contour layout)', cost:RATES.designerDay, days:1},
+        {label:`CTL/Compact Excavator · ${digDays} day(s) (incl. operator)`, cost:RATES.ctlDay*digDays, days:digDays},
+        {label:`Permaculture Crew I · ${digDays} day(s) (shaping & berm planting)`, cost:RATES.crew1Day*digDays, days:digDays},
+      ], materialsPct:0.10 };
+    }
+  },
+  pond: {
+    name:'Pond / Dam Excavation', unit:'cubic metres', min:50,max:5000,def:600,step:50,
+    note:'Assumes ~180 m3/day with a 20-30 tonne excavator; the day rate already includes the operator, so no separate machinery-operator line is added.',
+    claimRefs:['pondCatchment','aquaculture'],
+    calc(size){
+      const days = Math.max(1, Math.ceil(size/180));
+      return { lines:[
+        {label:`20-30 Tonne Excavator · ${days} day(s) (incl. operator)`, cost:RATES.excavatorDay*days, days},
+      ], materialsPct:0.05 };
+    }
+  },
+  shelterbelt: {
+    name:'Shelterbelt / Hedgerow Planting', unit:'metres', min:50,max:3000,def:300,step:25,
+    note:'Assumes ~300 m/day hand-planting pace with Crew I, plus a fixed 1-day species selection visit.',
+    claimRefs:['windbreaks'],
+    calc(size){
+      const plantDays = Math.max(1, Math.ceil(size/300));
+      return { lines:[
+        {label:'Permaculture Designer · 1 day (species selection)', cost:RATES.designerDay, days:1},
+        {label:`Permaculture Crew I · ${plantDays} day(s)`, cost:RATES.crew1Day*plantDays, days:plantDays},
+      ], materialsPct:0.20 };
+    }
+  },
+  foodforest: {
+    name:'Food Forest Guild Planting', unit:'guilds', min:1,max:30,def:4,step:1,
+    note:'Assumes ~4 guilds/day with a full Crew II, plus a fixed 1-day layout visit.',
+    claimRefs:['nitrogenFixers'],
+    calc(size){
+      const plantDays = Math.max(1, Math.ceil(size/4));
+      return { lines:[
+        {label:'Permaculture Designer · 1 day (guild layout)', cost:RATES.designerDay, days:1},
+        {label:`Permaculture Crew II · ${plantDays} day(s)`, cost:RATES.crew2Day*plantDays, days:plantDays},
+      ], materialsPct:0.20 };
+    }
+  }
+};
+
+function estimate(serviceId, size, opts={}){
+  const svc = SERVICES[serviceId];
+  const km = opts.km || 0;
+  const overnight = !!opts.overnight;
+  const clampedSize = svc.unit === 'flat' ? 1 : Math.min(svc.max, Math.max(svc.min, size));
+  const result = svc.calc(clampedSize);
+  const totalDays = result.lines.reduce((a,l)=>Math.max(a,l.days||0),0);
+  const labor = result.lines.reduce((a,l)=>a+l.cost,0);
+  const materials = labor * result.materialsPct;
+  const travel = RATES.mobDemob + km*RATES.kmRate*2;
+  const livingOut = overnight ? RATES.livingOutDay*totalDays : 0;
+  const subtotal = labor + materials + travel + livingOut;
+  return {
+    service: serviceId, serviceName: svc.name, unit: svc.unit, size: clampedSize, fieldDays: totalDays,
+    lineItems: result.lines.map(l=>({label:l.label, cost:Math.round(l.cost)})),
+    materialsPct: result.materialsPct, materialsCost: Math.round(materials),
+    travelCost: Math.round(travel), livingOutCost: Math.round(livingOut),
+    subtotal: Math.round(subtotal), rangeLow: Math.round(subtotal*0.9), rangeHigh: Math.round(subtotal*1.25),
+    valueProps: getClaims(svc.claimRefs),
+    currency:'CAD', ratesVersion:'2026-est-v1', generatedAt:new Date().toISOString()
+  };
+}
+
+function fmt(n){ return '$' + Math.round(n).toLocaleString('en-CA'); }
+
+let currentId = 'swale';
+let size = SERVICES[currentId].def;
+
+const svcList = document.getElementById('svcList');
+Object.entries(SERVICES).forEach(([id,s])=>{
+  const card = document.createElement('div');
+  card.className = 'svc-card' + (id===currentId ? ' active':'');
+  card.dataset.id = id;
+  card.innerHTML = `<span class="svc-name">${s.name}</span><span class="svc-unit">${s.unit}</span>`;
+  card.addEventListener('click', ()=>{
+    currentId = id; size = SERVICES[id].def;
+    document.querySelectorAll('.svc-card').forEach(c=>c.classList.remove('active'));
+    card.classList.add('active');
+    syncSizeControl(); render();
+  });
+  svcList.appendChild(card);
+});
+
+const sizeRange = document.getElementById('sizeRange');
+const sizeVal = document.getElementById('sizeVal');
+const sizeLabel = document.getElementById('sizeLabel');
+const sizeField = document.getElementById('sizeField');
+const kmRange = document.getElementById('kmRange');
+const kmVal = document.getElementById('kmVal');
+const overnight = document.getElementById('overnight');
+
+function syncSizeControl(){
+  const svc = SERVICES[currentId];
+  sizeRange.min = svc.min; sizeRange.max = svc.max; sizeRange.step = svc.step; sizeRange.value = svc.def;
+  sizeLabel.textContent = 'Size — ' + svc.unit;
+  sizeVal.textContent = svc.def + ' ' + svc.unit;
+  sizeField.style.display = svc.unit === 'flat' ? 'none' : 'block';
+  document.getElementById('svcNote').textContent = svc.note;
+}
+
+sizeRange.addEventListener('input', ()=>{ size = Number(sizeRange.value); sizeVal.textContent = size + ' ' + SERVICES[currentId].unit; render(); });
+kmRange.addEventListener('input', ()=>{ kmVal.textContent = kmRange.value + ' km'; render(); });
+overnight.addEventListener('change', render);
+
+function currentResult(){
+  return estimate(currentId, size, { km:Number(kmRange.value), overnight:overnight.checked });
+}
+
+function render(){
+  const r = currentResult();
+  const body = document.getElementById('legendBody');
+  let html = '';
+  r.lineItems.forEach(l=>{ html += `<div class="legend-line"><span class="l">${l.label}</span><span class="r">${fmt(l.cost)}</span></div>`; });
+  if(r.materialsPct>0){ html += `<div class="legend-line sub"><span class="l">Materials & contingency (${Math.round(r.materialsPct*100)}%)</span><span class="r">${fmt(r.materialsCost)}</span></div>`; }
+  html += `<div class="legend-line sub"><span class="l">Mob/demob + travel (${kmRange.value} km × 2)</span><span class="r">${fmt(r.travelCost)}</span></div>`;
+  if(r.livingOutCost>0){ html += `<div class="legend-line sub"><span class="l">Living-out allowance (${r.fieldDays} day(s))</span><span class="r">${fmt(r.livingOutCost)}</span></div>`; }
+  html += `<div class="legend-total"><span class="l">Estimated total</span><span class="r">${fmt(r.subtotal)}</span></div>`;
+  html += `<div class="range-band">likely range ${fmt(r.rangeLow)} – ${fmt(r.rangeHigh)}</div>`;
+  html += `<div class="days-badge">≈ ${r.fieldDays} field day${r.fieldDays===1?'':'s'} on site</div>`;
+  if(r.valueProps && r.valueProps.length){
+    html += '<div class="note" style="margin-top:16px;border-top:1px dashed var(--line);padding-top:12px;">';
+    r.valueProps.forEach(vp=>{
+      html += `<div style="margin-bottom:8px;"><b style="color:var(--moss-deep);">[${vp.confidence}]</b> ${vp.headline}${vp.caveat ? ' <span style="color:var(--ink-soft);">— '+vp.caveat+'</span>' : ''}</div>`;
+    });
+    html += '</div>';
+  }
+  body.innerHTML = html;
+  document.getElementById('jobDays').textContent = r.fieldDays + ' day est.';
+  document.getElementById('unitTag').textContent = r.unit === 'flat' ? '' : r.unit;
+  document.getElementById('exportMsg').textContent = '';
+}
+
+document.getElementById('copyBtn').addEventListener('click', async ()=>{
+  const json = JSON.stringify(currentResult(), null, 2);
+  try{
+    await navigator.clipboard.writeText(json);
+    document.getElementById('exportMsg').textContent = 'Copied JSON to clipboard.';
+  }catch(e){
+    document.getElementById('exportMsg').textContent = 'Copy failed — use Download instead.';
+  }
+});
+
+document.getElementById('downloadBtn').addEventListener('click', ()=>{
+  const r = currentResult();
+  const blob = new Blob([JSON.stringify(r, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = `estimate_${r.service}_${r.size}${r.unit==='flat'?'':('_'+r.unit.replace(/\s+/g,'-'))}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  document.getElementById('exportMsg').textContent = 'Downloaded ' + a.download;
+});
+
+syncSizeControl();
+render();
+</script>
+
+</body>
+</html>

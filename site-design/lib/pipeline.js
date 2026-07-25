@@ -12,7 +12,9 @@ import {
 import { gatherSiteLayers } from './sources.js';
 import { gatherProximity } from './proximity.js';
 import { buildTopologyView } from './topology.js';
+import { generateContourLines } from './contours.js';
 import { predictWellDepth } from './well-depth.js';
+import { buildServiceQuote } from './quote.js';
 import { planPlantings } from './planting.js';
 import { assessSolar } from './solar.js';
 import { fetchNearestEpsCrimes } from './crime.js';
@@ -91,6 +93,14 @@ export async function generateSiteReport(input = {}) {
     elevation_m: t.elevation_m,
     search_radius_km: 5,
   });
+
+  // Contour lines reduced from the same sampled elevation grid — feeds the
+  // rate engine's swale-meterage estimate (see lib/quote.js, lib/rate-engine.js).
+  const contourLines = generateContourLines(
+    layers.elevation?.elevations || [],
+    { rows: layers.elevation?.rows || 0, cols: layers.elevation?.cols || 0 },
+    bbox
+  );
 
   const waterDist =
     proximity.nearest_water_source?.distance_m ??
@@ -216,6 +226,18 @@ export async function generateSiteReport(input = {}) {
 
   const record = buildSiteRecord(siteInput);
 
+  // Recommendation engine → rough field-cost quote (site assessment always
+  // included; swale/pond/shelterbelt/food-forest lines only when rules.js
+  // fired that element). Booking/deposit payment intentionally not wired up.
+  const service_quote = buildServiceQuote({
+    design_elements: record.design_elements,
+    footprint_ha: siteInput.footprint_ha,
+    slope_percent: t.slope_percent,
+    contourLines,
+    siteCentre: centre,
+    propertyLabel: siteInput.site_name,
+  });
+
   // Attach full proximity / well / solar / crime blocks (incl. disclaimers) for the UI
   record.proximity_context = {
     ...siteInput.proximity_context,
@@ -229,6 +251,15 @@ export async function generateSiteReport(input = {}) {
   record.flood = flood;
   record.zoning = zoning;
   record.planting_plan = planting_plan;
+  record.service_quote = service_quote;
+  if (Array.isArray(record.data_provenance)) {
+    record.data_provenance.push({
+      field: 'service_quote',
+      source_name: 'Expanding Edge rate engine (2024 rate sheet, +8% est.) applied to fired design_elements',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: null,
+    });
+  }
 
   const report = {
     ...record,

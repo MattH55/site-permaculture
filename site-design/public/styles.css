@@ -617,6 +617,118 @@ h3 { font-size: 1.08rem; }
 .ee-services-foot {
   margin: 0.35rem 0 0;
 }
+
+/* Estimated investment (rate-engine quote) */
+.quote-items {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+.quote-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  background: #fff;
+}
+.quote-item-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.4rem;
+}
+.quote-item-name {
+  font-weight: 600;
+}
+.quote-item-size {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  white-space: nowrap;
+}
+.quote-item-lines {
+  display: grid;
+  gap: 0.25rem;
+}
+.quote-line {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.88rem;
+  padding: 0.2rem 0;
+  border-bottom: 1px dotted var(--line);
+}
+.quote-line-sub {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+.quote-item-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 2px solid var(--ink);
+  font-weight: 600;
+}
+.quote-item-range {
+  margin: 0.3rem 0 0;
+  text-align: right;
+}
+.quote-value-prop {
+  margin: 0.4rem 0 0;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line);
+}
+.quote-total-card {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(201, 162, 39, 0.08), rgba(91, 58, 115, 0.05));
+  text-align: center;
+}
+.quote-total-value {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 2.2rem;
+  color: var(--gold);
+  margin: 0.2rem 0;
+}
+
+/* Minimaps (nearby wells / crime occurrences) */
+.minimap {
+  margin: 0.9rem 0;
+  max-width: 320px;
+}
+.minimap svg {
+  display: block;
+  border-radius: var(--radius);
+}
+.minimap-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.4rem;
+}
+.minimap-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid var(--ink);
+  display: inline-block;
+}
+.minimap-ramp {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: 0.3rem;
+}
+.minimap-ramp span {
+  width: 12px;
+  height: 10px;
+  display: inline-block;
+  border-radius: 1px;
+}
+.minimap-span {
+  margin-left: auto;
+}
 .rec-service-links {
   display: flex;
   flex-wrap: wrap;
