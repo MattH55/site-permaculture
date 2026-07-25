@@ -635,6 +635,22 @@ h3 { font-size: 1.08rem; }
   border-bottom-color: var(--berry);
 }
 
+/* Phase 4 — plant value framing */
+.plant-card .value-chips { margin-bottom: 0.15rem; }
+.plant-card .plant-value-headline {
+  font-size: 0.95rem !important;
+  font-weight: 600;
+  color: var(--ink) !important;
+  margin: 0.1rem 0 0.25rem !important;
+}
+.plant-card[data-value="food_production"],
+.plant-card[data-value="medicinal"] { border-left: 3px solid var(--ok); }
+.plant-card[data-value="nitrogen_fixing"],
+.plant-card[data-value="soil_building"] { border-left: 3px solid #8b6914; }
+.plant-card[data-value="wind_protection"] { border-left: 3px solid #5c7a8a; }
+.plant-card[data-value="biodiversity"],
+.plant-card[data-value="shade"] { border-left: 3px solid var(--berry); }
+
 .elements { display: grid; gap: 0.7rem; margin-top: 0.7rem; }
 .el {
   border: 1px solid var(--line);

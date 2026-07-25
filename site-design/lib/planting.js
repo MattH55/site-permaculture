@@ -13,6 +13,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveSuppliers } from './vendors.js';
 import { applyPlantSpecs, loadPlantSpecsCache } from './plant-specs.js';
+import {
+  enrichPlantValues,
+  groupPlantsByValue,
+} from './plant-values.js';
+import { recommendationPriority } from './recommendation-values.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -47,6 +52,10 @@ export function planPlantings(site = {}, opts = {}) {
         crop._inline_economics
       );
       row.suppliers = resolveSuppliers(crop);
+      // Phase 4 — same value taxonomy as placement recommendations
+      const values = enrichPlantValues(row);
+      Object.assign(row, values);
+      row.priority = recommendationPriority(row);
       return row;
     })
     .filter((r) => r.score > 0)
@@ -55,6 +64,7 @@ export function planPlantings(site = {}, opts = {}) {
   const top = scored.slice(0, limit);
   const byLayer = groupBy(top, (r) => r.guild_layer || 'other');
   const byCategory = groupBy(top, (r) => r.category || 'other');
+  const plantValues = groupPlantsByValue(top);
 
   // Cash-crop shortlist for planning (has wholesale price)
   const cash = top
@@ -114,9 +124,13 @@ export function planPlantings(site = {}, opts = {}) {
       score: r.score,
       suitability: r.suitability,
       economics: r.economics,
+      primary_value: r.primary_value,
+      secondary_values: r.secondary_values,
     })),
     by_guild_layer: byLayer,
     by_category: byCategory,
+    by_value: plantValues.by_value,
+    value_counts: plantValues.value_counts,
     totals: {
       catalog_size: crops.length,
       scored_positive: scored.length,

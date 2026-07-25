@@ -20,6 +20,61 @@ npm start          # http://localhost:3040
 npm test
 ```
 
+## Recommendation engine (value-first)
+
+Placement and plants share one outcome taxonomy (water harvest, wind protection,
+food, soil building, N-fix, etc.). If→then rules still gate *eligibility*;
+values reframe and rank the product for Expanding Edge.
+
+| Surface | URL |
+|---------|-----|
+| Full map → report | `/` |
+| Embed UI (iframe) | `/embed` |
+| Drop-in widget | `/widget.js` |
+| Taxonomy API | `GET /api/v1/taxonomy` |
+| Slim recommendations | `POST /api/v1/recommendations` |
+| Full geospatial report | `POST /api/report` |
+
+### Embed on expandingedge.ca
+
+**Iframe**
+
+```html
+<iframe
+  src="https://site-permaculture.onrender.com/embed?preset=sturgeon&autorun=1"
+  title="Expanding Edge recommendations"
+  style="width:100%;max-width:560px;height:720px;border:1px solid #d9cfc4;border-radius:10px"
+></iframe>
+```
+
+**Script widget**
+
+```html
+<div id="ee-rec-widget"></div>
+<script
+  src="https://site-permaculture.onrender.com/widget.js"
+  data-ee-widget
+  data-target="#ee-rec-widget"
+  data-preset="sturgeon"
+  data-height="720"
+  async></script>
+```
+
+Or mark any container:
+
+```html
+<div data-ee-recommendations data-preset="calgary" data-height="680"></div>
+<script src="https://site-permaculture.onrender.com/widget.js" async></script>
+```
+
+**API** (CORS allowed for `expandingedge.ca`; add more via `EMBED_ORIGINS` or `EMBED_CORS_OPEN=1`)
+
+```bash
+curl -s -X POST https://site-permaculture.onrender.com/api/v1/recommendations \
+  -H "Content-Type: application/json" \
+  -d '{"preset_id":"sturgeon","footprint_ha":1,"include_plants":true}'
+```
+
 ## Deploy on Render
 
 Repo root is **Expanding Edge** (the folder that contains `site-design/`).

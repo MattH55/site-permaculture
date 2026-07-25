@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Site recommendations · Expanding Edge</title>
+  <meta name="description" content="Value-first permaculture recommendations for Alberta parcels — water, wind, food, soil." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/embed.css" />
+</head>
+<body class="ee-embed">
+  <div class="ee-embed-shell">
+    <header class="ee-embed-header">
+      <a class="ee-brand" href="https://www.expandingedge.ca/" target="_blank" rel="noopener">Expanding Edge</a>
+      <span class="ee-tag">Alberta site recommendations</span>
+    </header>
+
+    <p class="ee-lede">
+      Outcomes first — water harvest, wind protection, food, soil — matched to your region and parcel size.
+    </p>
+
+    <form id="ee-form" class="ee-form">
+      <label>
+        Region preset
+        <select id="preset_id" name="preset_id" required></select>
+      </label>
+      <label>
+        Parcel size (ha)
+        <input id="footprint_ha" name="footprint_ha" type="number" min="0.01" max="500" step="0.01" value="1" />
+      </label>
+      <label>
+        Slope (%)
+        <input id="slope_percent" name="slope_percent" type="number" min="0" max="45" step="0.5" value="5" />
+      </label>
+      <label>
+        Succession
+        <select id="successional_stage" name="successional_stage">
+          <option value="early_successional">Early (build soil first)</option>
+          <option value="mid_successional" selected>Mid (food forest ready)</option>
+          <option value="pioneer">Pioneer / disturbed</option>
+          <option value="climax">Climax / mature</option>
+        </select>
+      </label>
+      <label class="ee-check">
+        <input type="checkbox" id="include_plants" checked />
+        Include plant recommendations
+      </label>
+      <button type="submit" class="ee-btn" id="ee-run">Get recommendations</button>
+    </form>
+
+    <div id="ee-status" class="ee-status" hidden></div>
+    <div id="ee-results" class="ee-results" hidden></div>
+
+    <footer class="ee-embed-foot">
+      <a id="ee-full-tool" href="/" target="_blank" rel="noopener">Open full map → report tool</a>
+      ·
+      <a href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener">Book a consult</a>
+      · (780) 236-3630
+    </footer>
+  </div>
+  <script src="/embed-app.js" type="module"></script>
+</body>
+</html>

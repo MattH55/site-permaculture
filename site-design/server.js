@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { buildSiteRecord } from './lib/rules.js';
 import { ALBERTA_PRESETS } from './lib/alberta-presets.js';
 import { generateSiteReport } from './lib/pipeline.js';
+import {
+  buildEmbedRecommendations,
+  getTaxonomyPayload,
+} from './lib/embed-api.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,7 +38,42 @@ try {
 
 const app = express();
 
+/** Origins allowed to call the embed recommendation API (phase 3). */
+const EMBED_ORIGINS = new Set(
+  [
+    'https://www.expandingedge.ca',
+    'https://expandingedge.ca',
+    'http://localhost:3040',
+    'http://127.0.0.1:3040',
+    process.env.PUBLIC_BASE_URL,
+    process.env.EMBED_ORIGIN,
+    ...(process.env.EMBED_ORIGINS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ].filter(Boolean)
+);
+
+function corsForEmbed(req, res, next) {
+  const origin = req.headers.origin;
+  if (origin && (EMBED_ORIGINS.has(origin) || process.env.EMBED_CORS_OPEN === '1')) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Content-Type, Accept'
+    );
+    res.setHeader('Access-Control-Max-Age', '86400');
+  }
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+}
+
 app.use(express.json({ limit: '512kb' }));
+app.use(corsForEmbed);
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 app.use('/schema', express.static(path.join(__dirname, 'schema'), { maxAge: '1d' }));
 
@@ -96,10 +135,39 @@ app.post('/api/report', async (req, res) => {
 
 app.get('/healthz', (_req, res) => res.send('ok'));
 
+/**
+ * Phase 3 — embed / partner API
+ * Value taxonomy + EE services + Alberta presets (no site run).
+ */
+app.get('/api/v1/taxonomy', (_req, res) => {
+  res.json(getTaxonomyPayload());
+});
+
+/**
+ * Slim value-first recommendations from preset or site fields.
+ * Body: { preset_id?, footprint_ha?, terrain?, climate?, soil?, include_plants?, plant_limit? }
+ * Full map+layers report remains POST /api/report.
+ */
+app.post('/api/v1/recommendations', (req, res) => {
+  try {
+    const out = buildEmbedRecommendations(req.body || {});
+    res.json(out);
+  } catch (e) {
+    console.error('embed recommendations failed', e);
+    res.status(400).json({ error: e.message || 'recommendations failed' });
+  }
+});
+
+/** Pretty path for iframe embed page */
+app.get('/embed', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'embed.html'));
+});
+
 const port = Number(process.env.PORT) || 3040;
 // Bind 0.0.0.0 so Render (and other hosts) can reach the process
 app.listen(port, '0.0.0.0', () => {
   console.log(`Expanding Edge site design (Alberta map→report) on :${port}`);
+  console.log(`Embed: /embed · API: /api/v1/taxonomy · POST /api/v1/recommendations`);
   if (!process.env.GOOGLE_MAPS_API_KEY) {
     console.log('Note: set GOOGLE_MAPS_API_KEY for Google Maps. Fallback map UI works without it.');
   }

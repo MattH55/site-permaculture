@@ -1,0 +1,219 @@
+/* Compact embed theme — Expanding Edge soil-core palette */
+:root {
+  --ink: #1c1410;
+  --ink-soft: #5c5048;
+  --line: #d9cfc4;
+  --berry: #5b3a73;
+  --gold: #c9a227;
+  --ok: #3d6b4f;
+  --bg: #f7f2eb;
+  --card: #fff;
+  --radius: 8px;
+  --font: 'Source Serif 4', Georgia, serif;
+  --mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+body.ee-embed {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.ee-embed-shell {
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 0.85rem 1rem 1.25rem;
+}
+.ee-embed-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  margin-bottom: 0.35rem;
+}
+.ee-brand {
+  font-weight: 600;
+  color: var(--berry);
+  text-decoration: none;
+  font-size: 1.05rem;
+}
+.ee-tag {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.ee-lede {
+  margin: 0 0 0.85rem;
+  color: var(--ink-soft);
+  font-size: 0.92rem;
+}
+.ee-form {
+  display: grid;
+  gap: 0.55rem;
+  margin-bottom: 0.9rem;
+}
+.ee-form label {
+  display: grid;
+  gap: 0.2rem;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.ee-form select,
+.ee-form input[type="number"] {
+  font-family: var(--font);
+  font-size: 0.95rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ee-check {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.45rem;
+  text-transform: none !important;
+  font-family: var(--font) !important;
+  font-size: 0.9rem !important;
+  letter-spacing: normal !important;
+  color: var(--ink) !important;
+}
+.ee-btn {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  padding: 0.55rem 0.9rem;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--berry);
+  color: #fff;
+  cursor: pointer;
+}
+.ee-btn:hover { filter: brightness(1.08); }
+.ee-btn:disabled { opacity: 0.6; cursor: wait; }
+.ee-status {
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+  margin-bottom: 0.6rem;
+}
+.ee-status.is-error { color: #8b2e2e; }
+.ee-summary {
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+  font-size: 1.02rem;
+}
+.ee-section-title {
+  font-family: var(--mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+  margin: 0.9rem 0 0.4rem;
+}
+.ee-cards { display: grid; gap: 0.55rem; }
+.ee-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--berry);
+  border-radius: var(--radius);
+  padding: 0.65rem 0.75rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.ee-card[data-value="water_harvest"],
+.ee-card[data-value="water_storage"] { border-left-color: #2a6f97; }
+.ee-card[data-value="wind_protection"] { border-left-color: #5c7a8a; }
+.ee-card[data-value="food_production"],
+.ee-card[data-value="medicinal"] { border-left-color: var(--ok); }
+.ee-card[data-value="soil_building"],
+.ee-card[data-value="nitrogen_fixing"] { border-left-color: #8b6914; }
+.ee-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.ee-chip {
+  font-family: var(--mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+}
+.ee-chip.primary {
+  border-color: var(--berry);
+  color: var(--berry);
+  background: rgba(91, 58, 115, 0.08);
+}
+.ee-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.ee-card .how {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+.ee-services {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+.ee-svc {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.55rem 0.7rem;
+  display: grid;
+  gap: 0.25rem;
+}
+.ee-svc a {
+  color: var(--berry);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+.ee-embed-foot {
+  margin-top: 1.1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--line);
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+}
+.ee-embed-foot a { color: var(--berry); }
+.ee-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.ee-filter {
+  font-family: var(--mono);
+  font-size: 0.62rem;
+  padding: 0.22rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.ee-filter.is-active {
+  border-color: var(--berry);
+  color: var(--berry);
+  background: rgba(91, 58, 115, 0.1);
+  font-weight: 600;
+}

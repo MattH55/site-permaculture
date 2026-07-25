@@ -81,6 +81,8 @@ const state = {
   mode: 'google', // or 'fallback'
   /** Phase 2: filter placement cards by primary/secondary value id, or 'all' */
   valueFilter: 'all',
+  /** Phase 4: plant list value filter */
+  plantValueFilter: 'all',
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -2087,7 +2089,17 @@ function renderPlantingPane(plan) {
     return;
   }
 
+  // Keep plant value filter only when re-rendering same plan object
+  if (state._plantPlan !== plan) {
+    state.plantValueFilter = 'all';
+    state._plantPlan = plan;
+  }
+
   const areaHa = plan.site_filters?.footprint_ha;
+  const allPlants = plan.recommended;
+  const filtered = filterRecsByValue(allPlants, state.plantValueFilter);
+  const plantCounts =
+    plan.value_counts || computeValueCounts(allPlants);
   const cash = plan.top_cash_crops || [];
   const cashBlock =
     cash.length > 0
@@ -2101,6 +2113,7 @@ function renderPlantingPane(plan) {
           <thead>
             <tr>
               <th>Crop</th>
+              <th>Value</th>
               <th>Suit.</th>
               <th>Wholesale $/kg</th>
               <th>Yield / ha</th>
@@ -2115,8 +2128,11 @@ function renderPlantingPane(plan) {
                 const w = e.price_wholesale_cad_per_kg;
                 const y = e.yield_kg_per_ha;
                 const g = e.gross_revenue_cad;
+                const vl =
+                  VALUE_LABELS[c.primary_value] || c.primary_value || '—';
                 return `<tr>
                   <td><strong>${esc(c.common_name)}</strong></td>
+                  <td class="fine">${esc(vl)}</td>
                   <td>${esc(c.suitability)} (${esc(c.score)})</td>
                   <td>${w ? `${fmtMoney(w.low)}–${fmtMoney(w.high)}` : '—'}</td>
                   <td>${y ? `${esc(y.low)}–${esc(y.high)} kg` : '—'}</td>
@@ -2192,22 +2208,21 @@ function renderPlantingPane(plan) {
     }</p>`;
   }
 
-  const rows = plan.recommended
-    .map((p) => {
-      const e = p.economics;
-      const valueAdd =
-        e?.value_add?.gross_mid_cad
-          ? `<br><span class="fine">Value-add (${esc(
-              e.value_add.product || 'processed'
-            )}): ~${fmtMoney(e.value_add.gross_mid_cad)} if ×${esc(
-              e.value_add.multiplier
-            )} processing step</span>`
-          : '';
-      const econLine = e
-        ? e.gross_revenue_cad
-          ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
-              e.gross_revenue_cad.mid
-            )}/yr</strong> on parcel
+  function plantCard(p) {
+    const e = p.economics;
+    const valueAdd =
+      e?.value_add?.gross_mid_cad
+        ? `<br><span class="fine">Value-add (${esc(
+            e.value_add.product || 'processed'
+          )}): ~${fmtMoney(e.value_add.gross_mid_cad)} if ×${esc(
+            e.value_add.multiplier
+          )} processing step</span>`
+        : '';
+    const econLine = e
+      ? e.gross_revenue_cad
+        ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
+            e.gross_revenue_cad.mid
+          )}/yr</strong> on parcel
              (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)}
              wholesale ladder · ${esc(e.unit || 'kg')}
              ${e.establishment_years ? ` · ~${esc(e.establishment_years)} yr establish` : ''}
@@ -2219,12 +2234,31 @@ function renderPlantingPane(plan) {
              }
              ${valueAdd}
            </p>`
-          : e.non_cash_value
-            ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+        : e.non_cash_value
+          ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+          : ''
+      : '';
+    const vlab = VALUE_LABELS[p.primary_value] || p.primary_value;
+    const sec = (p.secondary_values || [])
+      .map((v) => VALUE_LABELS[v] || v)
+      .filter(Boolean)
+      .slice(0, 2);
+    const chips = p.primary_value
+      ? `<div class="value-chips">
+          <span class="value-chip primary">${esc(vlab || 'Plant')}</span>
+          ${sec.map((s) => `<span class="value-chip secondary">${esc(s)}</span>`).join('')}
+        </div>`
+      : '';
+    return `
+      <article class="plant-card" data-suit="${esc(p.suitability)}" data-value="${esc(
+        p.primary_value || ''
+      )}">
+        ${chips}
+        ${
+          p.value_headline
+            ? `<p class="value-headline plant-value-headline">${esc(p.value_headline)}</p>`
             : ''
-        : '';
-      return `
-      <article class="plant-card" data-suit="${esc(p.suitability)}">
+        }
         <div class="plant-head">
           <h3>${esc(p.common_name)}</h3>
           <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
@@ -2251,8 +2285,9 @@ function renderPlantingPane(plan) {
         ${supplierBlock(p.suppliers)}
         ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
       </article>`;
-    })
-    .join('');
+  }
+
+  const rows = filtered.map(plantCard).join('');
 
   const layers = plan.by_guild_layer
     ? Object.entries(plan.by_guild_layer)
@@ -2268,13 +2303,20 @@ function renderPlantingPane(plan) {
       <span class="mono eyebrow">Planting plan · crop schema + suppliers</span>
       <h1>What to plant</h1>
       <p class="lede">
-        EcoCrop-style suitability, farmfit economics, and vendor links for
-        <strong>seeds</strong>, <strong>saplings</strong>, and <strong>fertilizer</strong>.
+        Same value tags as site design (food, N-fix, wind, soil…) plus EcoCrop suitability,
+        farmfit economics, and vendor links.
       </p>
       <p class="fine">${esc(plan.phase_note || '')}</p>
       <div class="plant-chips">${layers}</div>
+      ${valueFilterBar(plantCounts, state.plantValueFilter, allPlants.length).replace(
+        'Filter by value',
+        'Filter plants by value'
+      )}
       ${cashBlock}
-      <div class="plant-list">${rows}</div>
+      <div class="plant-list" id="plant-list">${
+        rows ||
+        '<p class="fine">No plants in this value filter — try All.</p>'
+      }</div>
       <p class="fine" style="margin-top:1rem">
         Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
         ${esc(plan.site_filters?.frost_free_days ?? '—')} FFD,
@@ -2294,6 +2336,26 @@ function renderPlantingPane(plan) {
 
   $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
   $('btn-plant-map')?.addEventListener('click', showMap);
+
+  // Plant value filter (reuse chip UI; scope to planting pane)
+  const plantBar = el.querySelector('.value-filter-bar');
+  plantBar?.querySelectorAll('[data-value-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-value-filter') || 'all';
+      state.plantValueFilter = id;
+      plantBar.querySelectorAll('[data-value-filter]').forEach((b) => {
+        const on = b.getAttribute('data-value-filter') === id;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const list = filterRecsByValue(allPlants, id);
+      const host = el.querySelector('#plant-list');
+      if (!host) return;
+      host.innerHTML = list.length
+        ? list.map(plantCard).join('')
+        : '<p class="fine">No plants in this value filter — try All.</p>';
+    });
+  });
 }
 
 function supplierBlock(sup) {
