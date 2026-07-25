@@ -3,7 +3,6 @@
 node_modules/
 leads.jsonl
 .DS_Store
-data/wells/local-wells.json
 data/crops/pfaf/data.sqlite
 data/crops/pfaf/*.sqlite
 # Regenerable / large runtime artifacts
