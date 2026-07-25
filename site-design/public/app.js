@@ -1096,6 +1096,8 @@ function renderReport(r) {
         }</strong></div>
       </div>
 
+      ${mapEmbedSection()}
+
       ${topologySection(topo, a)}
       ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
       ${solarSection(solar)}
@@ -1197,6 +1199,8 @@ function renderReport(r) {
       </p>
     </div>`;
 
+  initReportMapEmbed(r);
+
   $('btn-again-map').onclick = () => {
     clearShape();
     showMap();
@@ -1221,6 +1225,68 @@ function renderReport(r) {
     a.click();
     URL.revokeObjectURL(a.href);
   };
+}
+
+/** Placeholder host for the live Google Map embed — populated by initReportMapEmbed() after insertion. */
+function mapEmbedSection() {
+  return `
+    <section class="report-block report-map-block">
+      <h2>Your parcel</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Live satellite/roadmap view — the exact boundary you drew, on real Google Maps imagery.
+      </p>
+      <div id="report-map" class="report-map"></div>
+    </section>`;
+}
+
+/**
+ * Draws the parcel polygon on a real (non-editable) Google Map inside the
+ * report. Reuses the already-loaded Maps JavaScript API — no extra Google
+ * API product needs to be enabled beyond what the drawing map already uses.
+ */
+function initReportMapEmbed(r) {
+  const el = $('report-map');
+  if (!el) return;
+  if (state.mode !== 'google' || typeof google === 'undefined') {
+    el.innerHTML = `<p class="fine" style="padding:1rem">Live map unavailable — showing planning data only.</p>`;
+    return;
+  }
+  const ring = r.geometry?.coordinates?.[0];
+  if (!Array.isArray(ring) || ring.length < 3) return;
+
+  const path = ring.map(([lng, lat]) => ({ lat, lng }));
+  const bounds = new google.maps.LatLngBounds();
+  path.forEach((p) => bounds.extend(p));
+
+  const map = new google.maps.Map(el, {
+    center: bounds.getCenter(),
+    zoom: 15,
+    mapTypeId: 'hybrid',
+    mapTypeControl: true,
+    mapTypeControlOptions: {
+      style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
+    },
+    streetViewControl: false,
+    fullscreenControl: true,
+    zoomControl: true,
+    gestureHandling: 'cooperative',
+  });
+
+  new google.maps.Polygon({
+    paths: path,
+    strokeColor: '#a8801f',
+    strokeWeight: 3,
+    fillColor: '#a8801f',
+    fillOpacity: 0.15,
+    map,
+    clickable: false,
+  });
+
+  google.maps.event.addListenerOnce(map, 'idle', () => {
+    map.fitBounds(bounds, 40);
+    google.maps.event.trigger(map, 'resize');
+  });
 }
 
 function topologySection(topo, a) {
