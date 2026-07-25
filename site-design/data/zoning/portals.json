@@ -1,0 +1,168 @@
+{
+  "note": "Municipality → zoning bylaw / GIS portal. Phase 2 does not auto-assign zoning_designation.",
+  "portals": [
+    {
+      "municipality": "Calgary",
+      "lat": 51.0447,
+      "lng": -114.0719,
+      "portal_url": "https://www.calgary.ca/planning/land-use.html",
+      "bylaw_url": "https://www.calgary.ca/planning/land-use/land-use-bylaw.html",
+      "gis_url": "https://maps.calgary.ca/",
+      "notes": "Land Use Bylaw 1P2007"
+    },
+    {
+      "municipality": "Edmonton",
+      "lat": 53.5461,
+      "lng": -113.4938,
+      "portal_url": "https://www.edmonton.ca/city_government/urban_planning_and_design/zoning-bylaw",
+      "bylaw_url": "https://www.edmonton.ca/city_government/bylaws/zoning-bylaw",
+      "gis_url": "https://maps.edmonton.ca/",
+      "notes": "Zoning Bylaw 20001"
+    },
+    {
+      "municipality": "St. Albert",
+      "lat": 53.6301,
+      "lng": -113.6256,
+      "portal_url": "https://stalbert.ca/dev/planning/",
+      "gis_url": "https://maps.stalbert.ca/",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Strathcona County",
+      "lat": 53.5264,
+      "lng": -113.2,
+      "portal_url": "https://www.strathcona.ca/council-county/bylaws-and-policies/land-use-bylaw/",
+      "gis_url": "https://maps.strathcona.ca/",
+      "notes": "Includes Sherwood Park"
+    },
+    {
+      "municipality": "Sturgeon County",
+      "lat": 53.8,
+      "lng": -113.6,
+      "portal_url": "https://www.sturgeoncounty.ca/living-here/planning-development/",
+      "notes": "Land Use Bylaw — Morinville area rural"
+    },
+    {
+      "municipality": "Parkland County",
+      "lat": 53.53,
+      "lng": -114.1,
+      "portal_url": "https://www.parklandcounty.com/en/county-office/Land-Use-Bylaw.aspx",
+      "gis_url": "https://opendata.parklandcounty.com/",
+      "notes": "Spruce Grove / Stony Plain rural fringe"
+    },
+    {
+      "municipality": "Leduc County",
+      "lat": 53.26,
+      "lng": -113.55,
+      "portal_url": "https://www.leduc-county.com/p/land-use-bylaw",
+      "notes": "Includes Beaumont / Leduc rural"
+    },
+    {
+      "municipality": "Rocky View County",
+      "lat": 51.2,
+      "lng": -114.2,
+      "portal_url": "https://www.rockyview.ca/LandUsePlanning",
+      "gis_url": "https://www.rockyview.ca/maps",
+      "notes": "Calgary rural fringe — County Atlas for parcels"
+    },
+    {
+      "municipality": "Foothills County",
+      "lat": 50.7,
+      "lng": -113.95,
+      "portal_url": "https://www.foothillscountyab.ca/p/land-use-bylaw",
+      "notes": "Okotoks / High River rural"
+    },
+    {
+      "municipality": "Red Deer County",
+      "lat": 52.27,
+      "lng": -113.81,
+      "portal_url": "https://www.rdcounty.ca/169/Planning-Development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Lethbridge",
+      "lat": 49.6956,
+      "lng": -112.8451,
+      "portal_url": "https://www.lethbridge.ca/city-government/bylaws/Pages/Land-Use-Bylaw.aspx",
+      "gis_url": "https://www.lethbridge.ca/maps",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Medicine Hat",
+      "lat": 50.0405,
+      "lng": -110.6764,
+      "portal_url": "https://www.medicinehat.ca/government/departments/planning-development-building-safety",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Grande Prairie",
+      "lat": 55.1707,
+      "lng": -118.7947,
+      "portal_url": "https://www.cityofgp.com/city-government/bylaws-policies/land-use-bylaw",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Airdrie",
+      "lat": 51.2917,
+      "lng": -114.0144,
+      "portal_url": "https://www.airdrie.ca/index.cfm?serviceID=843",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Spruce Grove",
+      "lat": 53.545,
+      "lng": -113.9008,
+      "portal_url": "https://www.sprucegrove.org/business/planning-development/",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Stony Plain",
+      "lat": 53.5264,
+      "lng": -114.0069,
+      "portal_url": "https://www.stonyplain.com/en/business/planning-and-development.aspx",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Morinville",
+      "lat": 53.8022,
+      "lng": -113.6497,
+      "portal_url": "https://www.morinville.ca/p/planning-development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Beaumont",
+      "lat": 53.3572,
+      "lng": -113.4147,
+      "portal_url": "https://www.beaumont.ab.ca/181/Planning-Development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Leduc",
+      "lat": 53.2594,
+      "lng": -113.5492,
+      "portal_url": "https://www.leduc.ca/planning-development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Cochrane",
+      "lat": 51.1918,
+      "lng": -114.467,
+      "portal_url": "https://www.cochrane.ca/p/planning-development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Okotoks",
+      "lat": 50.7261,
+      "lng": -113.9828,
+      "portal_url": "https://www.okotoks.ca/business-development/planning-development",
+      "notes": "Land Use Bylaw"
+    },
+    {
+      "municipality": "Red Deer",
+      "lat": 52.2681,
+      "lng": -113.8112,
+      "portal_url": "https://www.reddeer.ca/city-services/planning/",
+      "notes": "Land Use Bylaw"
+    }
+  ]
+}

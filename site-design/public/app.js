@@ -972,6 +972,13 @@ function renderReport(r) {
   const city = px.nearest_city;
   const settlement = px.nearest_settlement;
   const crime = px.crime_risk;
+  const nearestCrimes = px.nearest_crimes || a.nearest_crimes || r.nearest_crimes;
+  const solar = r.solar || a.solar;
+  const landValue = r.land_value || a.land_value;
+  const hardiness = r.hardiness || a.hardiness;
+  const flood = r.flood || a.flood;
+  const zoning = r.zoning || a.zoning;
+  const siteDrivers = r.site_drivers || r._meta?.site_drivers;
 
   // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
   const exportObj = JSON.parse(JSON.stringify(r));
@@ -979,6 +986,9 @@ function renderReport(r) {
   if (exportObj.topology?.grid?.elevations_m) {
     // keep normalized grid for re-use; drop raw if needed later
   }
+
+  const solarDaily =
+    solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
 
   $('report').innerHTML = `
     <div class="panel fade">
@@ -994,6 +1004,7 @@ function renderReport(r) {
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
         ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
         ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
+        ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
 
       <div class="summary-grid">
@@ -1004,11 +1015,16 @@ function renderReport(r) {
         <div class="stat"><span class="k">Landform</span><strong>${esc((r.terrain?.landform_position || '—').replace(/_/g, ' '))}</strong></div>
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
         <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
-        <div class="stat"><span class="k">Context</span><strong>${crime ? esc(crime.rural_or_urban_classification) : '—'}</strong></div>
+        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${
+          solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'
+        }</strong></div>
       </div>
 
       ${topologySection(topo, a)}
-      ${proximitySection(px, water, city, settlement, crime)}
+      ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
+      ${solarSection(solar)}
+      ${landValueSection(landValue)}
+      ${proximitySection(px, water, city, settlement, crime, nearestCrimes)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth)}
 
       ${
@@ -1027,7 +1043,13 @@ function renderReport(r) {
 
       <section class="report-block">
         <h2>Placement recommendations</h2>
-        <p class="fine" style="margin-top:-0.3rem">From live layers + the Alberta if→then ruleset. Confidence reflects data completeness and risk.</p>
+        <p class="fine" style="margin-top:-0.3rem">
+          <strong>Property-driven</strong> if→then rules — not a fixed Alberta checklist.
+          Each element fires only when this parcel’s measured attributes match its condition.
+          Windbreak often appears across open prairie sites because prevailing wind is almost always present;
+          slope, wetland, landform, and footprint change the rest.
+        </p>
+        ${siteDriversSection(siteDrivers)}
         <div class="elements">
           ${
             els.length
@@ -1040,7 +1062,7 @@ function renderReport(r) {
                 <span class="badge zone">Zone ${esc(e.zone)}</span>
                 ${confBadge(e.confidence)}
               </div>
-              <div class="basis">${esc(e.condition_basis)}</div>
+              <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis)}</div>
               <p>${esc(e.placement_notes)}</p>
             </article>`
                   )
@@ -1212,7 +1234,7 @@ function topoProfileSvg(profile) {
     </svg>`;
 }
 
-function proximitySection(px, water, city, settlement, crime) {
+function proximitySection(px, water, city, settlement, crime, nearestCrimes) {
   return `
     <section class="report-block">
       <h2>Proximity &amp; context</h2>
@@ -1282,8 +1304,521 @@ function proximitySection(px, water, city, settlement, crime) {
           </div>`
             : `<p class="fine">Crime context unavailable.</p>`
         }
+        ${nearestCrimesSection(nearestCrimes)}
       </div>
     </section>`;
+}
+
+function nearestCrimesSection(nc) {
+  if (!nc) return '';
+  if (!nc.available) {
+    return `
+      <div class="crime-nearest" style="margin-top:1rem">
+        <span class="mono">EPS Community Safety Map — nearest occurrences</span>
+        <p class="fine" style="margin:0.4rem 0 0">${esc(
+          nc.note || nc.error || 'Live EPS nearest-occurrence list not available for this site.'
+        )}</p>
+        ${
+          nc.source_url
+            ? `<p class="fine"><a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Open Community Safety Map</a></p>`
+            : ''
+        }
+      </div>`;
+  }
+  const rows = (nc.nearest || [])
+    .map(
+      (c, i) => `
+    <tr>
+      <td class="mono">${i + 1}</td>
+      <td>${fmtDistance(c.distance_m)}</td>
+      <td><strong>${esc(c.occurrence_type || '—')}</strong>
+        <div class="fine">${esc(c.occurrence_group || '')}${
+          c.occurrence_category ? ` · ${esc(c.occurrence_category)}` : ''
+        }</div>
+      </td>
+      <td>${esc(c.intersection || '—')}</td>
+      <td class="mono">${esc(c.date_reported || '—')}</td>
+    </tr>`
+    )
+    .join('');
+
+  const chips = Object.entries(nc.summary?.by_occurrence_type || {})
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(
+      ([t, n]) =>
+        `<span class="plant-chip"><strong>${esc(n)}</strong>${esc(t)}</span>`
+    )
+    .join('');
+
+  return `
+    <div class="crime-nearest" style="margin-top:1.1rem">
+      <span class="mono">20 nearest EPS-reported occurrences</span>
+      <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}</p>
+      ${chips ? `<div class="plant-chips">${chips}</div>` : ''}
+      <div class="econ-table-wrap crime-table-wrap">
+        <table class="econ-table crime-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Distance</th>
+              <th>Type of crime / occurrence</th>
+              <th>Intersection</th>
+              <th>Reported</th>
+            </tr>
+          </thead>
+          <tbody>${rows || '<tr><td colspan="5">No occurrences in search radius.</td></tr>'}</tbody>
+        </table>
+      </div>
+      <p class="fine" style="margin-top:0.6rem">${esc(nc.disclaimer || '')}
+        ${
+          nc.source_url
+            ? ` · <a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Community Safety Map</a>`
+            : ''
+        }
+      </p>
+    </div>`;
+}
+
+function solarSection(solar) {
+  if (!solar) {
+    return `<section class="report-block"><h2>Solar incidence &amp; viability</h2><p class="fine">Solar assessment unavailable.</p></section>`;
+  }
+  if (!solar.available) {
+    return `
+      <section class="report-block">
+        <h2>Solar incidence &amp; viability</h2>
+        <p class="fine">${esc(solar.error || 'No NRCan municipality match.')}</p>
+      </section>`;
+  }
+  const m = solar.mean_daily_global_insolation_kwh_m2 || {};
+  const y = solar.estimated_pv_yield || {};
+  const v = solar.viability || {};
+  const monthly = solar.monthly_latitude_tilt || [];
+  const bars = monthlySolarBars(monthly);
+
+  return `
+    <section class="report-block">
+      <h2>Solar incidence &amp; viability</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        NRCan municipality averages for <strong>${esc(solar.municipality)}</strong>
+        ${
+          solar.distance_to_station_municipality_km != null
+            ? ` (~${esc(solar.distance_to_station_municipality_km)} km from parcel)`
+            : ''
+        }
+        · band <strong class="solar-band solar-band-${esc(v.band || 'unknown')}">${esc(
+          v.band || '—'
+        )}</strong>
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Lat. tilt (annual mean)</span><strong>${
+          m.south_latitude_tilt != null ? `${esc(m.south_latitude_tilt)} kWh/m²·d` : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Horizontal</span><strong>${
+          m.horizontal_0 != null ? `${esc(m.horizontal_0)} kWh/m²·d` : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">2-axis tracking</span><strong>${
+          m.tracking_2axis != null ? `${esc(m.tracking_2axis)} kWh/m²·d` : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Est. fixed PV yield</span><strong>${
+          y.fixed_south_latitude_tilt_kwh_per_kwp_year != null
+            ? `${esc(y.fixed_south_latitude_tilt_kwh_per_kwp_year)} kWh/kWp·yr`
+            : '—'
+        }</strong></div>
+      </div>
+      <p class="fine" style="margin:0.75rem 0 0.5rem">${esc(v.summary || '')}</p>
+      ${
+        solar.aspect_guidance
+          ? `<p class="fine"><strong>Site aspect:</strong> ${esc(solar.aspect_guidance)}</p>`
+          : ''
+      }
+      ${bars}
+      <div class="flag" data-severity="info" style="margin-top:0.85rem">
+        <strong>Methodology note</strong>
+        <p>${esc(solar.methodology_note || '')} ${esc(solar.disclaimer || '')}</p>
+      </div>
+    </section>`;
+}
+
+function monthlySolarBars(monthly) {
+  if (!monthly?.length) return '';
+  const max = Math.max(
+    ...monthly.map((m) => Number(m.latitude_tilt_kwh_m2_day) || 0),
+    0.01
+  );
+  const cells = monthly
+    .map((m) => {
+      const v = Number(m.latitude_tilt_kwh_m2_day) || 0;
+      const h = Math.round((v / max) * 100);
+      const label = (m.month || '').slice(0, 3);
+      return `<div class="solar-bar" title="${esc(m.month)}: ${esc(v)} kWh/m²·d">
+        <i style="height:${h}%"></i>
+        <span>${esc(label)}</span>
+        <em>${esc(v)}</em>
+      </div>`;
+    })
+    .join('');
+  return `
+    <div class="solar-month-wrap">
+      <span class="mono topo-label">Monthly mean daily insolation — south latitude tilt (kWh/m²·d)</span>
+      <div class="solar-bars">${cells}</div>
+    </div>`;
+}
+
+function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
+  const zone = hardiness?.hardiness_zone || r.climate?.plant_hardiness_zone;
+  const ffd =
+    hardiness?.frost_free_days_estimate ?? r.climate?.frost_free_days;
+  const floodClass = flood?.flood_hazard_class || 'unknown';
+  const floodSeverity =
+    floodClass === 'floodway' || floodClass === 'high_hazard_fringe'
+      ? 'block'
+      : floodClass === 'flood_fringe'
+        ? 'caution'
+        : floodClass === 'no_data'
+          ? 'info'
+          : 'info';
+
+  return `
+    <section class="report-block">
+      <h2>Climate hardiness · flood · zoning</h2>
+      <div class="prox-grid phase2-grid">
+        <article class="prox-card">
+          <span class="mono">Plant hardiness (NRCan 4th ed.)</span>
+          <strong>Zone ${esc(zone || '—')}</strong>
+          <p>
+            ${ffd != null ? `~${esc(ffd)} frost-free days` : '—'}
+            ${
+              hardiness?.last_spring_frost_approx
+                ? `<br>Last spring frost ~${esc(hardiness.last_spring_frost_approx)}`
+                : ''
+            }
+            ${
+              hardiness?.first_fall_frost_approx
+                ? `<br>First fall frost ~${esc(hardiness.first_fall_frost_approx)}`
+                : ''
+            }
+          </p>
+          <p class="fine">${esc(
+            hardiness?.methodology_note ||
+              'Live NRCan plant hardiness zone query.'
+          )}</p>
+        </article>
+        <article class="prox-card flood-card" data-severity="${esc(floodSeverity)}">
+          <span class="mono">Flood hazard (Alberta FHIP)</span>
+          <strong>${esc(labelFlood(floodClass))}</strong>
+          <p>
+            ${
+              flood?.in_mapped_study_area
+                ? `Mapped study${
+                    flood.primary?.river_name
+                      ? ` · ${esc(flood.primary.river_name)}`
+                      : ''
+                  }${
+                    flood.primary?.study_name
+                      ? `<br>${esc(flood.primary.study_name)}`
+                      : ''
+                  }`
+                : esc(flood?.note || 'No FHIP polygon at this parcel.')
+            }
+          </p>
+          <p class="fine">
+            ${
+              floodClass === 'no_data'
+                ? 'no_data ≠ no risk — many rural watercourses are unmapped.'
+                : esc(flood?.note || '')
+            }
+            ${
+              flood?.awareness_map
+                ? ` · <a href="${esc(flood.awareness_map)}" target="_blank" rel="noopener">floods.alberta.ca</a>`
+                : ''
+            }
+          </p>
+        </article>
+        <article class="prox-card">
+          <span class="mono">Zoning (portal link — not auto-classified)</span>
+          <strong>${esc(zoning?.municipality || r.location?.municipality || '—')}</strong>
+          <p class="fine">
+            Designation: <em>not automated</em> (municipal bylaws / AltaLIS).
+          </p>
+          <p>
+            ${
+              zoning?.zoning_bylaw_url || zoning?.zoning_source_url
+                ? `<a href="${esc(
+                    zoning.zoning_bylaw_url || zoning.zoning_source_url
+                  )}" target="_blank" rel="noopener">Land use / zoning bylaw</a>`
+                : '—'
+            }
+            ${
+              zoning?.zoning_gis_url
+                ? `<br><a href="${esc(zoning.zoning_gis_url)}" target="_blank" rel="noopener">Municipal GIS map</a>`
+                : ''
+            }
+          </p>
+        </article>
+      </div>
+    </section>`;
+}
+
+function labelFlood(c) {
+  return (
+    {
+      floodway: 'Floodway',
+      high_hazard_fringe: 'High-hazard flood fringe',
+      flood_fringe: 'Flood fringe',
+      protected_fringe: 'Protected flood fringe',
+      other: 'Flood hazard area',
+      no_data: 'No mapped data',
+      unknown: 'Unknown',
+    }[c] || c || '—'
+  );
+}
+
+function landValueSection(lv) {
+  if (!lv) {
+    return `<section class="report-block"><h2>Land value</h2><p class="fine">Land value context unavailable.</p></section>`;
+  }
+  const src = lv.land_value_source || 'none';
+  const rural = lv.rural_aggregate;
+  const mun = lv.municipal_sample;
+  const stats = mun?.stats;
+  const target = lv.target_parcel;
+  const metricLabel =
+    stats?.metric === 'assessed_land_per_acre'
+      ? 'Assessed land $/acre'
+      : 'Assessed total $/acre (land + improvements)';
+
+  const refRate =
+    lv.land_value_per_acre ??
+    target?.land_value_per_acre ??
+    (stats?.median != null ? stats.median : null) ??
+    target?.assessed_total_per_acre ??
+    rural?.adjusted_cad_per_acre ??
+    null;
+
+  const violin = landValueViolinHtml(stats?.distribution || [], refRate, {
+    radius_m: lv.nearby_land_value_search_radius_m ?? mun?.search_radius_m,
+    n: lv.nearby_land_value_sample_n ?? mun?.sample_n ?? 0,
+    metricLabel,
+    dataYear: lv.land_value_data_year,
+  });
+
+  return `
+    <section class="report-block land-value-block">
+      <h2>Land value <span class="badge zone">Informational only</span></h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        <strong>Assessed / transfer-aggregate estimates — not market sale prices.</strong>
+        Alberta Land Titles sales are pay-per-lookup with no free bulk API.
+        This panel does not affect swale, keyline, or planting recommendations.
+      </p>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Source</span><strong>${esc(
+          sourceLabel(src)
+        )}</strong></div>
+        <div class="stat"><span class="k">$/acre (context)</span><strong>${
+          refRate != null ? fmtCad(refRate) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Parcel land value</span><strong>${
+          lv.assessed_land_value != null ? fmtCad(lv.assessed_land_value) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Data year</span><strong>${esc(
+          lv.land_value_data_year ?? '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Nearby sample n</span><strong>${esc(
+          lv.nearby_land_value_sample_n ?? 0
+        )}</strong></div>
+        <div class="stat"><span class="k">Search radius used</span><strong>${
+          lv.nearby_land_value_search_radius_m != null
+            ? fmtDistance(lv.nearby_land_value_search_radius_m)
+            : '—'
+        }</strong></div>
+      </div>
+
+      ${
+        mun?.available
+          ? `<p class="fine" style="margin:0.75rem 0 0.35rem">
+              Neighbourhood sample: <strong>${esc(mun.municipality)}</strong>
+              · radius <strong>${fmtDistance(mun.search_radius_m)}</strong>
+              ${mun.expanded ? ' (expanded to reach sample size)' : ''}
+              · n=<strong>${esc(mun.sample_n)}</strong>
+              ${stats?.median != null ? ` · median ${fmtCad(stats.median)}/acre` : ''}
+            </p>
+            <p class="fine"><span class="value-type-tag">${esc(metricLabel)}</span></p>
+            ${violin}`
+          : `<p class="fine" style="margin-top:0.75rem">${esc(
+              mun?.note || 'No municipal assessment sample for this location.'
+            )}</p>`
+      }
+
+      ${
+        rural
+          ? `<div class="rural-value-card">
+              <span class="mono">${
+                src === 'cli_municipality_aggregate'
+                  ? 'Rural / agricultural aggregate (CLI × municipality) — primary'
+                  : 'Agricultural transfer context (secondary — not primary for urban assessed parcels)'
+              }</span>
+              <div class="summary-grid" style="margin-top:0.5rem">
+                <div class="stat"><span class="k">Municipality</span><strong>${esc(
+                  rural.municipality
+                )}</strong></div>
+                <div class="stat"><span class="k">Raw (base year)</span><strong>${fmtCad(
+                  rural.raw_cad_per_acre
+                )}/ac · ${esc(rural.data_year_base)}</strong></div>
+                <div class="stat"><span class="k">FCC-adjusted</span><strong>${fmtCad(
+                  rural.adjusted_cad_per_acre
+                )}/ac · →${esc(rural.data_year_adjusted_to)}</strong></div>
+                <div class="stat"><span class="k">FCC cumulative</span><strong>+${esc(
+                  rural.fcc_cumulative_pct
+                )}%</strong></div>
+              </div>
+              <p class="fine" style="margin-top:0.5rem">${esc(rural.note || '')}
+                Trend factor from FCC Alberta cultivated farmland annual % changes
+                (raw base value always retained alongside adjusted estimate).
+              </p>
+            </div>`
+          : ''
+      }
+
+      <div class="flag" data-severity="caution" style="margin-top:0.85rem">
+        <strong>${esc(lv.value_basis?.label || 'Not a sale-price estimate')}</strong>
+        <p>${esc(lv.disclaimer || lv.value_basis?.detail || '')}</p>
+      </div>
+    </section>`;
+}
+
+function sourceLabel(src) {
+  if (src === 'municipal_assessment') return 'Municipal assessment';
+  if (src === 'cli_municipality_aggregate') return 'CLI municipality aggregate';
+  return 'None';
+}
+
+function fmtCad(n) {
+  if (n == null || n === '' || Number.isNaN(Number(n))) return '—';
+  return (
+    '$' +
+    Number(n).toLocaleString('en-CA', {
+      maximumFractionDigits: 0,
+    })
+  );
+}
+
+/** Lightweight violin/distribution chart (no Plotly dependency). */
+function landValueViolinHtml(dist, refRate, meta = {}) {
+  if (!dist?.length) {
+    return '<p class="fine">No neighbourhood $/acre distribution to plot.</p>';
+  }
+  const sorted = [...dist].filter((v) => v > 0).sort((a, b) => a - b);
+  if (!sorted.length) return '';
+
+  const min = sorted[0];
+  const max = sorted[sorted.length - 1];
+  const span = max - min || 1;
+  const bins = 12;
+  const counts = new Array(bins).fill(0);
+  for (const v of sorted) {
+    let i = Math.floor(((v - min) / span) * bins);
+    if (i >= bins) i = bins - 1;
+    counts[i]++;
+  }
+  const maxC = Math.max(...counts, 1);
+  const w = 360;
+  const h = 120;
+  const midY = h / 2;
+  const padX = 28;
+  const usable = w - padX * 2;
+
+  // Build symmetric density envelope (violin-ish)
+  const ptsTop = [];
+  const ptsBot = [];
+  for (let i = 0; i < bins; i++) {
+    const x = padX + ((i + 0.5) / bins) * usable;
+    const half = (counts[i] / maxC) * (midY - 12);
+    ptsTop.push(`${x.toFixed(1)},${(midY - half).toFixed(1)}`);
+    ptsBot.push(`${x.toFixed(1)},${(midY + half).toFixed(1)}`);
+  }
+  const poly = [...ptsTop, ...ptsBot.reverse()].join(' ');
+
+  let refLine = '';
+  if (refRate != null && refRate >= min && refRate <= max) {
+    const x = padX + ((refRate - min) / span) * usable;
+    refLine = `
+      <line x1="${x}" y1="8" x2="${x}" y2="${h - 8}" stroke="#8c5a1d" stroke-width="2" stroke-dasharray="4 3"/>
+      <text x="${x}" y="12" text-anchor="middle" class="svg-label" fill="#8c5a1d">parcel</text>`;
+  } else if (refRate != null) {
+    refLine = `<text x="${w / 2}" y="14" text-anchor="middle" class="svg-label" fill="#8c5a1d">parcel ref ${fmtCad(refRate)}/ac (off-scale)</text>`;
+  }
+
+  return `
+    <div class="lv-violin-wrap">
+      <span class="mono topo-label">${esc(meta.metricLabel || 'Assessed $/acre')} distribution
+        · n=${esc(meta.n)} · radius ${
+          meta.radius_m != null ? esc(fmtDistance(meta.radius_m)) : '—'
+        }${meta.dataYear != null ? ` · vintage ${esc(meta.dataYear)}` : ''}
+      </span>
+      <svg class="lv-violin" viewBox="0 0 ${w} ${h}" role="img" aria-label="Land value distribution">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#f7f8f3" stroke="#c8cec1"/>
+        <polygon points="${poly}" fill="rgba(91,58,115,0.28)" stroke="#5b3a73" stroke-width="1.2"/>
+        <line x1="${padX}" y1="${midY}" x2="${w - padX}" y2="${midY}" stroke="#c8cec1" stroke-width="1"/>
+        ${refLine}
+        <text x="${padX}" y="${h - 4}" class="svg-label">${fmtCad(min)}</text>
+        <text x="${w - padX}" y="${h - 4}" text-anchor="end" class="svg-label">${fmtCad(max)}</text>
+      </svg>
+      <p class="fine value-type-note">Chart shows <strong>assessed</strong> $/acre samples — not sale prices.</p>
+    </div>`;
+}
+
+function siteDriversSection(drivers) {
+  if (!drivers?.measured?.length) return '';
+  const gates = drivers.gates || {};
+  const gateChips = [
+    ['swale', gates.swale_eligible],
+    ['terrace', gates.terrace_eligible],
+    ['pond', gates.pond_eligible],
+    ['keyline', gates.keyline_eligible],
+    ['windbreak', gates.windbreak_eligible],
+    ['food forest', gates.food_forest_eligible],
+    ['Zone 1 intensive', gates.intensive_zone1_eligible],
+    ['earthworks OK', gates.earthworks_allowed],
+  ]
+    .map(
+      ([label, on]) =>
+        `<span class="plant-chip gate-chip ${on ? 'on' : 'off'}"><strong>${
+          on ? 'yes' : 'no'
+        }</strong>${esc(label)}</span>`
+    )
+    .join('');
+
+  const rows = drivers.measured
+    .map((d) => {
+      let val = d.value;
+      if (val == null) val = '—';
+      else if (typeof val === 'object') val = JSON.stringify(val);
+      else if (typeof val === 'boolean') val = val ? 'true' : 'false';
+      else if (d.unit) val = `${val} ${d.unit}`;
+      return `<tr>
+        <td class="mono">${esc(d.field)}</td>
+        <td><strong>${esc(val)}</strong></td>
+        <td class="fine">${esc(d.drives || '')}</td>
+      </tr>`;
+    })
+    .join('');
+
+  return `
+    <div class="site-drivers">
+      <p class="fine">${esc(drivers.note || '')}</p>
+      <div class="plant-chips" style="margin:0.5rem 0 0.75rem">${gateChips}</div>
+      <div class="econ-table-wrap">
+        <table class="econ-table drivers-table">
+          <thead>
+            <tr><th>Measured property</th><th>This parcel</th><th>What it controls</th></tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
 }
 
 function fmtDistance(m) {
@@ -1358,6 +1893,60 @@ function renderPlantingPane(plan) {
     </div>`
       : '';
 
+  function plantSpecLine(p) {
+    const bits = [];
+    if (p.hardiness_min || p.hardiness_max) {
+      bits.push(
+        `Hardiness ${esc(p.hardiness_min || '?')}–${esc(p.hardiness_max || '?')}`
+      );
+    }
+    if (p.frost_free_min_days != null) {
+      bits.push(`≥${esc(p.frost_free_min_days)} frost-free days`);
+    }
+    if (p.precip_min_mm != null || p.precip_max_mm != null) {
+      bits.push(
+        `Precip ${esc(p.precip_min_mm ?? '—')}–${esc(p.precip_max_mm ?? '—')} mm`
+      );
+    }
+    if (p.light_requirement) bits.push(esc(p.light_requirement));
+    if (p.water_requirement) bits.push(`Water: ${esc(p.water_requirement)}`);
+    if (p.spec_source) {
+      bits.push(
+        `<span class="spec-src" title="Grow-spec provenance">spec: ${esc(
+          p.spec_source
+        )}${p.spec_confidence ? ` · ${esc(p.spec_confidence)}` : ''}</span>`
+      );
+    }
+    const links = [];
+    if (p.plant_specs?.permapeople_url) {
+      links.push(
+        `<a href="${esc(p.plant_specs.permapeople_url)}" target="_blank" rel="noopener">Permapeople</a>`
+      );
+    }
+    if (p.plant_specs?.pfaf_url) {
+      links.push(
+        `<a href="${esc(p.plant_specs.pfaf_url)}" target="_blank" rel="noopener">PFAF</a>`
+      );
+    }
+    if (p.plant_specs?.usda_url) {
+      links.push(
+        `<a href="${esc(p.plant_specs.usda_url)}" target="_blank" rel="noopener">USDA PLANTS</a>`
+      );
+    }
+    if (p.nitrogen_fixer || p.plant_specs?.nitrogen_fixer) {
+      bits.push('N-fixer');
+    }
+    if (p.edibility_rating != null || p.plant_specs?.edibility_rating != null) {
+      bits.push(
+        `Edible ${esc(p.edibility_rating ?? p.plant_specs?.edibility_rating)}/5`
+      );
+    }
+    if (!bits.length && !links.length) return '';
+    return `<p class="plant-specs-line fine">${bits.join(' · ')}${
+      links.length ? ` · ${links.join(' · ')}` : ''
+    }</p>`;
+  }
+
   const rows = plan.recommended
     .map((p) => {
       const e = p.economics;
@@ -1399,7 +1988,10 @@ function renderPlantingPane(plan) {
           p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
         }${p.category ? ` · ${esc(p.category)}` : ''}${
           p.alberta_native ? ' · Alberta native' : ''
+        }${
+          p.alberta_in_range ? ' · USDA: Alberta in range' : ''
         }</div>
+        ${plantSpecLine(p)}
         ${
           p.reasons?.length
             ? `<p class="plant-ok">${p.reasons.map(esc).join(' · ')}</p>`

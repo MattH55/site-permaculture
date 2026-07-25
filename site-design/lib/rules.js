@@ -68,7 +68,7 @@ const ELEMENT_META = {
 
 /**
  * @param {object} site — partial site record (location, terrain, hydrology, soil, climate, existing_vegetation, footprint_ha?)
- * @returns {{ design_elements: object[], flags: object[] }}
+ * @returns {{ design_elements: object[], flags: object[], site_drivers: object }}
  */
 export function applyRules(site = {}) {
   const terrain = site.terrain || {};
@@ -79,6 +79,7 @@ export function applyRules(site = {}) {
   const slope = num(terrain.slope_percent);
   const elements = [];
   const flags = [];
+  const site_drivers = buildSiteDrivers(site);
 
   // Rule 5 first — wetland presence blocks earthworks and needs regulatory review
   if (hydro.wetland_class != null && hydro.wetland_class !== '') {
@@ -330,7 +331,113 @@ export function applyRules(site = {}) {
     design_elements.push(el);
   }
 
-  return { design_elements, flags };
+  return { design_elements, flags, site_drivers };
+}
+
+/**
+ * Explicit property measurements that drive if→then placement.
+ * Shown in the UI so recommendations don't look like a fixed Alberta checklist.
+ */
+function buildSiteDrivers(site = {}) {
+  const terrain = site.terrain || {};
+  const hydro = site.hydrology || {};
+  const soil = site.soil || {};
+  const climate = site.climate || {};
+  const veg = site.existing_vegetation || {};
+  const slope = num(terrain.slope_percent);
+  const footprint = num(site.footprint_ha);
+
+  const drivers = [
+    {
+      field: 'terrain.slope_percent',
+      value: slope,
+      unit: '%',
+      drives: 'swale vs terrace (2–15% swale; >15% terrace)',
+    },
+    {
+      field: 'soil.drainage_class',
+      value: soil.drainage_class || null,
+      drives: 'whether contour swales are safe to recommend',
+    },
+    {
+      field: 'terrain.landform_position',
+      value: terrain.landform_position || null,
+      drives: 'pond / water-harvesting earthworks (valley floor only)',
+    },
+    {
+      field: 'terrain.keypoint_present',
+      value: terrain.keypoint_present === true,
+      drives: 'keyline cultivation',
+    },
+    {
+      field: 'hydrology.wetland_class',
+      value: hydro.wetland_class ?? null,
+      drives: 'blocks earthworks when non-null (Water Act review)',
+    },
+    {
+      field: 'terrain.erosion_risk',
+      value: terrain.erosion_risk || null,
+      drives: 'earthworks confidence (high → needs_site_visit)',
+    },
+    {
+      field: 'climate.prevailing_wind_direction',
+      value: climate.prevailing_wind_direction || null,
+      drives: 'windbreak / shelterbelt orientation',
+    },
+    {
+      field: 'climate.chinook_exposure',
+      value: climate.chinook_exposure === true,
+      drives: 'windbreak priority + early-flowering species caution',
+    },
+    {
+      field: 'existing_vegetation.successional_stage',
+      value: veg.successional_stage || null,
+      drives: 'food forest guild vs soil-building first',
+    },
+    {
+      field: 'footprint_ha',
+      value: footprint,
+      unit: 'ha',
+      drives: 'herb spiral / keyhole beds when < 0.1 ha',
+    },
+    {
+      field: 'soil.depth_to_bedrock_cm / CLI',
+      value:
+        soil.depth_to_bedrock_cm != null || soil.cli_agricultural_capability_class
+          ? {
+              depth_to_bedrock_cm: soil.depth_to_bedrock_cm ?? null,
+              cli: soil.cli_agricultural_capability_class ?? null,
+            }
+          : null,
+      drives: 'hügelkultur / raised beds on shallow or poor CLI soils',
+    },
+  ];
+
+  // Which element families this parcel can activate (property-dependent gates)
+  const gates = {
+    earthworks_allowed: !(hydro.wetland_class != null && hydro.wetland_class !== ''),
+    swale_eligible:
+      slope != null &&
+      slope >= 2 &&
+      slope <= 15 &&
+      DRAINAGE_SWALE_OK.has(soil.drainage_class),
+    terrace_eligible: slope != null && slope > 15,
+    pond_eligible:
+      terrain.landform_position === 'valley_floor' && hydro.flood_risk_zone !== true,
+    keyline_eligible: terrain.keypoint_present === true,
+    windbreak_eligible: !!(
+      climate.prevailing_wind_direction || climate.chinook_exposure
+    ),
+    food_forest_eligible: READY_SUCCESSION.has(veg.successional_stage),
+    intensive_zone1_eligible: footprint != null && footprint < 0.1,
+  };
+
+  return {
+    note:
+      'Placement is property-driven: each recommendation fires only when measured site attributes match its if→then condition. Alberta climate often yields a windbreak for most open sites; slope, wetland, landform, and footprint change the rest.',
+    measured: drivers,
+    gates,
+  };
 }
 
 /**
@@ -403,7 +510,7 @@ export function buildSiteRecord(input = {}) {
     footprint_ha: num(input.footprint_ha),
   };
 
-  const { design_elements, flags } = applyRules(site);
+  const { design_elements, flags, site_drivers } = applyRules(site);
 
   const data_provenance = Array.isArray(input.data_provenance)
     ? input.data_provenance
@@ -421,10 +528,12 @@ export function buildSiteRecord(input = {}) {
     proximity_context: site.proximity_context,
     predicted_well_depth: site.predicted_well_depth,
     design_elements,
+    site_drivers,
     data_provenance,
     _meta: {
       footprint_ha: site.footprint_ha,
       flags,
+      site_drivers,
       engine: 'ee-site-design-rules-v1',
       region_focus: 'Alberta',
       generated_at: new Date().toISOString(),

@@ -8,10 +8,48 @@ natives** and **penalize tropical** species.
 
 | File | Contents |
 |---|---|
-| `alberta-catalog.json` | Cold-hardy food forest, medicinals, annuals, covers |
+| `vendor-catalog.json` | **Scraped plant varieties** from seed/nursery vendors (breadth) |
+| `vendor-listings.json` | Raw product listings (title, URL, vendor) from the scrape |
+| `alberta-catalog.json` | Curated cold-hardy food forest, medicinals, annuals, covers |
 | `alberta-natives.json` | **Alberta-native** trees, shrubs, prairie forbs/grasses |
 
-Load order: base catalog → natives → farmfit export (by `id`).
+Load order: vendor catalog → alberta catalog → natives → farmfit export (by `id`).  
+Curated packs **overwrite** agronomic fields for matching ids; **supplier links merge**.
+
+## Refresh vendor plant lists
+
+```bash
+npm run scrape:vendors
+```
+
+Scrapes Shopify/WooCommerce/sitemaps/HTML plant finders for vendors in `vendors.json` (plant sellers only — not Amazon/fertilizer). Re-run periodically; stock and names change.
+
+## Plant growing specifications
+
+| Priority | Source | Role | Access |
+|----------|--------|------|--------|
+| 1 | **[Permapeople](https://permapeople.org)** | Primary API — layer/guild, light, water, edible | Free API keys (CC BY-SA 4.0) |
+| 2 | **[PFAF](https://pfaf.org)** | Richest temperate content — hardiness, soil/shade/moisture, edibility 0–5, N-fix, food forest | Local SQLite offline mirror (not live scrape) |
+| 3 | **[USDA PLANTS](https://plants.usda.gov)** | NA range, Alberta occurrence, FFD, precip, pH, soils | Public domain REST |
+| 4 | **[Perenual](https://perenual.com)** | Optional freemium fallback | `PERENUAL_API_KEY` |
+
+```bash
+# Once: community PFAF mirror (~47 MB) — attribute pfaf.org
+npm run pfaf:download
+
+# Curated Alberta crops → PFAF + USDA (+ Permapeople if keys set)
+npm run enrich:plant-specs:curated
+
+# Broader catalog
+# $env:PERMAPEOPLE_KEY_ID="..."; $env:PERMAPEOPLE_KEY_SECRET="..."
+npm run enrich:plant-specs -- --limit 200
+```
+
+Writes `data/crops/plant-specs.json`. Scorer sets `spec_source` e.g. `pfaf+usda_plants`.
+
+**PFAF licensing:** Official bulk DB sold on pfaf.org. We use the [community SQLite mirror](https://github.com/saulshanabrook/pfaf-data) for research/offline only — **attribute pfaf.org**; do not redistribute the raw DB commercially without a PFAF license. `data/crops/pfaf/data.sqlite` is gitignored.
+
+**Attribution:** Permapeople.org (CC BY-SA 4.0); pfaf.org; USDA PLANTS (public domain).
 
 ## Export from farmfit
 

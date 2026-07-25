@@ -1,0 +1,24 @@
+{
+  "source_name": "FCC Farmland Values Report — Alberta cultivated farmland annual % change",
+  "source_url": "https://www.fcc-fac.ca/en/knowledge/economics/farmland-values-report",
+  "note": "Provincial averages for cultivated farmland. Used only to trend-adjust older aggregate base values; raw base values are always retained. Not a parcel appraisal.",
+  "land_type": "cultivated",
+  "region": "Alberta",
+  "annual_pct_change": {
+    "2016": 7.1,
+    "2017": 10.2,
+    "2018": 7.4,
+    "2019": 3.3,
+    "2020": 6.0,
+    "2021": 8.3,
+    "2022": 10.0,
+    "2023": 6.5,
+    "2024": 7.1,
+    "2025": 11.4
+  },
+  "regional_notes": {
+    "northern": "Often tracks near provincial average; northern AB reported strong gains in recent years.",
+    "central": "Includes capital-region fringe demand.",
+    "southern": "Irrigated pockets can exceed dryland % moves — FCC region tables refine this when available."
+  }
+}

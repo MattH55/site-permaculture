@@ -1,0 +1,98 @@
+{
+  "note": "Approximate Alberta frost windows by hardiness zone / latitude band. Planning context only — microclimate, slope, and chinook can shift dates by weeks.",
+  "source_name": "ECCC climate normals (generalized) + NRCan hardiness zone crosswalk",
+  "by_zone": {
+    "1a": {
+      "region": "far north AB",
+      "frost_free_days": 70,
+      "last_spring_frost": "Jun 15",
+      "first_fall_frost": "Aug 25"
+    },
+    "1b": {
+      "region": "northern AB",
+      "frost_free_days": 80,
+      "last_spring_frost": "Jun 10",
+      "first_fall_frost": "Aug 30"
+    },
+    "2a": {
+      "region": "northern parkland",
+      "frost_free_days": 95,
+      "last_spring_frost": "Jun 1",
+      "first_fall_frost": "Sep 5"
+    },
+    "2b": {
+      "region": "north-central AB",
+      "frost_free_days": 105,
+      "last_spring_frost": "May 25",
+      "first_fall_frost": "Sep 10"
+    },
+    "3a": {
+      "region": "central parkland",
+      "frost_free_days": 115,
+      "last_spring_frost": "May 20",
+      "first_fall_frost": "Sep 15"
+    },
+    "3b": {
+      "region": "central AB",
+      "frost_free_days": 120,
+      "last_spring_frost": "May 15",
+      "first_fall_frost": "Sep 18"
+    },
+    "4a": {
+      "region": "Edmonton metro / central",
+      "frost_free_days": 125,
+      "last_spring_frost": "May 12",
+      "first_fall_frost": "Sep 20"
+    },
+    "4b": {
+      "region": "southern parkland / foothills warm pockets",
+      "frost_free_days": 130,
+      "last_spring_frost": "May 8",
+      "first_fall_frost": "Sep 22"
+    },
+    "5a": {
+      "region": "southern AB chinook belt",
+      "frost_free_days": 140,
+      "last_spring_frost": "May 1",
+      "first_fall_frost": "Sep 28"
+    },
+    "5b": {
+      "region": "Lethbridge / Medicine Hat area",
+      "frost_free_days": 145,
+      "last_spring_frost": "Apr 28",
+      "first_fall_frost": "Oct 1"
+    }
+  },
+  "by_latitude": [
+    {
+      "lat_min": 55,
+      "lat_max": 60,
+      "region": "northern AB (lat band)",
+      "frost_free_days": 90,
+      "last_spring_frost": "Jun 5",
+      "first_fall_frost": "Sep 1"
+    },
+    {
+      "lat_min": 52.5,
+      "lat_max": 55,
+      "region": "central AB (lat band)",
+      "frost_free_days": 120,
+      "last_spring_frost": "May 15",
+      "first_fall_frost": "Sep 18"
+    },
+    {
+      "lat_min": 49,
+      "lat_max": 52.5,
+      "region": "southern AB (lat band)",
+      "frost_free_days": 135,
+      "last_spring_frost": "May 5",
+      "first_fall_frost": "Sep 25"
+    }
+  ],
+  "default": {
+    "region": "Alberta default",
+    "frost_free_days": 120,
+    "last_spring_frost": "May 15",
+    "first_fall_frost": "Sep 18"
+  }
+}

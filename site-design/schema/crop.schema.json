@@ -59,6 +59,30 @@
       }
     },
     "chinook_sensitive": { "type": "boolean" },
+    "spec_source": {
+      "type": "string",
+      "description": "Provenance of grow specs. Examples: curated, inferred, usda_plants, pfaf, permapeople, pfaf+usda_plants, permapeople+pfaf+usda_plants."
+    },
+    "nitrogen_fixer": { "type": ["boolean", "null"] },
+    "edibility_rating": {
+      "type": ["number", "null"],
+      "description": "PFAF 0–5 edibility rating when available."
+    },
+    "food_forest": { "type": ["boolean", "null"] },
+    "spec_confidence": {
+      "type": ["string", "null"],
+      "enum": ["high", "moderate", "low", null]
+    },
+    "light_requirement": { "type": ["string", "null"] },
+    "water_requirement": { "type": ["string", "null"] },
+    "alberta_in_range": {
+      "type": ["boolean", "null"],
+      "description": "USDA PLANTS distribution lists Alberta (or Canada native with AB occurrence)."
+    },
+    "plant_specs": {
+      "type": ["object", "null"],
+      "description": "Cross-ref payload from Permapeople (primary) and/or USDA PLANTS (secondary)."
+    },
     "notes": { "type": ["string", "null"] },
     "tags": {
       "type": "array",

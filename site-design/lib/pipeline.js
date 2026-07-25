@@ -14,6 +14,12 @@ import { gatherProximity } from './proximity.js';
 import { buildTopologyView } from './topology.js';
 import { predictWellDepth } from './well-depth.js';
 import { planPlantings } from './planting.js';
+import { assessSolar } from './solar.js';
+import { fetchNearestEpsCrimes } from './crime.js';
+import { assessLandValue } from './land-value.js';
+import { queryHardiness } from './hardiness.js';
+import { queryFloodHazard } from './flood.js';
+import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
 
 const cache = new Map();
@@ -36,13 +42,31 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
       site_name: input.site_name,
     }),
     gatherProximity(centre, bbox),
+    fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }).catch(
+      (e) => ({
+        available: false,
+        nearest: [],
+        error: e.message,
+      })
+    ),
+    queryHardiness(centre).catch((e) => ({
+      available: false,
+      hardiness_zone: null,
+      error: e.message,
+    })),
+    queryFloodHazard(centre, bbox).catch((e) => ({
+      available: false,
+      flood_hazard_class: 'unknown',
+      flood_risk_zone: false,
+      error: e.message,
+    })),
   ]);
 
   const areaHa = polygonAreaHa(ring);
@@ -82,6 +106,40 @@ export async function generateSiteReport(input = {}) {
     layers.preset?.nearest_town ||
     '';
 
+  // NRCan municipality solar (local CSV) — property location dependent
+  const solar = assessSolar(centre, {
+    aspect: t.aspect,
+    slope_percent: t.slope_percent,
+    nearest_name: nearestName || layers.preset?.municipality,
+  });
+
+  // Land value — informational only (does NOT feed placement rules)
+  const land_value = await assessLandValue(centre, {
+    footprint_ha: Math.round(areaHa * 1000) / 1000,
+    nearest_city: proximity.nearest_city,
+    nearest_settlement: proximity.nearest_settlement,
+    cli_class: soils.cli_class || null,
+  }).catch((e) => ({
+    land_value_source: 'none',
+    error: e.message,
+    disclaimer:
+      'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
+  }));
+
+  // Zoning portal lookup (designation not auto-assigned — municipal bylaws)
+  const zoning = resolveZoningContext(centre, {
+    nearest_city: proximity.nearest_city,
+    nearest_settlement: proximity.nearest_settlement,
+    municipality: layers.preset?.municipality,
+  });
+
+  // Prefer live NRCan hardiness + frost table over Alberta preset alone
+  const hardinessZone =
+    hardiness?.hardiness_zone || climate.plant_hardiness_zone;
+  const frostFree =
+    hardiness?.frost_free_days_estimate ?? climate.frost_free_days;
+  const floodRisk = !!flood?.flood_risk_zone;
+
   const siteInput = {
     site_name: input.site_name || layers.preset?.label || 'Drawn parcel',
     footprint_ha: Math.round(areaHa * 1000) / 1000,
@@ -90,7 +148,8 @@ export async function generateSiteReport(input = {}) {
       latitude: centre.latitude,
       longitude: centre.longitude,
       elevation_m: t.elevation_m,
-      municipality: layers.preset?.municipality || '',
+      municipality:
+        zoning.municipality || layers.preset?.municipality || '',
       nearest_town: nearestName,
     },
     terrain: {
@@ -107,7 +166,7 @@ export async function generateSiteReport(input = {}) {
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
       water_table_depth_m: null,
-      flood_risk_zone: false,
+      flood_risk_zone: floodRisk,
     },
     soil: {
       soil_series: soils.soil_group || '',
@@ -119,8 +178,8 @@ export async function generateSiteReport(input = {}) {
       ph: null,
     },
     climate: {
-      plant_hardiness_zone: climate.plant_hardiness_zone,
-      frost_free_days: climate.frost_free_days,
+      plant_hardiness_zone: hardinessZone,
+      frost_free_days: frostFree,
       growing_degree_days_base5: climate.growing_degree_days_base5,
       prevailing_wind_direction: climate.prevailing_wind_direction,
       chinook_exposure: climate.chinook_exposure,
@@ -139,7 +198,17 @@ export async function generateSiteReport(input = {}) {
       crime_risk: stripCrimeForSchema(proximity.crime_risk),
     },
     predicted_well_depth: stripWellForSchema(predicted_well_depth),
-    data_provenance: buildProvenance(layers, proximity, predicted_well_depth),
+    data_provenance: buildProvenance(
+      layers,
+      proximity,
+      predicted_well_depth,
+      solar,
+      nearest_crimes,
+      land_value,
+      hardiness,
+      flood,
+      zoning
+    ),
   };
 
   // Step 8-style join: EcoCrop / Growing Guide planting plan (after climate+soil assembled)
@@ -147,12 +216,18 @@ export async function generateSiteReport(input = {}) {
 
   const record = buildSiteRecord(siteInput);
 
-  // Attach full proximity / well blocks (incl. disclaimers) for the UI
+  // Attach full proximity / well / solar / crime blocks (incl. disclaimers) for the UI
   record.proximity_context = {
     ...siteInput.proximity_context,
     crime_risk: proximity.crime_risk,
+    nearest_crimes,
   };
   record.predicted_well_depth = predicted_well_depth;
+  record.solar = solar;
+  record.land_value = land_value;
+  record.hardiness = hardiness;
+  record.flood = flood;
+  record.zoning = zoning;
   record.planting_plan = planting_plan;
 
   const report = {
@@ -189,6 +264,12 @@ export async function generateSiteReport(input = {}) {
       },
       proximity,
       well_depth: predicted_well_depth,
+      solar,
+      nearest_crimes,
+      land_value,
+      hardiness,
+      flood,
+      zoning,
       planting: {
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
@@ -198,7 +279,7 @@ export async function generateSiteReport(input = {}) {
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v4-planting',
+      pipeline: 'bbox-live-v7-phase2',
       cache: 'miss',
       cache_key: key,
     },
@@ -241,7 +322,17 @@ function inferDrainage(wetlands, soils, terrain) {
   return 'well';
 }
 
-function buildProvenance(layers, proximity, well) {
+function buildProvenance(
+  layers,
+  proximity,
+  well,
+  solar,
+  nearest_crimes,
+  land_value,
+  hardiness,
+  flood,
+  zoning
+) {
   const rows = [];
   if (layers.elevation) {
     rows.push({
@@ -330,6 +421,65 @@ function buildProvenance(layers, proximity, well) {
       source_name: `Well depth IDW (${well._meta?.well_data_source || 'wells'}) · AGS Map 610 bedrock proxy`,
       source_date: new Date().toISOString().slice(0, 10),
       source_url: 'https://groundwater.alberta.ca/WaterWells/d/',
+    });
+  }
+  if (solar?.available) {
+    rows.push({
+      field: 'solar',
+      source_name: solar.source_name || 'NRCan photovoltaic / solar resource maps',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: solar.source_url,
+    });
+  }
+  if (nearest_crimes?.available || nearest_crimes?.in_eps_coverage) {
+    rows.push({
+      field: 'proximity_context.nearest_crimes',
+      source_name:
+        nearest_crimes.source_name ||
+        'EPS Community Safety Map (Occurrences CSDP)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url:
+        nearest_crimes.source_url ||
+        'https://experience.arcgis.com/experience/8e2c6c41933e48a79faa90048d9a459d',
+    });
+  }
+  if (land_value && land_value.land_value_source !== 'none') {
+    const srcName =
+      land_value.municipal_sample?.source_name ||
+      land_value.rural_aggregate?.source_name ||
+      'Municipal assessment / CLI agricultural land values';
+    rows.push({
+      field: 'land_value',
+      source_name: srcName,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url:
+        land_value.municipal_sample?.source_url ||
+        land_value.rural_aggregate?.source_url ||
+        null,
+    });
+  }
+  if (hardiness?.hardiness_zone || hardiness?.available) {
+    rows.push({
+      field: 'climate.plant_hardiness_zone',
+      source_name: hardiness.source_name || 'NRCan Plant Hardiness Zones',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: hardiness.source_url,
+    });
+  }
+  if (flood?.available !== false) {
+    rows.push({
+      field: 'hydrology.flood_risk_zone / flood',
+      source_name: flood.source_name || 'Alberta FHIP flood hazard mapping',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: flood.source_url,
+    });
+  }
+  if (zoning?.zoning_source_url || zoning?.municipality) {
+    rows.push({
+      field: 'zoning',
+      source_name: `Municipal zoning portal lookup (${zoning.municipality || 'Alberta'})`,
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: zoning.zoning_source_url || zoning.zoning_bylaw_url,
     });
   }
   rows.push({

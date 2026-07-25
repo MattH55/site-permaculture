@@ -553,8 +553,132 @@ h3 { font-size: 1.08rem; }
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
   color: var(--ink-soft);
+  line-height: 1.45;
+}
+.el .basis-label {
+  display: inline-block;
+  margin-right: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 3px;
+  background: rgba(91, 58, 115, 0.1);
+  color: var(--berry);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .el p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
+
+.site-drivers {
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(91, 58, 115, 0.04);
+}
+.gate-chip.on { border-color: var(--ok); }
+.gate-chip.on strong { color: var(--ok); }
+.gate-chip.off { opacity: 0.55; }
+.gate-chip.off strong { color: var(--ink-soft); }
+.drivers-table td:first-child { white-space: nowrap; }
+
+.solar-band {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.solar-band-excellent { color: var(--ok); }
+.solar-band-good { color: var(--ok); }
+.solar-band-fair { color: var(--caution); }
+.solar-band-limited,
+.solar-band-poor { color: var(--danger); }
+
+.solar-month-wrap { margin-top: 0.9rem; }
+.solar-bars {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 0.25rem;
+  align-items: end;
+  min-height: 110px;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.35rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+.solar-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.15rem;
+  height: 100px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.58rem;
+  color: var(--ink-soft);
+}
+.solar-bar i {
+  display: block;
+  width: 70%;
+  max-width: 18px;
+  min-height: 2px;
+  border-radius: 3px 3px 0 0;
+  background: linear-gradient(180deg, var(--gold), var(--berry));
+}
+.solar-bar em {
+  font-style: normal;
+  font-size: 0.55rem;
+  color: var(--ink-soft);
+}
+
+.crime-table-wrap { margin-top: 0.5rem; max-height: 320px; overflow: auto; }
+.crime-table td:nth-child(1),
+.crime-table td:nth-child(2) { white-space: nowrap; }
+
+.phase2-grid .flood-card[data-severity="block"] {
+  border-color: var(--danger);
+  background: rgba(160, 40, 40, 0.06);
+}
+.phase2-grid .flood-card[data-severity="caution"] {
+  border-color: var(--caution);
+  background: rgba(140, 90, 29, 0.06);
+}
+
+.land-value-block .value-type-tag {
+  display: inline-block;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--caution);
+  color: var(--caution);
+  background: rgba(140, 90, 29, 0.08);
+}
+.rural-value-card {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(91, 58, 115, 0.04);
+}
+.rural-value-card > .mono {
+  color: var(--berry);
+  display: block;
+}
+.lv-violin-wrap { margin-top: 0.75rem; }
+.lv-violin {
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  display: block;
+  margin-top: 0.4rem;
+}
+.lv-violin .svg-label {
+  font-size: 9px;
+  fill: #46584c;
+  font-family: 'IBM Plex Mono', monospace;
+}
+.value-type-note { margin: 0.35rem 0 0; }
 
 .sources {
   margin-top: 1.6rem;
@@ -706,6 +830,18 @@ h3 { font-size: 1.08rem; }
   color: var(--gold);
   font-weight: 700;
   margin: 0 0.15em;
+}
+
+.plant-specs-line {
+  margin: 0.25rem 0 0.35rem;
+  color: var(--ink-soft);
+}
+.plant-specs-line .spec-src {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--berry);
 }
 
 .plant-chips {

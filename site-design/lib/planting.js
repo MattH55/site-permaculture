@@ -12,6 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveSuppliers } from './vendors.js';
+import { applyPlantSpecs, loadPlantSpecsCache } from './plant-specs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -374,6 +375,51 @@ function scoreCrop(crop, ctx) {
     score += 3;
   }
 
+  // Prefer curated Alberta pack over bulk vendor inventory when suitability ties
+  if (crop._vendor_product) {
+    score -= 18;
+    if (!crop.scientific_name) score -= 5;
+    // Seed-mix / brand-mix rows are shopping inventory, not design anchors
+    if (/mix(ture)?|blend|jumbo|sprinkle bag/i.test(crop.common_name || ''))
+      score -= 10;
+  } else {
+    score += 12;
+    reasons.push('Curated catalog entry');
+  }
+
+  // Authoritative grow-spec boost (Permapeople / PFAF / USDA)
+  const src = crop.spec_source || '';
+  if (src.includes('permapeople') && src.includes('usda')) {
+    score += 8;
+    reasons.push('Specs: Permapeople + USDA');
+  } else if (src.includes('pfaf') && src.includes('usda')) {
+    score += 7;
+    reasons.push('Specs: PFAF + USDA PLANTS');
+  } else if (src.includes('pfaf') || src.includes('permapeople')) {
+    score += 5;
+    reasons.push(src.includes('pfaf') ? 'Specs from PFAF' : 'Specs from Permapeople');
+  } else if (src.includes('usda')) {
+    score += 4;
+    reasons.push('Specs cross-checked with USDA PLANTS');
+  } else if (src === 'inferred') {
+    score -= 3;
+  }
+
+  // Alberta range verification from USDA distribution
+  if (crop.alberta_in_range || crop.plant_specs?.alberta_in_range) {
+    score += 4;
+    reasons.push('USDA range includes Alberta');
+  }
+
+  // PFAF guild signals
+  if (crop.nitrogen_fixer || crop.plant_specs?.nitrogen_fixer) {
+    score += 2;
+    reasons.push('Nitrogen fixer (PFAF/USDA)');
+  }
+  if (crop.food_forest || crop.plant_specs?.food_forest) {
+    score += 1;
+  }
+
   // Early succession bonus for cover crops / N-fixers
   if (
     (crop.category === 'cover_crop' ||
@@ -397,6 +443,41 @@ function scoreCrop(crop, ctx) {
     category: crop.category,
     guild_layer: crop.guild_layer,
     alberta_native: !!crop.alberta_native,
+    _vendor_product: !!crop._vendor_product,
+    source_vendors: crop.source_vendors || null,
+    product_urls: crop.product_urls || null,
+    spec_source: crop.spec_source || null,
+    spec_confidence: crop.spec_confidence || null,
+    light_requirement: crop.light_requirement || null,
+    water_requirement: crop.water_requirement || null,
+    hardiness_min: crop.hardiness_min || null,
+    hardiness_max: crop.hardiness_max || null,
+    frost_free_min_days: crop.frost_free_min_days ?? null,
+    precip_min_mm: crop.precip_min_mm ?? null,
+    precip_max_mm: crop.precip_max_mm ?? null,
+    alberta_in_range:
+      crop.alberta_in_range ?? crop.plant_specs?.alberta_in_range ?? null,
+    nitrogen_fixer: crop.nitrogen_fixer ?? crop.plant_specs?.nitrogen_fixer ?? null,
+    edibility_rating:
+      crop.edibility_rating ?? crop.plant_specs?.edibility_rating ?? null,
+    food_forest: crop.food_forest ?? crop.plant_specs?.food_forest ?? null,
+    plant_specs: crop.plant_specs
+      ? {
+          spec_source: crop.plant_specs.spec_source,
+          usda_symbol: crop.plant_specs.usda_symbol,
+          usda_url: crop.plant_specs.usda_url,
+          permapeople_url: crop.plant_specs.permapeople_url,
+          pfaf_url: crop.plant_specs.pfaf_url,
+          canada_provinces: crop.plant_specs.canada_provinces,
+          edible: crop.plant_specs.edible,
+          edible_parts: crop.plant_specs.edible_parts,
+          edibility_rating: crop.plant_specs.edibility_rating,
+          nitrogen_fixer: crop.plant_specs.nitrogen_fixer,
+          food_forest: crop.plant_specs.food_forest,
+          growth_rate: crop.plant_specs.growth_rate,
+          attribution: crop.plant_specs.attribution,
+        }
+      : null,
     score,
     suitability,
     reasons,
@@ -419,18 +500,25 @@ function loadCatalog() {
   if (catalogCache) return catalogCache;
 
   const byId = new Map();
+
+  // Vendor-scraped inventory first (breadth); curated packs overwrite same ids
+  const vendorPath = path.join(__dirname, '..', 'data', 'crops', 'vendor-catalog.json');
+  loadInto(byId, vendorPath, 'vendor-catalog.json', { mergeSuppliers: true });
+
   const basePath = path.join(__dirname, '..', 'data', 'crops', 'alberta-catalog.json');
-  loadInto(byId, basePath, 'alberta-catalog.json');
+  loadInto(byId, basePath, 'alberta-catalog.json', { mergeSuppliers: true });
 
   // Alberta natives / prairie-hardy pack (overrides same ids, adds many natives)
   const nativesPath = path.join(__dirname, '..', 'data', 'crops', 'alberta-natives.json');
-  loadInto(byId, nativesPath, 'alberta-natives.json');
+  loadInto(byId, nativesPath, 'alberta-natives.json', { mergeSuppliers: true });
 
   const farmfitLocal = path.join(__dirname, '..', 'data', 'crops', 'farmfit-export.json');
-  loadInto(byId, farmfitLocal, 'farmfit-export.json');
+  loadInto(byId, farmfitLocal, 'farmfit-export.json', { mergeSuppliers: true });
 
   if (process.env.GROWING_GUIDE_CROPS_PATH) {
-    loadInto(byId, process.env.GROWING_GUIDE_CROPS_PATH, process.env.GROWING_GUIDE_CROPS_PATH);
+    loadInto(byId, process.env.GROWING_GUIDE_CROPS_PATH, process.env.GROWING_GUIDE_CROPS_PATH, {
+      mergeSuppliers: true,
+    });
   }
 
   // Optional: auto-discover farmfit-export next to Growing Guide path
@@ -441,15 +529,21 @@ function loadCatalog() {
       path.join(gg, 'farmfit', 'public', 'crops-export.json'),
       path.join(gg, 'crops-export.json'),
     ];
-    for (const c of candidates) loadInto(byId, c, c);
+    for (const c of candidates) loadInto(byId, c, c, { mergeSuppliers: true });
   }
 
-  catalogCache = [...byId.values()];
+  // Overlay Permapeople + USDA plant-specs cache (spec_source tracking)
+  const specsMeta = loadPlantSpecsCache().meta || {};
+  catalogCache = [...byId.values()].map((c) => applyPlantSpecs(c));
   catalogCache._source = catalogSourceLabel;
+  if (!specsMeta.empty) {
+    catalogCache._source = `${catalogSourceLabel} + plant-specs (Permapeople/USDA)`;
+  }
+  catalogCache._specs_meta = specsMeta;
   return catalogCache;
 }
 
-function loadInto(map, filePath, label) {
+function loadInto(map, filePath, label, opts = {}) {
   try {
     if (!fs.existsSync(filePath)) return;
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -458,13 +552,59 @@ function loadInto(map, filePath, label) {
     for (const c of list) {
       if (!c?.id && !c?.common_name) continue;
       const id = c.id || slug(c.common_name || c.scientific_name);
-      map.set(id, normalizeCrop({ ...c, id }));
+      const next = normalizeCrop({ ...c, id });
+      if (opts.mergeSuppliers && map.has(id)) {
+        map.set(id, mergeCropRecords(map.get(id), next));
+      } else {
+        map.set(id, next);
+      }
       n++;
     }
-    if (n) catalogSourceLabel = label;
+    if (n) {
+      catalogSourceLabel = catalogSourceLabel
+        ? `${catalogSourceLabel} + ${label}`
+        : label;
+    }
   } catch (e) {
     console.warn('crop catalog load failed', filePath, e.message);
   }
+}
+
+function mergeCropRecords(prev, next) {
+  // Curated later loads win on core agronomic fields; keep supplier links from both
+  const suppliers = {
+    seeds: [
+      ...(prev.suppliers?.seeds || []),
+      ...(next.suppliers?.seeds || []),
+    ].slice(0, 8),
+    saplings: [
+      ...(prev.suppliers?.saplings || []),
+      ...(next.suppliers?.saplings || []),
+    ].slice(0, 8),
+    fertilizer: [
+      ...(prev.suppliers?.fertilizer || []),
+      ...(next.suppliers?.fertilizer || []),
+    ].slice(0, 5),
+  };
+  const source_vendors = [
+    ...new Set([...(prev.source_vendors || []), ...(next.source_vendors || [])]),
+  ];
+  const product_urls = [
+    ...new Set([...(prev.product_urls || []), ...(next.product_urls || [])]),
+  ].slice(0, 12);
+
+  // Prefer non-vendor-only record for scientific name / notes when present
+  const preferCurated = !next._vendor_product || prev._vendor_product === false;
+  const base = preferCurated ? { ...prev, ...next } : { ...next, ...prev };
+
+  return {
+    ...base,
+    suppliers,
+    source_vendors,
+    product_urls,
+    alberta_native: !!(prev.alberta_native || next.alberta_native),
+    _vendor_product: !!(prev._vendor_product && next._vendor_product),
+  };
 }
 
 function normalizeCrop(c) {
@@ -487,6 +627,24 @@ function normalizeCrop(c) {
     alberta_native: !!(c.alberta_native || c.native_alberta),
     region_focus: c.region_focus || (c.alberta_native ? 'alberta' : null),
     notes: c.notes || c.description || null,
+    suppliers: c.suppliers || null,
+    source_vendors: c.source_vendors || null,
+    product_urls: c.product_urls || null,
+    search_terms: c.search_terms || null,
+    _vendor_product: !!c._vendor_product,
+    // Spec provenance: curated | inferred | usda_plants | permapeople | permapeople+usda
+    spec_source:
+      c.spec_source ||
+      (c._vendor_product ? 'inferred' : 'curated'),
+    spec_confidence: c.spec_confidence || null,
+    light_requirement: c.light_requirement || null,
+    water_requirement: c.water_requirement || null,
+    growth_rate: c.growth_rate || null,
+    nitrogen_fixer: c.nitrogen_fixer ?? null,
+    edible: c.edible ?? null,
+    edible_parts: c.edible_parts || null,
+    alberta_in_range: c.alberta_in_range ?? null,
+    plant_specs: c.plant_specs || null,
   };
   if (c.economics) crop._inline_economics = c.economics;
   return crop;

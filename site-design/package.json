@@ -7,7 +7,14 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test lib/rules.test.js",
-    "export-crops": "node scripts/export-farmfit-crops.mjs"
+    "export-crops": "node scripts/export-farmfit-crops.mjs",
+    "ingest:land-value": "node scripts/ingest-land-value.mjs",
+    "ingest:land-value:calgary": "node scripts/ingest-land-value.mjs calgary --max-tiles 30",
+    "ingest:land-value:edmonton": "node scripts/ingest-land-value.mjs edmonton --max-tiles 30",
+    "scrape:vendors": "node scripts/scrape-vendor-catalogs.mjs",
+    "pfaf:download": "node scripts/download-pfaf-db.mjs",
+    "enrich:plant-specs": "node scripts/enrich-plant-specs.mjs",
+    "enrich:plant-specs:curated": "node scripts/enrich-plant-specs.mjs --curated-only --limit 120 --force"
   },
   "dependencies": {
     "express": "^4.19.2"

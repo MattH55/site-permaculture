@@ -4,6 +4,17 @@ node_modules/
 leads.jsonl
 .DS_Store
 data/wells/local-wells.json
+data/crops/pfaf/data.sqlite
+data/crops/pfaf/*.sqlite
+# Regenerable / large runtime artifacts
+data/crops/vendor-listings.json
+data/solar/municip_MJ.csv
+data/spatial-cache/**/*.json
+data/land-value/_xlsx/
+data/land-value/*.xlsx
+data/land-value/*.zip
+data/land-value/*.pdf
 
 scripts/_sample-*.ts
+scripts/_probe-*.mjs
 

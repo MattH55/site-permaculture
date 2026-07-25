@@ -46,6 +46,20 @@ Secondary / supplementary:
 - **Topographic base mapping** — Natural Resources Canada CanVec / Toporama for general reference layers (roads, hydrography lines) alongside the DEM.
 - **Ecodistrict/ecoregion context** — Natural Regions and Subregions of Alberta classification, useful as a coarse sanity check on native vegetation and expected precipitation regime.
 
+## 2c. Land value — assessed / aggregate only (informational panel)
+
+Does **not** feed swale, keyline, guild, or planting scoring.
+
+| Field | Source (phase 1) |
+|-------|------------------|
+| Urban sample | Calgary Socrata `4bsw-nn7w`; Edmonton `dkk9-cj3x` + `q7d6-ambg` |
+| Rural $/acre | Alberta Agriculture CLI × municipality table (2015) + FCC provincial cultivated % trend adjuster |
+| Sale prices | **Not available free/bulk** — Alberta Land Titles pay-per-lookup |
+
+Expanding-radius sample: 800 m → 1.5 → 3 → 5 → 10 → 15 km until n ≥ 15 (or cap). Always surface `nearby_land_value_sample_n` and `nearby_land_value_search_radius_m`.
+
+**Phase 1 decision:** rural = CLI aggregate only. County parcel rolls deferred (same fragmentation as zoning).
+
 ## 2b. Proximity, amenities, and crime — sources and a caveat
 
 - **Nearest water source** — same Alberta hydrography / Wet Areas Mapping ArcGIS REST endpoints already listed above, queried as a nearest-feature (not intersects) search from the site centroid.

@@ -12,7 +12,8 @@
       "name": "Veseys",
       "region": "PEI / ships Canada",
       "kinds": ["seeds", "saplings"],
-      "search_url": "https://www.veseys.com/search?q={query}"
+      "search_url": "https://www.veseys.com/search?q={query}",
+      "scrape_note": "Cloudflare-blocked bulk product JSON (403) as of last scrape — use search links"
     },
     "earlyseed": {
       "name": "Early's Farm & Garden",
@@ -24,20 +25,23 @@
       "name": "Richters Herbs",
       "region": "Ontario / ships Canada",
       "kinds": ["seeds", "saplings"],
-      "search_url": "https://www.richters.com/Web_store/web_store.cgi?keywords={query}&search=Search"
+      "search_url": "https://www.richters.com/Web_store/web_store.cgi?keywords={query}&search=Search",
+      "scrape_note": "Bot challenge on bulk endpoints — use search links; re-try scrape periodically"
     },
     "treetime": {
       "name": "TreeTime.ca",
       "region": "Alberta / ships Canada",
       "kinds": ["saplings"],
-      "search_url": "https://treetime.ca/search?q={query}"
+      "search_url": "https://treetime.ca/search?q={query}",
+      "catalog_url": "https://treetime.ca/plant-finder.php"
     },
     "bowpoint": {
       "name": "Bow Point Nursery",
       "region": "Alberta (native plants)",
       "kinds": ["saplings", "seeds"],
       "home_url": "https://www.bowpointnursery.com/",
-      "search_url": "https://www.bowpointnursery.com/?s={query}"
+      "search_url": "https://www.bowpointnursery.com/?s={query}",
+      "scrape_note": "Website expired/unavailable at last scrape"
     },
     "wildaboutflowers": {
       "name": "Wild About Flowers",
