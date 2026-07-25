@@ -379,6 +379,35 @@
             "type": "array",
             "items": { "type": "object" }
           }
+        },
+        "value_counts": {
+          "type": "array",
+          "description": "Primary values present with counts for filter chips (sorted by engine priority).",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "count": { "type": "integer" },
+              "min_priority": { "type": "integer" }
+            }
+          }
+        },
+        "related_services": {
+          "type": "array",
+          "description": "Expanding Edge service CTAs implied by this recommendation set.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "blurb": { "type": "string" },
+              "href": { "type": "string", "format": "uri" },
+              "cta": { "type": "string" },
+              "hit_count": { "type": "integer" },
+              "best_priority": { "type": "integer" }
+            }
+          }
         }
       }
     },

@@ -5,7 +5,11 @@ import {
   enrichElementValues,
   groupRecommendationsByValue,
   recommendationPriority,
+  filterElementsByValue,
+  collectRelatedServices,
+  valueCounts,
   VALUE_TAXONOMY,
+  EE_SERVICES,
 } from './recommendation-values.js';
 
 describe('applyRules', () => {
@@ -185,6 +189,81 @@ describe('recommendation-values', () => {
     assert.equal(g.by_value.water_harvest.length, 1);
     assert.equal(g.by_value.wind_protection.length, 1);
     assert.match(g.summary_sentence, /water harvest|wind protection|water storage/i);
+  });
+
+  it('filters by primary or secondary value', () => {
+    const els = [
+      {
+        element_type: 'swale',
+        primary_value: 'water_harvest',
+        secondary_values: ['erosion_control'],
+      },
+      {
+        element_type: 'windbreak',
+        primary_value: 'wind_protection',
+        secondary_values: ['snow_management'],
+      },
+      {
+        element_type: 'terrace',
+        primary_value: 'erosion_control',
+        secondary_values: ['water_harvest'],
+      },
+    ];
+    assert.equal(filterElementsByValue(els, 'all').length, 3);
+    assert.equal(filterElementsByValue(els, 'wind_protection').length, 1);
+    // secondary match
+    assert.equal(filterElementsByValue(els, 'erosion_control').length, 2);
+  });
+
+  it('collects EE service CTAs from related_services tags', () => {
+    const els = [
+      {
+        element_type: 'swale',
+        primary_value: 'water_harvest',
+        priority: 3,
+        related_services: ['water_earthworks_consult', 'full_site_design'],
+      },
+      {
+        element_type: 'windbreak',
+        primary_value: 'wind_protection',
+        priority: 4,
+        related_services: ['shelterbelt_design', 'full_site_design'],
+      },
+    ];
+    const svc = collectRelatedServices(els);
+    assert.ok(svc.some((s) => s.id === 'water_earthworks_consult'));
+    assert.ok(svc.some((s) => s.id === 'shelterbelt_design'));
+    const full = svc.find((s) => s.id === 'full_site_design');
+    assert.equal(full?.hit_count, 2);
+    assert.ok(EE_SERVICES.full_site_design.href.includes('expandingedge'));
+    // water (priority 3) should sort before or with full_site that inherits best 3
+    assert.ok(svc[0].best_priority <= svc[svc.length - 1].best_priority);
+  });
+
+  it('value_counts and related_services on group envelope', () => {
+    const g = groupRecommendationsByValue([
+      {
+        element_type: 'swale',
+        primary_value: 'water_harvest',
+        priority: 3,
+        zone: 2,
+        related_services: ['water_earthworks_consult'],
+      },
+      {
+        element_type: 'pond',
+        primary_value: 'water_storage',
+        priority: 3,
+        zone: 3,
+        related_services: ['water_earthworks_consult'],
+      },
+    ]);
+    assert.ok(g.value_counts.length >= 2);
+    assert.ok(g.related_services.some((s) => s.id === 'water_earthworks_consult'));
+    const counts = valueCounts(g.priority_ordered);
+    assert.equal(
+      counts.find((c) => c.id === 'water_harvest')?.count,
+      1
+    );
   });
 });
 

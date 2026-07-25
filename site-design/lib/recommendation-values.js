@@ -296,6 +296,48 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
 }
 
 /**
+ * Expanding Edge service catalog for CTAs (phase 2 recommendation engine).
+ * Tags on elements map here; URLs point at public EE pages.
+ */
+export const EE_SERVICES = {
+  water_earthworks_consult: {
+    id: 'water_earthworks_consult',
+    label: 'Water & earthworks consult',
+    blurb: 'Swales, ponds, keyline, and diversion sized for Alberta storms and Water Act reality.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Talk earthworks',
+  },
+  shelterbelt_design: {
+    id: 'shelterbelt_design',
+    label: 'Shelterbelt design',
+    blurb: 'Multi-row wind and snow belts placed for your exposure and chinook risk.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Design a shelterbelt',
+  },
+  food_forest_design: {
+    id: 'food_forest_design',
+    label: 'Food forest design',
+    blurb: 'Layered perennial polyculture sequenced after soil-building phases.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Plan a food forest',
+  },
+  kitchen_garden_design: {
+    id: 'kitchen_garden_design',
+    label: 'Kitchen garden design',
+    blurb: 'Zone 1 intensive beds, herb spirals, and daily-use layouts.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Design Zone 1',
+  },
+  full_site_design: {
+    id: 'full_site_design',
+    label: 'Full site design',
+    blurb: 'Whole-property permaculture plan from water and wind to zones and succession.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Book full design',
+  },
+};
+
+/**
  * Priority rank for recommendation engine sorting (lower = sooner).
  * Regulatory / risk first, then water, wind, soil, food, intensive.
  */
@@ -317,7 +359,90 @@ export function recommendationPriority(element) {
 }
 
 /**
+ * Filter elements by primary or secondary value (null/'' = all).
+ * @param {object[]} elements
+ * @param {string|null} valueId
+ */
+export function filterElementsByValue(elements = [], valueId = null) {
+  if (!valueId || valueId === 'all') return [...elements];
+  return elements.filter((el) => {
+    if (el.primary_value === valueId) return true;
+    return (el.secondary_values || []).includes(valueId);
+  });
+}
+
+/**
+ * Counts of primary values present (for filter chips), sorted by engine priority.
+ * @param {object[]} elements
+ * @returns {{ id: string, label: string, count: number, min_priority: number }[]}
+ */
+export function valueCounts(elements = []) {
+  const map = new Map();
+  for (const el of elements) {
+    const id = el.primary_value || 'beauty_access';
+    if (!map.has(id)) {
+      map.set(id, {
+        id,
+        label: valueLabel(id),
+        count: 0,
+        min_priority: el.priority ?? recommendationPriority(el),
+      });
+    }
+    const row = map.get(id);
+    row.count += 1;
+    const p = el.priority ?? recommendationPriority(el);
+    if (p < row.min_priority) row.min_priority = p;
+  }
+  return [...map.values()].sort(
+    (a, b) => a.min_priority - b.min_priority || b.count - a.count
+  );
+}
+
+/**
+ * Unique EE services implied by recommendation set, ranked by how often tagged
+ * and by element priority (earlier outcomes first).
+ * @param {object[]} elements
+ * @returns {object[]} service catalog rows with hit_count
+ */
+export function collectRelatedServices(elements = []) {
+  const hits = new Map(); // serviceId -> { count, bestPriority }
+  for (const el of elements) {
+    const p = el.priority ?? recommendationPriority(el);
+    for (const sid of el.related_services || []) {
+      if (!EE_SERVICES[sid]) continue;
+      if (!hits.has(sid)) hits.set(sid, { count: 0, bestPriority: p });
+      const h = hits.get(sid);
+      h.count += 1;
+      if (p < h.bestPriority) h.bestPriority = p;
+    }
+  }
+  return [...hits.entries()]
+    .map(([id, h]) => ({
+      ...EE_SERVICES[id],
+      hit_count: h.count,
+      best_priority: h.bestPriority,
+    }))
+    .sort(
+      (a, b) =>
+        a.best_priority - b.best_priority ||
+        b.hit_count - a.hit_count ||
+        a.label.localeCompare(b.label)
+    );
+}
+
+/**
+ * Resolve service catalog rows for a single element (card CTAs).
+ * @param {object} element
+ */
+export function servicesForElement(element = {}) {
+  return (element.related_services || [])
+    .map((id) => EE_SERVICES[id])
+    .filter(Boolean);
+}
+
+/**
  * Group design elements by primary_value for the recommendation engine envelope.
+ * Phase 2 also returns value_counts and related_services for filters/CTAs.
  * @param {object[]} elements
  */
 export function groupRecommendationsByValue(elements = []) {
@@ -345,7 +470,13 @@ export function groupRecommendationsByValue(elements = []) {
     summary_sentence = `On this parcel we prioritize ${labels.join(', ')} and ${last} first.`;
   }
 
-  return { by_value, priority_ordered, summary_sentence };
+  return {
+    by_value,
+    priority_ordered,
+    summary_sentence,
+    value_counts: valueCounts(priority_ordered),
+    related_services: collectRelatedServices(priority_ordered),
+  };
 }
 
 function unique(arr) {

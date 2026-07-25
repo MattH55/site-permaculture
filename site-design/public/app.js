@@ -41,6 +41,35 @@ const HORIZONS = [
   'var(--h5)', 'var(--h6)', 'var(--h7)', 'var(--h8)',
 ];
 
+/** EE service labels for card CTAs (mirrors lib/recommendation-values.js). */
+const EE_SERVICE_META = {
+  water_earthworks_consult: {
+    label: 'Water & earthworks consult',
+    cta: 'Talk earthworks',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  shelterbelt_design: {
+    label: 'Shelterbelt design',
+    cta: 'Design a shelterbelt',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  food_forest_design: {
+    label: 'Food forest design',
+    cta: 'Plan a food forest',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  kitchen_garden_design: {
+    label: 'Kitchen garden design',
+    cta: 'Design Zone 1',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  full_site_design: {
+    label: 'Full site design',
+    cta: 'Book full design',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+};
+
 const state = {
   config: null,
   map: null,
@@ -50,6 +79,8 @@ const state = {
   paths: null, // [[lng, lat], ...]
   report: null,
   mode: 'google', // or 'fallback'
+  /** Phase 2: filter placement cards by primary/secondary value id, or 'all' */
+  valueFilter: 'all',
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -981,6 +1012,12 @@ function showMap() {
 
 function renderReport(r) {
   paintCore(true);
+  // Reset value filter only when a new report arrives
+  if (state.report !== r) {
+    state.valueFilter = 'all';
+  }
+  state.report = r;
+
   const flags = r._meta?.flags || [];
   const a = r.analysis || {};
   const topo = r.topology || {};
@@ -999,10 +1036,15 @@ function renderReport(r) {
   const recommendations =
     r.recommendations || r._meta?.recommendations || null;
   // Prefer priority order for display; fall back to design_elements
-  const els =
+  const allEls =
     recommendations?.priority_ordered?.length
       ? recommendations.priority_ordered
       : r.design_elements || [];
+  const els = filterRecsByValue(allEls, state.valueFilter);
+  const valueCounts =
+    recommendations?.value_counts || computeValueCounts(allEls);
+  const services =
+    recommendations?.related_services || collectServicesClient(allEls);
 
   // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
   const exportObj = JSON.parse(JSON.stringify(r));
@@ -1019,7 +1061,7 @@ function renderReport(r) {
       <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <div class="score-row">
-        <span class="score">${els.length}</span>
+        <span class="score">${allEls.length}</span>
         <span class="score-of">recommendations for this parcel</span>
       </div>
       <p class="lede">
@@ -1076,13 +1118,17 @@ function renderReport(r) {
           Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
         </p>
         ${siteDriversSection(siteDrivers)}
-        <div class="elements">
+        ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
+        <div class="elements" id="rec-elements">
           ${
             els.length
               ? els.map((e) => recommendationCard(e)).join('')
-              : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
+              : allEls.length
+                ? '<p class="fine" id="rec-empty-filter">No recommendations in this value filter — try All or another outcome.</p>'
+                : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
           }
         </div>
+        ${servicesCtaSection(services)}
       </section>
 
       <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
@@ -1149,6 +1195,7 @@ function renderReport(r) {
     showMap();
   };
   $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
+  bindValueFilters(allEls);
   renderPlantingPane(r.planting_plan);
   $('copy-json').onclick = async () => {
     try {
@@ -1838,6 +1885,136 @@ function siteDriversSection(drivers) {
     </div>`;
 }
 
+/** Client-side filter: primary or secondary value match. */
+function filterRecsByValue(elements, valueId) {
+  if (!valueId || valueId === 'all') return elements;
+  return elements.filter(
+    (el) =>
+      el.primary_value === valueId ||
+      (el.secondary_values || []).includes(valueId)
+  );
+}
+
+function computeValueCounts(elements) {
+  const map = new Map();
+  for (const el of elements) {
+    const id = el.primary_value || 'beauty_access';
+    if (!map.has(id)) {
+      map.set(id, {
+        id,
+        label: VALUE_LABELS[id] || id,
+        count: 0,
+        min_priority: el.priority ?? 99,
+      });
+    }
+    const row = map.get(id);
+    row.count += 1;
+    const p = el.priority ?? 99;
+    if (p < row.min_priority) row.min_priority = p;
+  }
+  return [...map.values()].sort(
+    (a, b) => a.min_priority - b.min_priority || b.count - a.count
+  );
+}
+
+function collectServicesClient(elements) {
+  const hits = new Map();
+  for (const el of elements) {
+    const p = el.priority ?? 99;
+    for (const sid of el.related_services || []) {
+      if (!EE_SERVICE_META[sid]) continue;
+      if (!hits.has(sid)) hits.set(sid, { count: 0, best: p });
+      const h = hits.get(sid);
+      h.count += 1;
+      if (p < h.best) h.best = p;
+    }
+  }
+  return [...hits.entries()]
+    .map(([id, h]) => ({
+      id,
+      ...EE_SERVICE_META[id],
+      blurb: '',
+      hit_count: h.count,
+      best_priority: h.best,
+    }))
+    .sort((a, b) => a.best_priority - b.best_priority || b.hit_count - a.hit_count);
+}
+
+function valueFilterBar(counts, active, total) {
+  if (!counts?.length) return '';
+  const chips = [
+    `<button type="button" class="value-filter-chip${
+      active === 'all' ? ' is-active' : ''
+    }" data-value-filter="all" aria-pressed="${active === 'all'}">All <span class="vf-count">${total}</span></button>`,
+    ...counts.map(
+      (c) =>
+        `<button type="button" class="value-filter-chip${
+          active === c.id ? ' is-active' : ''
+        }" data-value-filter="${esc(c.id)}" aria-pressed="${
+          active === c.id
+        }">${esc(c.label)} <span class="vf-count">${c.count}</span></button>`
+    ),
+  ].join('');
+  return `
+    <div class="value-filter-bar" role="toolbar" aria-label="Filter by outcome">
+      <span class="mono value-filter-label">Filter by value</span>
+      <div class="value-filter-chips">${chips}</div>
+    </div>`;
+}
+
+function servicesCtaSection(services) {
+  if (!services?.length) return '';
+  // Cap at 4 CTAs; always prefer highest-priority services
+  const top = services.slice(0, 4);
+  return `
+    <div class="ee-services-cta">
+      <span class="mono eyebrow">Expanding Edge · next steps</span>
+      <h3 class="ee-services-title">Services that match these recommendations</h3>
+      <p class="fine">These CTAs follow the outcomes above — book a focused consult or a full site design.</p>
+      <div class="ee-services-grid">
+        ${top
+          .map(
+            (s) => `
+          <article class="ee-service-card">
+            <h4>${esc(s.label)}</h4>
+            ${s.blurb ? `<p class="fine">${esc(s.blurb)}</p>` : ''}
+            <a class="btn btn-secondary ee-service-link" href="${esc(
+              s.href
+            )}" target="_blank" rel="noopener">${esc(s.cta || 'Learn more')} →</a>
+          </article>`
+          )
+          .join('')}
+      </div>
+      <p class="fine ee-services-foot">
+        Or call <a href="tel:+17802363630">(780) 236-3630</a>
+        · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a>
+      </p>
+    </div>`;
+}
+
+function bindValueFilters(allEls) {
+  const bar = document.querySelector('.value-filter-bar');
+  if (!bar) return;
+  bar.querySelectorAll('[data-value-filter]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-value-filter') || 'all';
+      state.valueFilter = id;
+      // Update active state without full re-render (preserve scroll)
+      bar.querySelectorAll('[data-value-filter]').forEach((b) => {
+        const on = b.getAttribute('data-value-filter') === id;
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      const filtered = filterRecsByValue(allEls, id);
+      const host = $('rec-elements');
+      if (!host) return;
+      host.innerHTML = filtered.length
+        ? filtered.map((e) => recommendationCard(e)).join('')
+        : '<p class="fine">No recommendations in this value filter — try All or another outcome.</p>';
+    });
+  });
+}
+
 /**
  * Value-first recommendation card: outcome headline → technique → site basis → how-to.
  */
@@ -1860,6 +2037,18 @@ function recommendationCard(e) {
     ),
   ].join('');
 
+  const serviceLinks = (e.related_services || [])
+    .map((id) => EE_SERVICE_META[id])
+    .filter(Boolean)
+    .slice(0, 2)
+    .map(
+      (s) =>
+        `<a class="rec-service-link" href="${esc(s.href)}" target="_blank" rel="noopener">${esc(
+          s.cta
+        )}</a>`
+    )
+    .join('');
+
   return `
     <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
       <div class="value-chips">${chips}</div>
@@ -1873,6 +2062,7 @@ function recommendationCard(e) {
       <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis || '')}</div>
       ${e.placement_notes ? `<p class="placement-how">${esc(e.placement_notes)}</p>` : ''}
       ${e.season_hint ? `<p class="season-hint"><span class="basis-label">Season</span> ${esc(e.season_hint)}</p>` : ''}
+      ${serviceLinks ? `<div class="rec-service-links">${serviceLinks}</div>` : ''}
     </article>`;
 }
 

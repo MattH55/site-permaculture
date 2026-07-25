@@ -16,7 +16,9 @@ and a parcel-specific `value_headline` (water harvest, wind protection, food,
 soil building, compliance, etc.) so the Expanding Edge product leads with
 client outcomes, not technique jargon. See `lib/recommendation-values.js`.
 The API also returns a `recommendations` envelope: `summary_sentence`,
-`priority_ordered`, and `by_value`.
+`priority_ordered`, `by_value`, plus Phase 2 `value_counts` (filter chips)
+and `related_services` (Expanding Edge CTAs: water/earthworks, shelterbelt,
+food forest, kitchen garden, full site design).
 
 | # | Condition (on schema fields) | → Recommended element | Notes |
 |---|---|---|---|
