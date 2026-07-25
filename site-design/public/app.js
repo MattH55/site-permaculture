@@ -17,6 +17,24 @@ const ELEMENT_LABELS = {
   keyhole_bed: 'Keyhole bed',
 };
 
+/** Client-facing value labels (mirrors lib/recommendation-values.js taxonomy). */
+const VALUE_LABELS = {
+  water_storage: 'Water storage',
+  water_harvest: 'Water harvest',
+  erosion_control: 'Erosion control',
+  wind_protection: 'Wind protection',
+  snow_management: 'Snow management',
+  microclimate: 'Microclimate',
+  shade: 'Shade',
+  food_production: 'Food',
+  medicinal: 'Medicinal / herbal',
+  soil_building: 'Soil building',
+  nitrogen_fixing: 'Nitrogen fixing',
+  biodiversity: 'Habitat / biodiversity',
+  beauty_access: 'Beauty & access',
+  compliance_safety: 'Compliance & risk',
+};
+
 const CORE_LABELS = ['Elev', 'Topo', 'Water', 'Well', 'Plants', 'Safety', 'Rules', 'Report'];
 const HORIZONS = [
   'var(--h1)', 'var(--h2)', 'var(--h3)', 'var(--h4)',
@@ -963,7 +981,6 @@ function showMap() {
 
 function renderReport(r) {
   paintCore(true);
-  const els = r.design_elements || [];
   const flags = r._meta?.flags || [];
   const a = r.analysis || {};
   const topo = r.topology || {};
@@ -979,6 +996,13 @@ function renderReport(r) {
   const flood = r.flood || a.flood;
   const zoning = r.zoning || a.zoning;
   const siteDrivers = r.site_drivers || r._meta?.site_drivers;
+  const recommendations =
+    r.recommendations || r._meta?.recommendations || null;
+  // Prefer priority order for display; fall back to design_elements
+  const els =
+    recommendations?.priority_ordered?.length
+      ? recommendations.priority_ordered
+      : r.design_elements || [];
 
   // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
   const exportObj = JSON.parse(JSON.stringify(r));
@@ -996,7 +1020,7 @@ function renderReport(r) {
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <div class="score-row">
         <span class="score">${els.length}</span>
-        <span class="score-of">design elements recommended</span>
+        <span class="score-of">recommendations for this parcel</span>
       </div>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
@@ -1006,6 +1030,11 @@ function renderReport(r) {
         ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
         ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
+      ${
+        recommendations?.summary_sentence
+          ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>`
+          : ''
+      }
 
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
@@ -1042,29 +1071,16 @@ function renderReport(r) {
       }
 
       <section class="report-block placement-block">
-        <h2>Placement recommendations</h2>
+        <h2>What this parcel needs</h2>
         <p class="fine" style="margin-top:-0.3rem">
-          Property-driven if→then rules for this parcel (not a fixed checklist).
+          Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
         </p>
         ${siteDriversSection(siteDrivers)}
         <div class="elements">
           ${
             els.length
-              ? els
-                  .map(
-                    (e) => `
-            <article class="el">
-              <div class="el-head">
-                <h3>${esc(ELEMENT_LABELS[e.element_type] || e.element_type)}</h3>
-                <span class="badge zone">Zone ${esc(e.zone)}</span>
-                ${confBadge(e.confidence)}
-              </div>
-              <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis)}</div>
-              <p>${esc(e.placement_notes)}</p>
-            </article>`
-                  )
-                  .join('')
-              : '<p class="fine">No elements matched — try a larger parcel or different ground.</p>'
+              ? els.map((e) => recommendationCard(e)).join('')
+              : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
           }
         </div>
       </section>
@@ -1803,7 +1819,7 @@ function siteDriversSection(drivers) {
     })
     .join('');
 
-  // Compact drivers strip — not a second "Placement recommendations" card
+  // Compact drivers strip — not a second recommendations card
   return `
     <div class="site-drivers">
       <span class="mono site-drivers-label">Site conditions used</span>
@@ -1820,6 +1836,44 @@ function siteDriversSection(drivers) {
         </div>
       </details>
     </div>`;
+}
+
+/**
+ * Value-first recommendation card: outcome headline → technique → site basis → how-to.
+ */
+function recommendationCard(e) {
+  const valueLabel =
+    VALUE_LABELS[e.primary_value] || e.primary_value || 'Site benefit';
+  const technique =
+    e.technique_label || ELEMENT_LABELS[e.element_type] || e.element_type;
+  const headline =
+    e.value_headline ||
+    e.placement_notes ||
+    `Deliver ${String(valueLabel).toLowerCase()} on this parcel.`;
+  const secondary = (e.secondary_values || [])
+    .map((v) => VALUE_LABELS[v] || v)
+    .filter(Boolean);
+  const chips = [
+    `<span class="value-chip primary" data-value="${esc(e.primary_value || '')}">${esc(valueLabel)}</span>`,
+    ...secondary.map(
+      (lab) => `<span class="value-chip secondary">${esc(lab)}</span>`
+    ),
+  ].join('');
+
+  return `
+    <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
+      <div class="value-chips">${chips}</div>
+      <p class="value-headline">${esc(headline)}</p>
+      <div class="el-head">
+        <h3 class="technique-label">${esc(technique)}</h3>
+        <span class="badge zone">Zone ${esc(e.zone)}</span>
+        ${confBadge(e.confidence)}
+        ${e.effort ? `<span class="badge effort">${esc(e.effort)} effort</span>` : ''}
+      </div>
+      <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis || '')}</div>
+      ${e.placement_notes ? `<p class="placement-how">${esc(e.placement_notes)}</p>` : ''}
+      ${e.season_hint ? `<p class="season-hint"><span class="basis-label">Season</span> ${esc(e.season_hint)}</p>` : ''}
+    </article>`;
 }
 
 function fmtDistance(m) {

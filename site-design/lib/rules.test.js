@@ -1,6 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { applyRules, buildSiteRecord } from './rules.js';
+import {
+  enrichElementValues,
+  groupRecommendationsByValue,
+  recommendationPriority,
+  VALUE_TAXONOMY,
+} from './recommendation-values.js';
 
 describe('applyRules', () => {
   it('recommends swale on moderate slope with good drainage', () => {
@@ -111,10 +117,79 @@ describe('applyRules', () => {
     assert.ok(wb);
     assert.match(wb.placement_notes, /Chinook/i);
   });
+
+  it('frames each element with value fields (primary_value, value_headline)', () => {
+    const { design_elements, recommendations } = applyRules({
+      terrain: { slope_percent: 6, aspect: 'S', erosion_risk: 'low' },
+      soil: { drainage_class: 'well' },
+      hydrology: { wetland_class: null, flood_risk_zone: false },
+      climate: { prevailing_wind_direction: 'NW', chinook_exposure: false },
+    });
+    assert.ok(design_elements.length > 0);
+    for (const el of design_elements) {
+      assert.ok(el.primary_value, `${el.element_type} missing primary_value`);
+      assert.ok(VALUE_TAXONOMY[el.primary_value], `unknown value ${el.primary_value}`);
+      assert.ok(el.value_headline, `${el.element_type} missing value_headline`);
+      assert.ok(el.technique_label);
+      assert.equal(typeof el.priority, 'number');
+      assert.ok(Array.isArray(el.secondary_values));
+    }
+    const swale = design_elements.find((e) => e.element_type === 'swale');
+    assert.equal(swale?.primary_value, 'water_harvest');
+    assert.match(swale.value_headline, /6%/);
+    assert.ok(recommendations?.summary_sentence);
+    assert.ok(Array.isArray(recommendations?.priority_ordered));
+    assert.ok(recommendations.by_value?.water_harvest?.length);
+  });
+
+  it('promotes compliance_safety when wetland blocks earthworks', () => {
+    const { design_elements } = applyRules({
+      terrain: { slope_percent: 5, aspect: 'S', landform_position: 'valley_floor' },
+      soil: { drainage_class: 'well' },
+      hydrology: { wetland_class: 'III', flood_risk_zone: false },
+    });
+    const swale = design_elements.find((e) => e.element_type === 'swale');
+    assert.ok(swale);
+    assert.equal(swale.primary_value, 'compliance_safety');
+    assert.match(swale.value_headline, /wetland|Water Act/i);
+    assert.equal(swale.priority, 1);
+  });
+});
+
+describe('recommendation-values', () => {
+  it('ranks compliance and water before food', () => {
+    const a = recommendationPriority({ primary_value: 'compliance_safety' });
+    const b = recommendationPriority({ primary_value: 'water_harvest' });
+    const c = recommendationPriority({ primary_value: 'food_production' });
+    assert.ok(a < b);
+    assert.ok(b < c);
+  });
+
+  it('builds site-specific windbreak headlines', () => {
+    const v = enrichElementValues(
+      'windbreak',
+      { climate: { prevailing_wind_direction: 'NW', chinook_exposure: true } },
+      {}
+    );
+    assert.equal(v.primary_value, 'wind_protection');
+    assert.match(v.value_headline, /NW/);
+    assert.match(v.value_headline, /chinook/i);
+  });
+
+  it('groups by primary_value', () => {
+    const g = groupRecommendationsByValue([
+      { element_type: 'swale', primary_value: 'water_harvest', priority: 3, zone: 2 },
+      { element_type: 'windbreak', primary_value: 'wind_protection', priority: 4, zone: 2 },
+      { element_type: 'pond', primary_value: 'water_storage', priority: 3, zone: 3 },
+    ]);
+    assert.equal(g.by_value.water_harvest.length, 1);
+    assert.equal(g.by_value.wind_protection.length, 1);
+    assert.match(g.summary_sentence, /water harvest|wind protection|water storage/i);
+  });
 });
 
 describe('buildSiteRecord', () => {
-  it('returns schema-shaped record with design_elements', () => {
+  it('returns schema-shaped record with design_elements and recommendations', () => {
     const rec = buildSiteRecord({
       site_name: 'Test Acreage',
       location: { latitude: 53.5, longitude: -113.5, municipality: 'Sturgeon County' },
@@ -142,6 +217,8 @@ describe('buildSiteRecord', () => {
     assert.equal(rec.location.municipality, 'Sturgeon County');
     assert.ok(Array.isArray(rec.design_elements));
     assert.ok(rec.design_elements.length > 0);
+    assert.ok(rec.design_elements.every((e) => e.primary_value && e.value_headline));
+    assert.ok(rec.recommendations?.summary_sentence);
     assert.ok(Array.isArray(rec.data_provenance));
     assert.equal(rec.hydrology.seasonal_distribution, 'summer_peak');
   });

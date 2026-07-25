@@ -10,6 +10,14 @@ drive both "what can grow here" and "what earthworks/structures belong here."
 These are the rules a generator would apply to a populated site record to
 auto-populate the `design_elements` array.
 
+**Value framing (recommendation engine):** Eligibility stays if→then. Each
+matched element is then annotated with `primary_value`, `secondary_values`,
+and a parcel-specific `value_headline` (water harvest, wind protection, food,
+soil building, compliance, etc.) so the Expanding Edge product leads with
+client outcomes, not technique jargon. See `lib/recommendation-values.js`.
+The API also returns a `recommendations` envelope: `summary_sentence`,
+`priority_ordered`, and `by_value`.
+
 | # | Condition (on schema fields) | → Recommended element | Notes |
 |---|---|---|---|
 | 1 | `slope_percent` 2–15 AND `drainage_class` in {well, moderately_well, imperfect} | `swale` on contour | Standard water-harvesting range; below 2% swales add little, above ~15% berms destabilize |

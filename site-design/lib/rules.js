@@ -1,7 +1,16 @@
 /**
  * If→then placement ruleset for Alberta-first permaculture site design.
  * Companion to schema/site-design-schema.json and design-rules-and-data-sources.md.
+ *
+ * Value framing (water harvest, wind protection, food, etc.) is layered on in
+ * recommendation-values.js — eligibility stays if→then; product copy leads with outcomes.
  */
+
+import {
+  enrichElementValues,
+  groupRecommendationsByValue,
+  recommendationPriority,
+} from './recommendation-values.js';
 
 const DRAINAGE_SWALE_OK = new Set(['well', 'moderately_well', 'imperfect']);
 const POOR_CLI = new Set(['5', '6', '7']);
@@ -69,7 +78,7 @@ const ELEMENT_META = {
 
 /**
  * @param {object} site — partial site record (location, terrain, hydrology, soil, climate, existing_vegetation, footprint_ha?)
- * @returns {{ design_elements: object[], flags: object[], site_drivers: object }}
+ * @returns {{ design_elements: object[], flags: object[], site_drivers: object, recommendations: object }}
  */
 export function applyRules(site = {}) {
   const terrain = site.terrain || {};
@@ -81,6 +90,8 @@ export function applyRules(site = {}) {
   const elements = [];
   const flags = [];
   const site_drivers = buildSiteDrivers(site);
+  // Passed into element() for value headlines that include site facts
+  const siteCtx = site;
 
   // Rule 5 first — wetland presence blocks earthworks and needs regulatory review
   if (hydro.wetland_class != null && hydro.wetland_class !== '') {
@@ -91,13 +102,18 @@ export function applyRules(site = {}) {
         'Regulated wetland present (Alberta Merged Wetland Inventory class). No earthworks recommended until Water Act review. Flag needs_site_visit.',
     });
     elements.push(
-      element('swale', {
-        condition_basis: `wetland_class = ${hydro.wetland_class}`,
-        placement_notes:
-          'Do not construct swales, ponds, or water-harvesting earthworks until Alberta Water Act approvals are confirmed. Schedule a site visit with a qualified wetland assessor.',
-        confidence: 'needs_site_visit',
-        zone: 5,
-      })
+      element(
+        'swale',
+        {
+          condition_basis: `wetland_class = ${hydro.wetland_class}`,
+          placement_notes:
+            'Do not construct swales, ponds, or water-harvesting earthworks until Alberta Water Act approvals are confirmed. Schedule a site visit with a qualified wetland assessor.',
+          confidence: 'needs_site_visit',
+          zone: 5,
+          wetland_block: true,
+        },
+        siteCtx
+      )
     );
     // Still allow non-earthwork recommendations below where safe
   }
@@ -124,13 +140,17 @@ export function applyRules(site = {}) {
   if (!wetlandBlocksEarthworks && slope != null) {
     if (slope > 15) {
       elements.push(
-        element('terrace', {
-          condition_basis: `slope_percent ${slope} > 15`,
-          placement_notes:
-            'Alberta foothill/coulee pattern: use terraces rather than swales on steep ground. Stabilise cuts with deep-rooted perennial cover before full build-out.',
-          confidence: earthworkConfidence,
-          zone: 2,
-        })
+        element(
+          'terrace',
+          {
+            condition_basis: `slope_percent ${slope} > 15`,
+            placement_notes:
+              'Alberta foothill/coulee pattern: use terraces rather than swales on steep ground. Stabilise cuts with deep-rooted perennial cover before full build-out.',
+            confidence: earthworkConfidence,
+            zone: 2,
+          },
+          siteCtx
+        )
       );
     } else if (
       slope >= 2 &&
@@ -138,13 +158,17 @@ export function applyRules(site = {}) {
       DRAINAGE_SWALE_OK.has(soil.drainage_class)
     ) {
       elements.push(
-        element('swale', {
-          condition_basis: `slope_percent ${slope} in 2–15 AND drainage_class ${soil.drainage_class}`,
-          placement_notes:
-            'Place on true contour. Below 2% swales harvest little; above ~15% berms destabilise. Size for summer-peak convective storms typical of Alberta.',
-          confidence: earthworkConfidence,
-          zone: 2,
-        })
+        element(
+          'swale',
+          {
+            condition_basis: `slope_percent ${slope} in 2–15 AND drainage_class ${soil.drainage_class}`,
+            placement_notes:
+              'Place on true contour. Below 2% swales harvest little; above ~15% berms destabilise. Size for summer-peak convective storms typical of Alberta.',
+            confidence: earthworkConfidence,
+            zone: 2,
+          },
+          siteCtx
+        )
       );
     }
   }
@@ -152,13 +176,17 @@ export function applyRules(site = {}) {
   // Rule 3 — keyline
   if (!wetlandBlocksEarthworks && terrain.keypoint_present === true) {
     elements.push(
-      element('keyline_cultivation', {
-        condition_basis: 'keypoint_present = true',
-        placement_notes:
-          'Run cultivation off-contour from the keypoint (slope inflection convex→concave) toward the ridge to spread water across the landscape.',
-        confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_high',
-        zone: 3,
-      })
+      element(
+        'keyline_cultivation',
+        {
+          condition_basis: 'keypoint_present = true',
+          placement_notes:
+            'Run cultivation off-contour from the keypoint (slope inflection convex→concave) toward the ridge to spread water across the landscape.',
+          confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_high',
+          zone: 3,
+        },
+        siteCtx
+      )
     );
   }
 
@@ -169,24 +197,32 @@ export function applyRules(site = {}) {
     hydro.flood_risk_zone !== true
   ) {
     elements.push(
-      element('pond', {
-        condition_basis:
-          'landform_position = valley_floor AND wetland_class null AND flood_risk_zone = false',
-        placement_notes:
-          'Valley-floor storage candidate. Confirm clay core / sealing, inlet control, and Alberta Water Act / Fisheries approvals before construction. Prefer passive fill from diversion rather than pumped systems.',
-        confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_moderate',
-        zone: 3,
-      })
+      element(
+        'pond',
+        {
+          condition_basis:
+            'landform_position = valley_floor AND wetland_class null AND flood_risk_zone = false',
+          placement_notes:
+            'Valley-floor storage candidate. Confirm clay core / sealing, inlet control, and Alberta Water Act / Fisheries approvals before construction. Prefer passive fill from diversion rather than pumped systems.',
+          confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_moderate',
+          zone: 3,
+        },
+        siteCtx
+      )
     );
     elements.push(
-      element('water_harvesting_earthwork', {
-        condition_basis:
-          'landform_position = valley_floor AND wetland_class null AND flood_risk_zone = false',
-        placement_notes:
-          'Complement pond with diversion bunds and overflow spillways sized for Alberta summer peak storms.',
-        confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_moderate',
-        zone: 3,
-      })
+      element(
+        'water_harvesting_earthwork',
+        {
+          condition_basis:
+            'landform_position = valley_floor AND wetland_class null AND flood_risk_zone = false',
+          placement_notes:
+            'Complement pond with diversion bunds and overflow spillways sized for Alberta summer peak storms.',
+          confidence: erosionHigh ? 'needs_site_visit' : 'rule_based_moderate',
+          zone: 3,
+        },
+        siteCtx
+      )
     );
   }
 
@@ -202,13 +238,17 @@ export function applyRules(site = {}) {
         `cli_agricultural_capability_class ${soil.cli_agricultural_capability_class}`
       );
     elements.push(
-      element('hugelkultur_mound', {
-        condition_basis: parts.join(' OR '),
-        placement_notes:
-          'Build soil depth and organic matter where native profile is shallow or CLI class 5–7. Orient mounds for solar gain; mulch heavily against Alberta freeze–thaw.',
-        confidence: 'rule_based_high',
-        zone: 1,
-      })
+      element(
+        'hugelkultur_mound',
+        {
+          condition_basis: parts.join(' OR '),
+          placement_notes:
+            'Build soil depth and organic matter where native profile is shallow or CLI class 5–7. Orient mounds for solar gain; mulch heavily against Alberta freeze–thaw.',
+          confidence: 'rule_based_high',
+          zone: 1,
+        },
+        siteCtx
+      )
     );
   }
 
@@ -219,26 +259,34 @@ export function applyRules(site = {}) {
       ? ' Chinook corridor: prioritise the belt and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
       : '';
     elements.push(
-      element('windbreak', {
-        condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}${
-          climate.chinook_exposure ? ' AND chinook_exposure = true' : ''
-        }`,
-        placement_notes: `Place a multi-row shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2 (often west/northwest in Alberta). Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.${chinookNote}`,
-        confidence: climate.chinook_exposure
-          ? 'rule_based_high'
-          : 'rule_based_moderate',
-        zone: 2,
-      })
+      element(
+        'windbreak',
+        {
+          condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}${
+            climate.chinook_exposure ? ' AND chinook_exposure = true' : ''
+          }`,
+          placement_notes: `Place a multi-row shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2 (often west/northwest in Alberta). Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.${chinookNote}`,
+          confidence: climate.chinook_exposure
+            ? 'rule_based_high'
+            : 'rule_based_moderate',
+          zone: 2,
+        },
+        siteCtx
+      )
     );
   } else if (climate.chinook_exposure === true) {
     elements.push(
-      element('windbreak', {
-        condition_basis: 'chinook_exposure = true',
-        placement_notes:
-          'Chinook exposure without a listed wind direction — default multi-row west/northwest shelterbelt upwind of Zones 1–2. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
-        confidence: 'rule_based_high',
-        zone: 2,
-      })
+      element(
+        'windbreak',
+        {
+          condition_basis: 'chinook_exposure = true',
+          placement_notes:
+            'Chinook exposure without a listed wind direction — default multi-row west/northwest shelterbelt upwind of Zones 1–2. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
+          confidence: 'rule_based_high',
+          zone: 2,
+        },
+        siteCtx
+      )
     );
   }
 
@@ -258,26 +306,34 @@ export function applyRules(site = {}) {
       ? ` and ~${climate.frost_free_days} frost-free days.`
       : '.';
     elements.push(
-      element('food_forest_guild', {
-        condition_basis: `successional_stage = ${veg.successional_stage}`,
-        placement_notes: `Soil-building phase complete enough for layered polyculture.${zoneNote}${ffd} Join against the EcoCrop crop-suitability schema for species selection.`,
-        confidence: climate.plant_hardiness_zone
-          ? 'rule_based_high'
-          : 'rule_based_moderate',
-        zone: 2,
-      })
+      element(
+        'food_forest_guild',
+        {
+          condition_basis: `successional_stage = ${veg.successional_stage}`,
+          placement_notes: `Soil-building phase complete enough for layered polyculture.${zoneNote}${ffd} Join against the EcoCrop crop-suitability schema for species selection.`,
+          confidence: climate.plant_hardiness_zone
+            ? 'rule_based_high'
+            : 'rule_based_moderate',
+          zone: 2,
+        },
+        siteCtx
+      )
     );
   } else if (!veg.successional_stage) {
     // No succession data — moderate recommendation with visit note
     if (veg.cover_type && veg.cover_type !== 'bare_disturbed') {
       elements.push(
-        element('food_forest_guild', {
-          condition_basis: `cover_type = ${veg.cover_type} (successional_stage unknown)`,
-          placement_notes:
-            'Successional stage not assessed. Treat as provisional: confirm cover and soil organic matter on site before committing canopy layers.',
-          confidence: 'needs_site_visit',
-          zone: 2,
-        })
+        element(
+          'food_forest_guild',
+          {
+            condition_basis: `cover_type = ${veg.cover_type} (successional_stage unknown)`,
+            placement_notes:
+              'Successional stage not assessed. Treat as provisional: confirm cover and soil organic matter on site before committing canopy layers.',
+            confidence: 'needs_site_visit',
+            zone: 2,
+          },
+          siteCtx
+        )
       );
     }
   }
@@ -286,22 +342,30 @@ export function applyRules(site = {}) {
   const footprint = num(site.footprint_ha);
   if (footprint != null && footprint < 0.1) {
     elements.push(
-      element('herb_spiral', {
-        condition_basis: `footprint_ha ${footprint} < 0.1`,
-        placement_notes:
-          'Small footprint + high desired diversity: herb spiral near the kitchen door (Zone 1). Stone mass buffers Alberta diurnal temperature swings.',
-        confidence: 'rule_based_high',
-        zone: 1,
-      })
+      element(
+        'herb_spiral',
+        {
+          condition_basis: `footprint_ha ${footprint} < 0.1`,
+          placement_notes:
+            'Small footprint + high desired diversity: herb spiral near the kitchen door (Zone 1). Stone mass buffers Alberta diurnal temperature swings.',
+          confidence: 'rule_based_high',
+          zone: 1,
+        },
+        siteCtx
+      )
     );
     elements.push(
-      element('keyhole_bed', {
-        condition_basis: `footprint_ha ${footprint} < 0.1`,
-        placement_notes:
-          'Keyhole geometry maximises edge and access on tight parcels. Mulch paths; compost at the keyhole centre.',
-        confidence: 'rule_based_high',
-        zone: 1,
-      })
+      element(
+        'keyhole_bed',
+        {
+          condition_basis: `footprint_ha ${footprint} < 0.1`,
+          placement_notes:
+            'Keyhole geometry maximises edge and access on tight parcels. Mulch paths; compost at the keyhole centre.',
+          confidence: 'rule_based_high',
+          zone: 1,
+        },
+        siteCtx
+      )
     );
   }
 
@@ -324,7 +388,10 @@ export function applyRules(site = {}) {
     design_elements.push(el);
   }
 
-  return { design_elements, flags, site_drivers };
+  // Value-first recommendation envelope (eligibility still if→then)
+  const recommendations = groupRecommendationsByValue(design_elements);
+
+  return { design_elements, flags, site_drivers, recommendations };
 }
 
 /**
@@ -503,7 +570,8 @@ export function buildSiteRecord(input = {}) {
     footprint_ha: num(input.footprint_ha),
   };
 
-  const { design_elements, flags, site_drivers } = applyRules(site);
+  const { design_elements, flags, site_drivers, recommendations } =
+    applyRules(site);
 
   const data_provenance = Array.isArray(input.data_provenance)
     ? input.data_provenance
@@ -521,12 +589,14 @@ export function buildSiteRecord(input = {}) {
     proximity_context: site.proximity_context,
     predicted_well_depth: site.predicted_well_depth,
     design_elements,
+    recommendations,
     site_drivers,
     data_provenance,
     _meta: {
       footprint_ha: site.footprint_ha,
       flags,
       site_drivers,
+      recommendations,
       engine: 'ee-site-design-rules-v1',
       region_focus: 'Alberta',
       generated_at: new Date().toISOString(),
@@ -544,14 +614,36 @@ export function elementSummary(type) {
 
 export { ELEMENT_META };
 
-function element(type, { condition_basis, placement_notes, confidence, zone }) {
-  return {
+/**
+ * Build a design element with value-first framing.
+ * @param {string} type
+ * @param {{ condition_basis?: string, placement_notes?: string, confidence?: string, zone?: number, wetland_block?: boolean }} opts
+ * @param {object} [site] — full site for value headlines
+ */
+function element(type, opts = {}, site = {}) {
+  const {
+    condition_basis,
+    placement_notes,
+    confidence,
+    zone,
+    wetland_block,
+  } = opts;
+  const conf = confidence || 'rule_based_moderate';
+  const values = enrichElementValues(type, site, {
+    condition_basis,
+    confidence: conf,
+    wetland_block: !!wetland_block,
+  });
+  const base = {
     element_type: type,
     condition_basis,
     placement_notes,
     zone: zone ?? ELEMENT_META[type]?.zone ?? 2,
-    confidence: confidence || 'rule_based_moderate',
+    confidence: conf,
+    ...values,
   };
+  base.priority = recommendationPriority(base);
+  return base;
 }
 
 function num(v) {

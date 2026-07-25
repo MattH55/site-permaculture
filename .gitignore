@@ -23,3 +23,5 @@ Pics/
 prepper-homestead.html
 turnkey-homestead.html
 vercel-build/
+.vercel
+.env*

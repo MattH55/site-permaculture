@@ -518,6 +518,14 @@ h3 { font-size: 1.08rem; }
 }
 .flag p { margin: 0; font-size: 0.94rem; color: var(--ink-soft); }
 
+.rec-summary {
+  margin: 0.35rem 0 0.9rem;
+  font-size: 1.05rem;
+  color: var(--ink);
+  font-weight: 500;
+  line-height: 1.4;
+}
+
 .elements { display: grid; gap: 0.7rem; margin-top: 0.7rem; }
 .el {
   border: 1px solid var(--line);
@@ -526,6 +534,56 @@ h3 { font-size: 1.08rem; }
   background: #fff;
   display: grid;
   gap: 0.4rem;
+}
+.el.rec-card {
+  border-left: 3px solid var(--berry);
+}
+.el.rec-card[data-value="compliance_safety"] { border-left-color: var(--danger); }
+.el.rec-card[data-value="water_harvest"],
+.el.rec-card[data-value="water_storage"] { border-left-color: #2a6f97; }
+.el.rec-card[data-value="wind_protection"],
+.el.rec-card[data-value="snow_management"] { border-left-color: #5c7a8a; }
+.el.rec-card[data-value="food_production"],
+.el.rec-card[data-value="medicinal"] { border-left-color: var(--ok); }
+.el.rec-card[data-value="soil_building"],
+.el.rec-card[data-value="erosion_control"] { border-left-color: #8b6914; }
+
+.value-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.value-chip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.18rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  color: var(--ink-soft);
+  background: rgba(0, 0, 0, 0.02);
+}
+.value-chip.primary {
+  border-color: var(--berry);
+  color: var(--berry);
+  background: rgba(91, 58, 115, 0.08);
+  font-weight: 600;
+}
+.value-chip.secondary {
+  opacity: 0.9;
+}
+.value-headline {
+  margin: 0.15rem 0 0.1rem !important;
+  font-size: 1.05rem !important;
+  font-weight: 600;
+  color: var(--ink) !important;
+  line-height: 1.35;
+}
+.technique-label {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--ink-soft);
 }
 .el-head {
   display: flex;
@@ -549,6 +607,7 @@ h3 { font-size: 1.08rem; }
 .badge.high { border-color: var(--ok); color: var(--ok); }
 .badge.moderate { border-color: var(--caution); color: var(--caution); }
 .badge.visit { border-color: var(--danger); color: var(--danger); }
+.badge.effort { border-color: var(--line); color: var(--ink-soft); }
 .el .basis {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -567,7 +626,11 @@ h3 { font-size: 1.08rem; }
   text-transform: uppercase;
 }
 .el p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
-
+.el p.placement-how { font-size: 0.9rem; }
+.el p.season-hint {
+  font-size: 0.82rem;
+  font-family: 'IBM Plex Mono', monospace;
+}
 .placement-block .site-drivers {
   margin: 0.65rem 0 0.85rem;
   padding: 0.65rem 0.8rem;
