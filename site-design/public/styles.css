@@ -568,13 +568,29 @@ h3 { font-size: 1.08rem; }
 }
 .el p { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
 
-.site-drivers {
-  margin: 0.75rem 0 1rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--line);
+.placement-block .site-drivers {
+  margin: 0.65rem 0 0.85rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px dashed var(--line);
   border-radius: var(--radius);
-  background: rgba(91, 58, 115, 0.04);
+  background: transparent;
 }
+.site-drivers-label {
+  display: block;
+  color: var(--ink-soft);
+  margin-bottom: 0.15rem;
+}
+.drivers-details summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+  list-style: none;
+}
+.drivers-details summary::-webkit-details-marker { display: none; }
+.drivers-details summary::before {
+  content: '▸ ';
+  color: var(--berry);
+}
+.drivers-details[open] summary::before { content: '▾ '; }
 .gate-chip.on { border-color: var(--ok); }
 .gate-chip.on strong { color: var(--ok); }
 .gate-chip.off { opacity: 0.55; }

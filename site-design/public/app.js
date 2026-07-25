@@ -10,7 +10,7 @@ const ELEMENT_LABELS = {
   pond: 'Pond / dam',
   water_harvesting_earthwork: 'Water-harvesting earthwork',
   hugelkultur_mound: 'Hügelkultur / raised bed',
-  windbreak: 'Windbreak',
+  windbreak: 'Windbreak / shelterbelt',
   shelterbelt_zone: 'Shelterbelt zone',
   food_forest_guild: 'Food forest guild',
   herb_spiral: 'Herb spiral',
@@ -1041,13 +1041,10 @@ function renderReport(r) {
           : ''
       }
 
-      <section class="report-block">
+      <section class="report-block placement-block">
         <h2>Placement recommendations</h2>
         <p class="fine" style="margin-top:-0.3rem">
-          <strong>Property-driven</strong> if→then rules — not a fixed Alberta checklist.
-          Each element fires only when this parcel’s measured attributes match its condition.
-          Windbreak often appears across open prairie sites because prevailing wind is almost always present;
-          slope, wetland, landform, and footprint change the rest.
+          Property-driven if→then rules for this parcel (not a fixed checklist).
         </p>
         ${siteDriversSection(siteDrivers)}
         <div class="elements">
@@ -1806,18 +1803,22 @@ function siteDriversSection(drivers) {
     })
     .join('');
 
+  // Compact drivers strip — not a second "Placement recommendations" card
   return `
     <div class="site-drivers">
-      <p class="fine">${esc(drivers.note || '')}</p>
-      <div class="plant-chips" style="margin:0.5rem 0 0.75rem">${gateChips}</div>
-      <div class="econ-table-wrap">
-        <table class="econ-table drivers-table">
-          <thead>
-            <tr><th>Measured property</th><th>This parcel</th><th>What it controls</th></tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
-      </div>
+      <span class="mono site-drivers-label">Site conditions used</span>
+      <div class="plant-chips" style="margin:0.45rem 0 0.55rem">${gateChips}</div>
+      <details class="drivers-details">
+        <summary class="fine">Show measured values</summary>
+        <div class="econ-table-wrap" style="margin-top:0.5rem">
+          <table class="econ-table drivers-table">
+            <thead>
+              <tr><th>Measured property</th><th>This parcel</th><th>What it controls</th></tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </details>
     </div>`;
 }
 

@@ -40,9 +40,10 @@ const ELEMENT_META = {
     summary: 'Builds planting depth and organic matter where native soil is shallow or poor.',
   },
   windbreak: {
-    label: 'Windbreak',
+    label: 'Windbreak / shelterbelt',
     zone: 2,
-    summary: 'Tree/shrub strip perpendicular to prevailing wind, upwind of Zones 1–2.',
+    summary:
+      'Multi-row tree/shrub belt perpendicular to prevailing wind, upwind of Zones 1–2 (often west/northwest).',
   },
   shelterbelt_zone: {
     label: 'Shelterbelt zone',
@@ -211,30 +212,22 @@ export function applyRules(site = {}) {
     );
   }
 
-  // Rule 7 & 8 — windbreak / shelterbelt
+  // Rule 7 & 8 — windbreak + multi-row shelterbelt as ONE placement card
+  // (previously two near-identical cards that looked like a duplicate section)
   if (climate.prevailing_wind_direction) {
     const chinookNote = climate.chinook_exposure
-      ? ' Chinook corridor: prioritise windbreak and avoid early-flowering woody species regardless of hardiness zone — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
+      ? ' Chinook corridor: prioritise the belt and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
       : '';
     elements.push(
       element('windbreak', {
         condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}${
           climate.chinook_exposure ? ' AND chinook_exposure = true' : ''
         }`,
-        placement_notes: `Place perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2. In Alberta this is very often a west/northwest-facing shelterbelt.${chinookNote}`,
+        placement_notes: `Place a multi-row shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2 (often west/northwest in Alberta). Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.${chinookNote}`,
         confidence: climate.chinook_exposure
           ? 'rule_based_high'
           : 'rule_based_moderate',
         zone: 2,
-      })
-    );
-    elements.push(
-      element('shelterbelt_zone', {
-        condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}`,
-        placement_notes:
-          'Multi-row shelterbelt on the open-exposure sector. Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.',
-        confidence: 'rule_based_moderate',
-        zone: 4,
       })
     );
   } else if (climate.chinook_exposure === true) {
@@ -242,7 +235,7 @@ export function applyRules(site = {}) {
       element('windbreak', {
         condition_basis: 'chinook_exposure = true',
         placement_notes:
-          'Chinook exposure without a listed wind direction — default west/northwest shelterbelt. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
+          'Chinook exposure without a listed wind direction — default multi-row west/northwest shelterbelt upwind of Zones 1–2. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
         confidence: 'rule_based_high',
         zone: 2,
       })
