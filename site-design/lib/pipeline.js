@@ -25,7 +25,7 @@ import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
 import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
-import { estimateTreeCover } from './trees.js';
+import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -269,6 +269,10 @@ export async function generateSiteReport(input = {}) {
   record.zoning = zoning;
   record.temperature = temperature;
   record.wildlife = wildlife;
+  const treeCover = estimateTreeCover(layers, proximity);
+  record.tree_cover = treeCover;
+  record.tree_sample_grid = generateTreeSampleGrid(bbox);
+
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
   if (Array.isArray(record.data_provenance)) {

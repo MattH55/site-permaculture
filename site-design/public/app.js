@@ -1106,6 +1106,7 @@ function renderReport(r) {
       ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
       ${wildlifeSection(r.wildlife || a.wildlife)}
+      ${treeCoverSection(r.tree_cover)}
 
       ${
         flags.length
@@ -1973,6 +1974,28 @@ function wildlifeSection(wl) {
       </div>
 
       <p class="fine" style="margin-top:0.6rem">${esc(wl.methodology_note || '')}</p>
+    </section>`;
+}
+
+function treeCoverSection(tc) {
+  if (!tc || !tc.available) return '';
+  const recList = (tc.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Tree canopy cover</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(tc.methodology_note || '')}
+      </p>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Tree cover</span><strong>${esc(tc.tree_cover_pct || '—')}%</strong></div>
+        <div class="stat"><span class="k">Method</span><strong>${esc(tc.method || 'heuristic')}</strong></div>
+      </div>
+
+      ${recList ? `<ul class="wildlife-recs" style="margin:0.6rem 0 0;padding-left:1.2rem;font-size:0.92rem;color:var(--ink-soft);line-height:1.6">${recList}</ul>` : ''}
+
+      <p class="fine" style="margin-top:0.6rem">${esc(tc.treed_acres_estimate || '')}</p>
     </section>`;
 }
 
