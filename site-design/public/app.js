@@ -207,11 +207,11 @@ function initGoogleMap(cfg) {
   const map = new google.maps.Map(el, {
     center: cfg.defaultCenter || { lat: 53.55, lng: -113.5 },
     zoom: cfg.defaultZoom || 10,
-    mapTypeId: 'terrain',
+    mapTypeId: 'satellite',
     mapTypeControl: true,
     mapTypeControlOptions: {
       style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-      mapTypeIds: ['terrain', 'hybrid', 'roadmap', 'satellite'],
+      mapTypeIds: ['satellite', 'hybrid', 'roadmap', 'terrain'],
     },
     streetViewControl: false,
     fullscreenControl: true,
