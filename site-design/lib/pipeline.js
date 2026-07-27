@@ -25,6 +25,7 @@ import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
 import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
+import { estimateTreeCover } from './trees.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h

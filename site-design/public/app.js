@@ -12,7 +12,7 @@ const ELEMENT_LABELS = {
   hugelkultur_mound: 'Hügelkultur / raised bed',
   windbreak: 'Windbreak / shelterbelt',
   shelterbelt_zone: 'Shelterbelt zone',
-  food_forest_guild: 'Food forest guild',
+  food_forest_guild:                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        'Food forest guild',
   herb_spiral: 'Herb spiral',
   keyhole_bed: 'Keyhole bed',
 };
@@ -2942,37 +2942,142 @@ function pointsMinimap(centre, points, opts) {
 const WELL_DEPTH_RAMP = ['#2e2118', '#4a3524', '#64492f', '#7d5e3d', '#96784f', '#ac9268'];
 const CRIME_DISTANCE_RAMP = ['#5b3a73', '#7e5a96', '#9c7cb3', '#b09bc4']; // near→far (dark→light)
 
-function wellsMinimap(w, centre) {
+function wellsMapEmbed(w, centre) {
   const wells = w?.nearby_wells;
   if (!wells?.length || !centre) return '';
-  const points = wells.map((well) => ({
-    lat: well.lat,
-    lng: well.lng,
-    value: well.depth_m,
-    tooltip: `${well.depth_m} m deep · ${well.distance_km} km away`,
-  }));
-  return pointsMinimap(centre, points, {
-    ramp: WELL_DEPTH_RAMP,
-    legendLo: 'Shallower',
-    legendHi: 'Deeper',
+
+  // Return a div placeholder; init happens after DOM insertion
+  const id = 'wells-minimap-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    initWellsMinimap(id, wells, centre);
+  }, 100);
+  return `<div id="${id}" class="report-map minimap-embed" style="height:240px"></div>`;
+}
+
+function initWellsMinimap(elId, wells, centre) {
+  const el = document.getElementById(elId);
+  if (!el || typeof google === 'undefined' || !google.maps) return;
+  const bounds = new google.maps.LatLngBounds();
+  wells.forEach((w) => bounds.extend({ lat: w.lat, lng: w.lng }));
+  bounds.extend({ lat: centre.latitude, lng: centre.longitude });
+
+  const map = new google.maps.Map(el, {
+    mapTypeId: 'hybrid',
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+    zoomControl: true,
   });
+
+  google.maps.event.addListenerOnce(map, 'idle', () => {
+    map.fitBounds(bounds, 30);
+  });
+
+  // Site centre marker
+  new google.maps.Marker({
+    position: { lat: centre.latitude, lng: centre.longitude },
+    map,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: '#a8801f',
+      fillOpacity: 1,
+      strokeColor: '#16211b',
+      strokeWeight: 2,
+    },
+    title: 'Site centre',
+    zIndex: 10,
+  });
+
+  // Well markers with depth-color ramp
+  wells.forEach((w) => {
+    const depth = w.depth_m || 0;
+    const t = Math.min(1, depth / 300);
+    const fill = `hsl(24, ${40 + t * 30}%, ${60 - t * 35}%)`;
+    new google.maps.Marker({
+      position: { lat: w.lat, lng: w.lng },
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: fill,
+        fillOpacity: 0.85,
+        strokeColor: '#fff',
+        strokeWeight: 1.5,
+      },
+      title: `${w.depth_m}m deep · ${w.distance_km}km away`,
+      zIndex: 5,
+    });
+  });
+}
+
+function wellsMinimap(w, centre) {
+  return wellsMapEmbed(w, centre);
 }
 
 function crimeMinimap(nearestCrimes, centre) {
   const list = nearestCrimes?.nearest;
   if (!list?.length || !centre) return '';
-  const points = list
-    .filter((c) => Number.isFinite(c.latitude) && Number.isFinite(c.longitude))
-    .map((c) => ({
-      lat: c.latitude,
-      lng: c.longitude,
-      value: c.distance_m,
-      tooltip: `${c.occurrence_type || c.occurrence_category || 'Occurrence'} · ${Math.round(c.distance_m)} m away`,
-    }));
-  return pointsMinimap(centre, points, {
-    ramp: CRIME_DISTANCE_RAMP,
-    legendLo: 'Closer',
-    legendHi: 'Farther',
+
+  const points = list.filter((c) => Number.isFinite(c.latitude) && Number.isFinite(c.longitude));
+  if (!points.length) return '';
+
+  const id = 'crime-minimap-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    initCrimeMinimap(id, points, centre);
+  }, 100);
+  return `<div id="${id}" class="report-map minimap-embed" style="height:240px"></div>`;
+}
+
+function initCrimeMinimap(elId, crimes, centre) {
+  const el = document.getElementById(elId);
+  if (!el || typeof google === 'undefined' || !google.maps) return;
+  const bounds = new google.maps.LatLngBounds();
+  crimes.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
+  bounds.extend({ lat: centre.latitude, lng: centre.longitude });
+
+  const map = new google.maps.Map(el, {
+    mapTypeId: 'hybrid',
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
+    zoomControl: true,
+  });
+
+  google.maps.event.addListenerOnce(map, 'idle', () => {
+    map.fitBounds(bounds, 30);
+  });
+
+  new google.maps.Marker({
+    position: { lat: centre.latitude, lng: centre.longitude },
+    map,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: '#a8801f',
+      fillOpacity: 1,
+      strokeColor: '#16211b',
+      strokeWeight: 2,
+    },
+    title: 'Site centre',
+    zIndex: 10,
+  });
+
+  crimes.forEach((c) => {
+    new google.maps.Marker({
+      position: { lat: c.latitude, lng: c.longitude },
+      map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 6,
+        fillColor: '#8c2f1d',
+        fillOpacity: 0.8,
+        strokeColor: '#fff',
+        strokeWeight: 1.5,
+      },
+      title: `${c.occurrence_type || 'Occurrence'} · ${Math.round(c.distance_m)}m`,
+      zIndex: 5,
+    });
   });
 }
 
