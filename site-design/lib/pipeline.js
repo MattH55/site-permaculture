@@ -23,6 +23,8 @@ import { queryHardiness } from './hardiness.js';
 import { queryFloodHazard } from './flood.js';
 import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
+import { assessTemperature } from './climate.js';
+import { assessWildlife } from './wildlife.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -44,7 +46,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -67,6 +69,14 @@ export async function generateSiteReport(input = {}) {
       available: false,
       flood_hazard_class: 'unknown',
       flood_risk_zone: false,
+      error: e.message,
+    })),
+    assessTemperature(centre).catch((e) => ({
+      available: false,
+      error: e.message,
+    })),
+    assessWildlife(bbox, centre).catch((e) => ({
+      available: false,
       error: e.message,
     })),
   ]);
@@ -208,6 +218,10 @@ export async function generateSiteReport(input = {}) {
       crime_risk: stripCrimeForSchema(proximity.crime_risk),
     },
     predicted_well_depth: stripWellForSchema(predicted_well_depth),
+    wildlife_context: wildlife?.available ? {
+      deer: wildlife.white_tailed_deer || null,
+      sightings: wildlife.recent_sightings || null,
+    } : null,
     data_provenance: buildProvenance(
       layers,
       proximity,
@@ -217,7 +231,9 @@ export async function generateSiteReport(input = {}) {
       land_value,
       hardiness,
       flood,
-      zoning
+      zoning,
+      temperature,
+      wildlife
     ),
   };
 
@@ -238,7 +254,7 @@ export async function generateSiteReport(input = {}) {
     propertyLabel: siteInput.site_name,
   });
 
-  // Attach full proximity / well / solar / crime blocks (incl. disclaimers) for the UI
+  // Attach full proximity / well / solar / crime / temperature / wildlife blocks for the UI
   record.proximity_context = {
     ...siteInput.proximity_context,
     crime_risk: proximity.crime_risk,
@@ -250,6 +266,8 @@ export async function generateSiteReport(input = {}) {
   record.hardiness = hardiness;
   record.flood = flood;
   record.zoning = zoning;
+  record.temperature = temperature;
+  record.wildlife = wildlife;
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
   if (Array.isArray(record.data_provenance)) {
@@ -301,6 +319,8 @@ export async function generateSiteReport(input = {}) {
       hardiness,
       flood,
       zoning,
+      temperature,
+      wildlife,
       planting: {
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
@@ -310,7 +330,7 @@ export async function generateSiteReport(input = {}) {
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v7-phase2',
+      pipeline: 'bbox-live-v8-phase3',
       cache: 'miss',
       cache_key: key,
     },
@@ -354,15 +374,7 @@ function inferDrainage(wetlands, soils, terrain) {
 }
 
 function buildProvenance(
-  layers,
-  proximity,
-  well,
-  solar,
-  nearest_crimes,
-  land_value,
-  hardiness,
-  flood,
-  zoning
+  layers, proximity, well, solar, nearest_crimes, land_value, hardiness, flood, zoning, temperature, wildlife
 ) {
   const rows = [];
   if (layers.elevation) {
@@ -442,8 +454,7 @@ function buildProvenance(
       field: 'proximity_context.crime_risk',
       source_name: proximity._sources.crime,
       source_date: new Date().toISOString().slice(0, 10),
-      source_url:
-        'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510017701',
+      source_url: 'https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3510017701',
     });
   }
   if (well) {
@@ -465,28 +476,17 @@ function buildProvenance(
   if (nearest_crimes?.available || nearest_crimes?.in_eps_coverage) {
     rows.push({
       field: 'proximity_context.nearest_crimes',
-      source_name:
-        nearest_crimes.source_name ||
-        'EPS Community Safety Map (Occurrences CSDP)',
+      source_name: nearest_crimes.source_name || 'EPS Community Safety Map (Occurrences CSDP)',
       source_date: new Date().toISOString().slice(0, 10),
-      source_url:
-        nearest_crimes.source_url ||
-        'https://experience.arcgis.com/experience/8e2c6c41933e48a79faa90048d9a459d',
+      source_url: nearest_crimes.source_url || 'https://experience.arcgis.com/experience/8e2c6c41933e48a79faa90048d9a459d',
     });
   }
   if (land_value && land_value.land_value_source !== 'none') {
-    const srcName =
-      land_value.municipal_sample?.source_name ||
-      land_value.rural_aggregate?.source_name ||
-      'Municipal assessment / CLI agricultural land values';
     rows.push({
       field: 'land_value',
-      source_name: srcName,
+      source_name: land_value.municipal_sample?.source_name || land_value.rural_aggregate?.source_name || 'Municipal assessment / CLI agricultural land values',
       source_date: new Date().toISOString().slice(0, 10),
-      source_url:
-        land_value.municipal_sample?.source_url ||
-        land_value.rural_aggregate?.source_url ||
-        null,
+      source_url: land_value.municipal_sample?.source_url || land_value.rural_aggregate?.source_url || null,
     });
   }
   if (hardiness?.hardiness_zone || hardiness?.available) {
@@ -513,10 +513,25 @@ function buildProvenance(
       source_url: zoning.zoning_source_url || zoning.zoning_bylaw_url,
     });
   }
+  if (temperature?.available) {
+    rows.push({
+      field: 'climate.temperature_profile',
+      source_name: temperature.source_name || 'Open-Meteo daily archive',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: temperature.source_url,
+    });
+  }
+  if (wildlife?.available) {
+    rows.push({
+      field: 'wildlife',
+      source_name: wildlife.source_name || 'iNaturalist + Alberta habitat heuristic',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: wildlife.source_url,
+    });
+  }
   rows.push({
     field: 'planting_plan',
-    source_name:
-      'EcoCrop-style suitability · OpenSourceMed Growing Guide / farmfit catalog approach',
+    source_name: 'EcoCrop-style suitability · OpenSourceMed Growing Guide / farmfit catalog approach',
     source_date: new Date().toISOString().slice(0, 10),
     source_url: 'https://opensourcemed.info/',
   });
@@ -524,8 +539,7 @@ function buildProvenance(
     field: 'design_elements',
     source_name: 'EE if→then placement ruleset (Alberta-first)',
     source_date: new Date().toISOString().slice(0, 10),
-    source_url:
-      'https://opensourcemed.info/schemas/permaculture-site-design.schema.json',
+    source_url: 'https://opensourcemed.info/schemas/permaculture-site-design.schema.json',
   });
   return rows;
 }

@@ -1099,11 +1099,13 @@ function renderReport(r) {
       ${mapEmbedSection()}
 
       ${topologySection(topo, a)}
+      ${temperatureSection(r.temperature || a.temperature)}
       ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
       ${solarSection(solar)}
       ${landValueSection(landValue)}
       ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
+      ${wildlifeSection(r.wildlife || a.wildlife)}
 
       ${
         flags.length
@@ -1295,6 +1297,7 @@ function topologySection(topo, a) {
   }
   const heat = topoHeatHtml(topo);
   const profile = topoProfileSvg(topo.profile || []);
+  const contour = topoContourSvg(topo);
   return `
     <section class="report-block">
       <h2>Topology</h2>
@@ -1317,6 +1320,10 @@ function topologySection(topo, a) {
         <div class="topo-profile-wrap">
           <span class="mono topo-label">W → E cross-section (mid parcel)</span>
           ${profile}
+        </div>
+        <div class="topo-contour-wrap">
+          <span class="mono topo-label">Contour map (plan view)</span>
+          ${contour}
         </div>
       </div>
       <div class="summary-grid" style="margin-top:1rem">
@@ -1365,6 +1372,262 @@ function topoProfileSvg(profile) {
       <text x="8" y="14" class="svg-label">${max.toFixed(0)} m</text>
       <text x="8" y="${h - 6}" class="svg-label">${min.toFixed(0)} m</text>
     </svg>`;
+}
+
+/**
+ * Render a topographical contour map from the elevation grid using
+ * marching-squares on the sampled DEM. Returns an inline SVG suitable
+ * for the report topology panel.
+ */
+function topoContourSvg(topo) {
+  const g = topo.grid || {};
+  const { rows, cols, values, elevations_m } = g;
+  if (!rows || !cols || !elevations_m?.length) return '<p class="fine">No contour data.</p>';
+
+  const valid = elevations_m.filter((z) => z != null && Number.isFinite(z));
+  if (valid.length < 4) return '<p class="fine">Not enough elevation samples for contours.</p>';
+
+  const min = Math.min(...valid);
+  const max = Math.max(...valid);
+  const range = max - min;
+  if (range < 0.5) return '<p class="fine">Elevation range too small for meaningful contours.</p>';
+
+  // Auto-select an interval that gives ~8–14 contour levels
+  const niceIntervals = [0.5, 1, 2, 5, 10, 20, 50];
+  const targetLevels = 10;
+  const rawInterval = range / targetLevels;
+  let interval = niceIntervals[0];
+  for (let i = niceIntervals.length - 1; i >= 0; i--) {
+    if (niceIntervals[i] <= rawInterval * 1.6) {
+      interval = niceIntervals[i];
+      break;
+    }
+  }
+  if (range / interval > 18) interval = niceIntervals.find((v) => v > interval) || interval;
+
+  const levels = [];
+  const start = Math.ceil(min / interval) * interval;
+  for (let z = start; z < max; z += interval) levels.push(z);
+
+  // Pad for marching squares: add 1 cell border so we can trace edges into the pad
+  const pRows = rows + 2;
+  const pCols = cols + 2;
+  const pad = new Array(pRows * pCols).fill(NaN);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = elevations_m[r * cols + c];
+      pad[(r + 1) * pCols + (c + 1)] = (v != null && Number.isFinite(v)) ? v : NaN;
+    }
+  }
+
+  // Fill pad edges by nearest-neighbour replication so contours can reach boundary
+  for (let r = 0; r < rows; r++) {
+    pad[(r + 1) * pCols] = elevations_m[r * cols];
+    pad[(r + 1) * pCols + (cols + 1)] = elevations_m[r * cols + (cols - 1)];
+  }
+  for (let c = 0; c < cols; c++) {
+    pad[c + 1] = elevations_m[c];
+    pad[(rows + 1) * pCols + (c + 1)] = elevations_m[(rows - 1) * cols + c];
+  }
+  pad[0] = elevations_m[0];
+  pad[cols + 1] = elevations_m[cols - 1];
+  pad[(rows + 1) * pCols] = elevations_m[(rows - 1) * cols];
+  pad[(rows + 1) * pCols + (cols + 1)] = elevations_m[(rows - 1) * cols + (cols - 1)];
+
+  const W = 320;
+  const H = 220;
+  const padX = 28;
+  const padY = 24;
+  const usableW = W - padX * 2;
+  const usableH = H - padY * 2;
+
+  const toX = (c) => padX + ((c - 1) / (cols - 1)) * usableW;
+  const toY = (r) => padY + ((r - 1) / (rows - 1)) * usableH;
+
+  // Marching squares per contour level
+  const pathsByLevel = [];
+  const isIndex = (z) => (Math.abs(z % (interval * 5)) < 0.001 || Math.abs(z % (interval * 5)) > (interval * 5) - 0.001);
+
+  for (const level of levels) {
+    const segments = [];
+
+    // March through the interior (not pad)
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const pr = r + 1;
+        const pc = c + 1;
+        const tl = pad[pr * pCols + pc];
+        const tr = pad[pr * pCols + (pc + 1)];
+        const bl = pad[(pr + 1) * pCols + pc];
+        const br = pad[(pr + 1) * pCols + (pc + 1)];
+        if ([tl, tr, bl, br].some((v) => !Number.isFinite(v))) continue;
+        if (level <= Math.min(tl, tr, bl, br) || level >= Math.max(tl, tr, bl, br)) continue;
+
+        const idx =
+          (tl > level ? 8 : 0) | (tr > level ? 4 : 0) | (br > level ? 2 : 0) | (bl > level ? 1 : 0);
+
+        const cellW = toX(pc + 1) - toX(pc);
+        const cellH = toY(pr + 1) - toY(pr);
+        const cx = toX(pc);
+        const cy = toY(pr);
+
+        const pN = () => [cx + ((level - tl) / (tr - tl)) * cellW, cy];
+        const pS = () => [cx + ((level - bl) / (br - bl)) * cellW, cy + cellH];
+        const pW = () => [cx, cy + ((level - tl) / (bl - tl)) * cellH];
+        const pE = () => [cx + cellW, cy + ((level - tr) / (br - tr)) * cellH];
+
+        const addSeg = (a, b) => {
+          const ax = Number(a[0].toFixed(1));
+          const ay = Number(a[1].toFixed(1));
+          const bx = Number(b[0].toFixed(1));
+          const by = Number(b[1].toFixed(1));
+          segments.push([ax, ay, bx, by]);
+        };
+
+        switch (idx) {
+          case 0: case 15: break;
+          case 1: case 14: addSeg(pW(), pS()); break;
+          case 2: case 13: addSeg(pS(), pE()); break;
+          case 3: case 12: addSeg(pW(), pE()); break;
+          case 4: case 11: addSeg(pN(), pE()); break;
+          case 6: case 9: addSeg(pN(), pS()); break;
+          case 7: case 8: addSeg(pN(), pW()); break;
+          case 5: addSeg(pN(), pW()); addSeg(pS(), pE()); break;
+          case 10: addSeg(pN(), pE()); addSeg(pW(), pS()); break;
+        }
+      }
+    }
+
+    if (!segments.length) continue;
+
+    // Chain segments into polylines
+    const used = new Set();
+    const lines = [];
+    for (let i = 0; i < segments.length; i++) {
+      if (used.has(i)) continue;
+      used.add(i);
+      let [ax, ay, bx, by] = segments[i];
+      let headX = bx, headY = by;
+      let points = `${ax.toFixed(1)},${ay.toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)}`;
+
+      // Extend forward
+      let extended = true;
+      while (extended) {
+        extended = false;
+        for (let j = 0; j < segments.length; j++) {
+          if (used.has(j)) continue;
+          const [sx, sy, ex, ey] = segments[j];
+          if (Math.abs(sx - headX) < 0.6 && Math.abs(sy - headY) < 0.6) {
+            used.add(j);
+            headX = ex;
+            headY = ey;
+            points += ` ${ex.toFixed(1)},${ey.toFixed(1)}`;
+            extended = true;
+            break;
+          }
+          if (Math.abs(ex - headX) < 0.6 && Math.abs(ey - headY) < 0.6) {
+            used.add(j);
+            headX = sx;
+            headY = sy;
+            points += ` ${sx.toFixed(1)},${sy.toFixed(1)}`;
+            extended = true;
+            break;
+          }
+        }
+      }
+
+      lines.push({ points, level, isIndexContour: isIndex(level) });
+    }
+
+    pathsByLevel.push(...lines);
+  }
+
+  if (!pathsByLevel.length) return '<p class="fine">No contour lines generated for this grid resolution.</p>';
+
+  const indexPaths = pathsByLevel.filter((l) => l.isIndexContour);
+  const intermediatePaths = pathsByLevel.filter((l) => !l.isIndexContour);
+
+  const indexD = indexPaths.map(
+    (l) => `<path class="contour-index" d="M${l.points}"/>`
+  ).join('');
+
+  const interD = intermediatePaths.map(
+    (l) => `<path class="contour-inter" d="M${l.points}"/>`
+  ).join('');
+
+  // Labels along index contours (place at midpoints of long segments)
+  const labels = indexPaths.map((l) => {
+    const coords = l.points.split(' ').map((p) => p.split(',').map(Number));
+    if (coords.length < 3) return '';
+    const mid = Math.floor(coords.length / 2);
+    const [lx, ly] = coords[mid];
+    // Only label if the point falls within the visible frame
+    if (lx < padX + 4 || lx > W - padX - 4 || ly < padY + 4 || ly > H - padY - 4) return '';
+    return `<text x="${lx.toFixed(1)}" y="${(ly - 3).toFixed(1)}" class="contour-label">${l.level.toFixed(l.level % 1 === 0 ? 0 : 1)} m</text>`;
+  }).filter(Boolean).join('');
+
+  // Scale bar
+  let scaleDistM = 50;
+  const cellMApprox = (range < 5 ? 10 : range < 20 ? 25 : range < 50 ? 50 : 100);
+  while (scaleDistM / ((usableW / (cols - 1)) * 25) > usableW * 0.4) scaleDistM *= 2;
+  const scalePx = (scaleDistM / 25) * (usableW / (cols - 1));
+  const scaleLabelDist = scaleDistM < 1000 ? `${scaleDistM} m` : `${(scaleDistM / 1000).toFixed(1)} km`;
+
+  const scaleBar = scalePx > 12 && scalePx < usableW * 0.8
+    ? `<line x1="${(W - scalePx).toFixed(1)}" y1="${(H - 8).toFixed(1)}" x2="${W.toFixed(1)}" y2="${(H - 8).toFixed(1)}" stroke="var(--ink, #16211b)" stroke-width="3" stroke-linecap="round"/>
+       <line x1="${W.toFixed(1)}" y1="${(H - 12).toFixed(1)}" x2="${W.toFixed(1)}" y2="${(H - 4).toFixed(1)}" stroke="var(--ink, #16211b)" stroke-width="1.5"/>
+       <line x1="${(W - scalePx).toFixed(1)}" y1="${(H - 12).toFixed(1)}" x2="${(W - scalePx).toFixed(1)}" y2="${(H - 4).toFixed(1)}" stroke="var(--ink, #16211b)" stroke-width="1.5"/>
+       <text x="${(W - scalePx / 2).toFixed(1)}" y="${(H - 2).toFixed(1)}" class="contour-scale-label" text-anchor="middle">${scaleLabelDist}</text>`
+    : '';
+
+  // Legend
+  const legendItems = [
+    { cls: 'contour-index', label: `Index (${(interval * 5)} m)` },
+    { cls: 'contour-inter', label: `Intermediate (${interval} m)` },
+  ];
+
+  const legendHtml = legendItems.map((li, i) => {
+    const yOff = 14 + i * 16;
+    return `
+      <line x1="${padX}" y1="${yOff}" x2="${padX + 20}" y2="${yOff}" class="${li.cls}" stroke-width="${li.cls === 'contour-index' ? 1.8 : 1}"/>
+      <text x="${padX + 24}" y="${yOff + 3}" class="svg-label">${li.label}</text>`;
+  }).join('');
+
+  return `
+    <svg class="topo-contour" viewBox="0 0 ${W} ${H}" role="img" aria-label="Topographical contour map">
+      <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
+      <!-- Grid shading: light wash from the normalized heat values -->
+      ${gridShading(values, cols, rows, padX, padY, usableW, usableH)}
+      ${interD}
+      ${indexD}
+      ${labels}
+      ${legendHtml}
+      ${scaleBar}
+    </svg>`;
+}
+
+function gridShading(normValues, cols, rows, padX, padY, usableW, usableH) {
+  if (!normValues?.length || !cols || !rows) return '';
+  // Draw faint rects to give elevation context behind the contour lines
+  const cellW = usableW / (cols - 1);
+  const cellH = usableH / (rows - 1);
+  // Use a handful of representative quads — full per-cell rects would be heavy SVG
+  const step = Math.max(2, Math.ceil(Math.max(cols, rows) / 12));
+  let rects = '';
+  for (let r = 0; r < rows; r += step) {
+    for (let c = 0; c < cols; c += step) {
+      const v = normValues[r * cols + c];
+      if (v == null || !Number.isFinite(v)) continue;
+      const t = Math.round(85 + v * 18);
+      const fill = `hsl(32, ${15 + v * 12}%, ${t}%)`;
+      const x = (padX + (c / (cols - 1)) * usableW - cellW * step * 0.45).toFixed(1);
+      const y = (padY + (r / (rows - 1)) * usableH - cellH * step * 0.45).toFixed(1);
+      const w = (cellW * step * 0.9).toFixed(1);
+      const h = (cellH * step * 0.9).toFixed(1);
+      rects += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${fill}" opacity="0.35" rx="1"/>`;
+    }
+  }
+  return rects;
 }
 
 function proximitySection(px, water, city, settlement, crime, nearestCrimes, centre) {
@@ -1598,6 +1861,119 @@ function monthlySolarBars(monthly) {
       <span class="mono topo-label">Monthly mean daily insolation — south latitude tilt (kWh/m²·d)</span>
       <div class="solar-bars">${cells}</div>
     </div>`;
+}
+
+function temperatureSection(tp) {
+  if (!tp || !tp.available) return '';
+  const a = tp.annual || {};
+  const s = tp.seasonal || {};
+  const months = tp.monthly || [];
+
+  const barSvg = months.length ? monthlyTempBars(months) : '';
+
+  return `
+    <section class="report-block">
+      <h2>Temperature profile</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(tp.source_name || 'Open-Meteo daily archive')}.
+        Period: ${esc(tp.period?.start || '—')} – ${esc(tp.period?.end || '—')} (${esc(tp.period?.days || '—')} days).
+      </p>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Annual mean</span><strong>${fmt(a.mean_c, '°C')}</strong></div>
+        <div class="stat"><span class="k">Annual high</span><strong>${fmt(a.high_c, '°C')}</strong></div>
+        <div class="stat"><span class="k">Annual low</span><strong>${fmt(a.low_c, '°C')}</strong></div>
+        <div class="stat"><span class="k">Coldest month low</span><strong>${fmt(s.coldest_month_avg_low_c, '°C')}</strong></div>
+        <div class="stat"><span class="k">Warmest month high</span><strong>${fmt(s.warmest_month_avg_high_c, '°C')}</strong></div>
+        <div class="stat"><span class="k">Frost days / yr</span><strong>${esc(s.frost_days_per_year != null ? s.frost_days_per_year : '—')}</strong></div>
+        <div class="stat"><span class="k">>30°C days / yr</span><strong>${esc(s.extreme_heat_days_per_year != null ? s.extreme_heat_days_per_year : '—')}</strong></div>
+        <div class="stat"><span class="k">GDD base 5°C</span><strong>${esc(tp.growing_degree_days_base5 != null ? tp.growing_degree_days_base5 : '—')}</strong></div>
+      </div>
+
+      ${barSvg}
+
+      <p class="fine" style="margin-top:0.5rem">${esc(tp.methodology_note || '')}</p>
+    </section>`;
+}
+
+function monthlyTempBars(months) {
+  if (!months.length) return '';
+  const maxHigh = Math.max(...months.map((m) => m.avg_max || -50), 0.1);
+  const minLow = Math.min(...months.map((m) => m.avg_min || 50), 50);
+
+  const h = 160;
+  const w = 380;
+  const padX = 32;
+  const padY = 32;
+  const usableW = w - padX * 2;
+  const usableH = h - padY * 2;
+  const range = maxHigh - minLow || 1;
+
+  const bars = months.map((m, i) => {
+    const x = padX + (i / (months.length - 1)) * usableW;
+    // High bar (warm)
+    const highY = padY + ((maxHigh - (m.avg_high || 0)) / range) * usableH;
+    const highH = padY + ((maxHigh - minLow) / range) * usableH - highY;
+    // Low bar (cold)
+    const lowTop = padY + ((maxHigh - (m.avg_low || 0)) / range) * usableH;
+    const lowH = padY + usableH - lowTop;
+    return `<g>
+      <rect x="${(x - 6).toFixed(1)}" y="${highY.toFixed(1)}" width="12" height="${Math.max(2, highH).toFixed(1)}" fill="#c23e2e" opacity="0.7" rx="2"/>
+      <rect x="${(x - 6).toFixed(1)}" y="${lowTop.toFixed(1)}" width="12" height="${Math.max(2, lowH).toFixed(1)}" fill="#2a6f97" opacity="0.7" rx="2"/>
+      <text x="${x.toFixed(1)}" y="${(h - 8).toFixed(1)}" class="temp-month-label" text-anchor="middle">${esc(m.month || '')}</text>
+      <text x="${x.toFixed(1)}" y="${(highY - 3).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_high || 0).toFixed(0)}</text>
+      <text x="${x.toFixed(1)}" y="${(lowTop + lowH + 9).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_low || 0).toFixed(0)}</text>
+    </g>`;
+  }).join('');
+
+  return `
+    <div class="temp-month-wrap" style="margin-top:0.9rem">
+      <span class="mono topo-label">Monthly avg. high (red) / low (blue) — °C</span>
+      <svg class="temp-month-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Monthly temperature chart">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#f7f8f3" stroke="#c8cec1"/>
+        <line x1="${padX}" y1="${(padY + usableH).toFixed(1)}" x2="${(padX + usableW).toFixed(1)}" y2="${(padY + usableH).toFixed(1)}" stroke="#c8cec1" stroke-width="1"/>
+        <text x="4" y="${(padY + 8).toFixed(1)}" class="svg-label">${maxHigh.toFixed(0)}°</text>
+        <text x="4" y="${(padY + usableH).toFixed(1)}" class="svg-label">${minLow.toFixed(0)}°</text>
+        ${bars}
+      </svg>
+    </div>`;
+}
+
+function wildlifeSection(wl) {
+  if (!wl || !wl.available) return '';
+  const deer = wl.white_tailed_deer;
+  if (!deer) return '';
+
+  const recList = (deer.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
+  const sightings = wl.recent_sightings;
+
+  return `
+    <section class="report-block">
+      <h2>Wildlife — White-tailed Deer</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        iNaturalist research-grade observations (last 5 years) + Alberta county-level deer habitat heuristic.
+        Presence should be assumed for any rural Alberta property regardless of score.
+      </p>
+
+      <div class="well-range-card" style="border-left-color:var(--caution)">
+        <span class="mono">Deer pressure assessment</span>
+        <div class="well-range-value" style="font-size:clamp(1.3rem, 3vw, 1.8rem);color:var(--caution)">
+          ${esc(deer.pressure_label)}
+          <span style="font-size:0.8rem;color:var(--ink-soft);margin-left:0.5rem">(score ${deer.pressure_score})</span>
+        </div>
+        <p class="fine">
+          ${sightings
+            ? `${sightings.count} research-grade iNaturalist sightings in the search area${sightings.last_seen ? ` · last: ${esc(sightings.last_seen)}` : ''}`
+            : 'No recent iNaturalist sightings in search area'}
+          ${deer.by_taxon && Object.keys(deer.by_taxon).length
+            ? ` · species: ${Object.entries(deer.by_taxon).map(([k, v]) => `${esc(k)} (${v})`).join(', ')}`
+            : ''}
+        </p>
+        ${recList ? `<ul class="wildlife-recs" style="margin:0.6rem 0 0;padding-left:1.2rem;font-size:0.92rem;color:var(--ink-soft);line-height:1.6">${recList}</ul>` : ''}
+      </div>
+
+      <p class="fine" style="margin-top:0.6rem">${esc(wl.methodology_note || '')}</p>
+    </section>`;
 }
 
 function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
