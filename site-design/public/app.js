@@ -157,11 +157,8 @@ function initLeafletMap(cfg) {
     maxZoom: 19,
   });
 
-  const baseLayers = {
-    'Satellite': null, // already default
-    'OpenStreetMap': osmLayer,
-  };
-  L.control.layers(baseLayers, null, { position: 'topright', collapsed: true }).addTo(map);
+  // No layer control needed — just satellite by default. Users can toggle via the attribution corner if needed.
+  map.attributionControl.setPrefix('&copy; <a href="https://www.esri.com/">Esri</a> · <a href="https://osm.org/copyright">OSM</a>');
 
   state.map = map;
   state._leafletMap = map;
@@ -542,30 +539,21 @@ function finishPolygonDraw() {
     return;
   }
 
-  const path = state.draw.points.map((ll) => ({ lat: ll.lat(), lng: ll.lng() }));
+  const latlngs = state.draw.points.map((ll) => [ll.lat, ll.lng]);
+  const path = latlngs.map(([lat, lng]) => ({ lat, lng }));
   clearPreview();
 
-  const poly = new google.maps.Polygon({
-    map: state.map,
-    paths: path,
-    ...styleOpts({ editable: true }),
-  });
-  state.shape = poly;
-  state.paths = pathFromPolygon(poly);
-
-  const sync = () => {
-    state.paths = pathFromPolygon(poly);
-    updateParcelMeta();
-  };
-  poly.getPath().addListener('set_at', sync);
-  poly.getPath().addListener('insert_at', sync);
-  poly.getPath().addListener('remove_at', sync);
+  clearPreview();
+  state.paths = path.map((p) => [p.lng, p.lat]);
+  state.shape = { leaflet: true };
+  L.polygon(latlngs, {
+    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
+  }).addTo(state._drawLayer);
 
   stopDrawingMode();
   ensureFinishButton(false);
   updateParcelMeta();
-  $('draw-hint').textContent =
-    'Parcel set. Drag purple handles to refine, then Generate site report.';
+  $('draw-hint').textContent = 'Parcel set. Generate site report.';
   setError('');
 }
 
