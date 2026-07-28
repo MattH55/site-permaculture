@@ -24,7 +24,8 @@ import { queryFloodHazard } from './flood.js';
 import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
 import { assessTemperature } from './climate.js';
-import { assessWildlife } from './wildlife.js';
+import { assessWildlife, checkWildlifeSensitivity } from './wildlife.js';
+import { queryGbig, lookupWmu } from './wildlife-enrich.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 
 const cache = new Map();
@@ -269,6 +270,14 @@ export async function generateSiteReport(input = {}) {
   record.zoning = zoning;
   record.temperature = temperature;
   record.wildlife = wildlife;
+  record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
+  record.wmu = lookupWmu(centre);
+
+  // GBIF — run async alongside other fetches (fire-and-forget, attach after)
+  queryGbig(bbox).then((gbif) => {
+    record.gbif_species = gbif;
+  }).catch(() => {});
+
   const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
