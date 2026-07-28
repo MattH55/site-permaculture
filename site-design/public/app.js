@@ -106,19 +106,15 @@ async function main() {
   const cfg = await fetch('/api/config').then((r) => r.json());
   state.config = cfg;
 
-  if (cfg.googleMapsApiKey) {
-    await loadGoogleMaps(cfg.googleMapsApiKey);
-    initGoogleMap(cfg);
-  } else {
-    initFallbackMap(cfg);
-  }
+  // Always use Leaflet + Esri World Imagery (free, no API key)
+  initLeafletMap(cfg);
 
   $('btn-draw-poly').onclick = () => startDraw('polygon');
   $('btn-draw-rect').onclick = () => startDraw('rectangle');
   $('btn-clear').onclick = clearShape;
   $('btn-report').onclick = generateReport;
 
-  // Address search via Google Places Autocomplete
+  // Address search via Nominatim (free OSM geocoder)
   initPlaceSearch();
 
   // Coordinate input
@@ -126,26 +122,98 @@ async function main() {
   mainPostInit();
 }
 
+function initLeafletMap(cfg) {
+  state.mode = 'leaflet';
+  const el = $('map');
+  el.innerHTML = '';
+  el.classList.remove('fallback-map');
+
+  const center = cfg.defaultCenter || { lat: 53.55, lng: -113.5 };
+  const zoom = cfg.defaultZoom || 10;
+
+  const map = L.map(el, {
+    center: [center.lat, center.lng],
+    zoom: zoom,
+    zoomControl: true,
+    attributionControl: true,
+  });
+
+  // Esri World Imagery (satellite) — free, no key required
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri, Maxar, Earthstar Geographics, CNES/Airbus DS, USDA FSA, USGS, Aerogrid, IGN, IGP, and the GIS User Community',
+    maxZoom: 20,
+  }).addTo(map);
+
+  // Also add a labels overlay (World Transportation)
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri',
+    maxZoom: 20,
+    opacity: 0.5,
+  }).addTo(map);
+
+  // Layer control for switching basemaps
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 19,
+  });
+
+  const baseLayers = {
+    'Satellite': null, // already default
+    'OpenStreetMap': osmLayer,
+  };
+  L.control.layers(baseLayers, null, { position: 'topright', collapsed: true }).addTo(map);
+
+  state.map = map;
+  state._leafletMap = map;
+  state._drawLayer = L.layerGroup().addTo(map);
+
+  // Double-click to finish polygon drawing
+  map.on('dblclick', (e) => {
+    if (state.draw.active && state.draw.kind === 'polygon') {
+      L.DomEvent.stop(e);
+      finishPolygonDraw();
+    }
+  });
+
+  $('draw-hint').textContent = 'Satellite map ready. Drag to pan · scroll to zoom · Draw parcel to outline land.';
+  setDrawButtons(null);
+}
+
 function initPlaceSearch() {
   const input = $('search-box');
-  if (!input || typeof google === 'undefined' || !google.maps?.places) return;
-  const autocomplete = new google.maps.places.Autocomplete(input, {
-    componentRestrictions: { country: 'ca' },
-    fields: ['geometry', 'name', 'formatted_address'],
-    types: ['geocode', 'establishment'],
+  if (!input) return;
+  let debounceTimer;
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      const q = input.value.trim();
+      if (q.length < 3) return;
+      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ca`;
+      fetch(url).then((r) => r.json()).then((results) => {
+        if (!results.length) return;
+        // Create a datalist for suggestions
+        let datalist = $('search-suggestions');
+        if (!datalist) {
+          datalist = document.createElement('datalist');
+          datalist.id = 'search-suggestions';
+          input.setAttribute('list', 'search-suggestions');
+          input.parentElement.appendChild(datalist);
+        }
+        datalist.innerHTML = results.map((r) => `<option value="${r.display_name}">`).join('');
+      }).catch(() => {});
+    }, 400);
   });
-  autocomplete.bindTo('bounds', state.map);
-  autocomplete.addListener('place_changed', () => {
-    const place = autocomplete.getPlace();
-    if (!place.geometry?.location) return;
-    state.map.setCenter(place.geometry.location);
-    state.map.setZoom(15);
-    $('search-box').value = place.name || place.formatted_address || '';
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      const q = input.value.trim();
+      if (!q) return;
+      flyToAddress(q);
+    }
   });
 }
 
 function goToCoordinates() {
-  if (!state.map) return;
+  if (!state._leafletMap) return;
   const latStr = $('coord-lat')?.value?.trim();
   const lngStr = $('coord-lng')?.value?.trim();
   if (!latStr || !lngStr) return;
@@ -155,8 +223,7 @@ function goToCoordinates() {
     setError('Invalid coordinates. Use decimal degrees (e.g. 53.55, -113.5).');
     return;
   }
-  state.map.setCenter({ lat, lng });
-  state.map.setZoom(16);
+  state._leafletMap.setView([lat, lng], 16);
   setError('');
 }
 
@@ -282,6 +349,16 @@ function initGoogleMap(cfg) {
   setDrawButtons(null);
 }
 
+function flyToAddress(q) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ca`;
+  fetch(url).then((r) => r.json()).then((results) => {
+    if (!results.length) { setError('Location not found.'); return; }
+    const r = results[0];
+    state._leafletMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 15);
+    $('search-box').value = r.display_name || q;
+  }).catch(() => setError('Search failed.'));
+}
+
 function setDrawButtons(activeKind) {
   const poly = $('btn-draw-poly');
   const rect = $('btn-draw-rect');
@@ -301,28 +378,15 @@ function setDrawButtons(activeKind) {
 }
 
 function detachDrawListeners() {
-  for (const l of state.draw.listeners) {
-    try {
-      google.maps.event.removeListener(l);
-    } catch { /* ignore */ }
-  }
-  state.draw.listeners = [];
+  state._leafletMap?.off('click', state._drawClickHandler);
+  state._drawClickHandler = null;
 }
 
 function clearVertexMarkers() {
-  for (const m of state.vertexMarkers) m.setMap(null);
-  state.vertexMarkers = [];
+  if (state._drawLayer) state._drawLayer.clearLayers();
 }
 
 function clearPreview() {
-  if (state.preview) {
-    state.preview.setMap(null);
-    state.preview = null;
-  }
-  if (state.draw.rectShape) {
-    state.draw.rectShape.setMap(null);
-    state.draw.rectShape = null;
-  }
   clearVertexMarkers();
 }
 
@@ -334,27 +398,10 @@ function stopDrawingMode() {
   state.draw.rectStart = null;
   clearPreview();
   setDrawButtons(null);
-  if (state.map) state.map.setOptions(mapGestureOpts(false));
 }
 
 function startDraw(kind) {
   setError('');
-  if (state.mode === 'fallback') {
-    fallbackStartDraw(kind);
-    return;
-  }
-  if (!state.map || !window.google?.maps) {
-    setError('Map is still loading — try again in a second.');
-    return;
-  }
-
-  // Toggle off if same tool clicked again
-  if (state.draw.active && state.draw.kind === kind) {
-    stopDrawingMode();
-    $('draw-hint').textContent = 'Drawing cancelled. Click Draw parcel when ready.';
-    return;
-  }
-
   clearShape(false);
   stopDrawingMode();
 
@@ -364,22 +411,63 @@ function startDraw(kind) {
   state.draw.rectStart = null;
   setDrawButtons(kind);
 
-  // Keep pan enabled while drawing — only disable double-click zoom for polygons
-  state.map.setOptions(mapGestureOpts(true));
-
   if (kind === 'polygon') {
-    $('draw-hint').textContent =
-      'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
+    $('draw-hint').textContent = 'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
     ensureFinishButton(true);
-    const clickL = state.map.addListener('click', onPolygonClick);
-    state.draw.listeners.push(clickL);
+    state._drawClickHandler = (e) => leafletPolygonClick(e);
+    state._leafletMap.on('click', state._drawClickHandler);
   } else {
     ensureFinishButton(false);
-    $('draw-hint').textContent =
-      'Click one corner of the parcel, then click the opposite corner.';
-    const clickL = state.map.addListener('click', onRectClick);
-    state.draw.listeners.push(clickL);
+    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner.';
+    state._drawClickHandler = (e) => leafletRectClick(e);
+    state._leafletMap.on('click', state._drawClickHandler);
   }
+}
+
+function leafletPolygonClick(e) {
+  if (!state.draw.active || state.draw.kind !== 'polygon') return;
+  const ll = e.latlng;
+  state.draw.points.push(ll);
+  const marker = L.circleMarker([ll.lat, ll.lng], {
+    radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
+    color: '#f7f8f3', weight: 2,
+  }).addTo(state._drawLayer);
+  state.vertexMarkers.push(marker);
+
+  if (state.preview) state._drawLayer.removeLayer(state.preview);
+  if (state.draw.points.length >= 2) {
+    state.preview = L.polyline(state.draw.points.map((p) => [p.lat, p.lng]), {
+      color: '#5b3a73', weight: 2.5, opacity: 0.95,
+    }).addTo(state._drawLayer);
+  }
+
+  const fb = $('btn-finish-poly');
+  if (fb) fb.disabled = state.draw.points.length < 3;
+  $('draw-hint').textContent = state.draw.points.length < 3 ? `Corner ${state.draw.points.length} placed` : `${state.draw.points.length} corners — double-click to finish.`;
+}
+
+function leafletRectClick(e) {
+  if (!state.draw.active || state.draw.kind !== 'rectangle') return;
+  const ll = e.latlng;
+  if (!state.draw.rectStart) {
+    state.draw.rectStart = ll;
+    L.circleMarker([ll.lat, ll.lng], { radius: 5, fillColor: '#5b3a73', fillOpacity: 1, color: '#f7f8f3', weight: 2 }).addTo(state._drawLayer);
+    state._drawLayer.clearLayers();
+    $('draw-hint').textContent = 'Now click the opposite corner.';
+    return;
+  }
+  const a = state.draw.rectStart;
+  const b = ll;
+  const path = [[a.lat, a.lng], [b.lat, a.lng], [b.lat, b.lng], [a.lat, b.lng]];
+  state.paths = path.map(([lat, lng]) => [lng, lat]);
+  state.shape = { leaflet: true };
+  clearPreview();
+  L.polygon(path, {
+    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
+  }).addTo(state._drawLayer);
+  stopDrawingMode();
+  updateParcelMeta();
+  $('draw-hint').textContent = 'Parcel set. Generate site report.';
 }
 
 function ensureFinishButton(show) {
@@ -568,12 +656,8 @@ function pathFromRect(rect) {
 function clearShape(resetHint = true) {
   stopDrawingMode();
   ensureFinishButton(false);
-
-  if (state.shape) {
-    if (state.mode === 'google') state.shape.setMap(null);
-    state.shape = null;
-  }
-  if (state.mode === 'fallback') fallbackClear();
+  state._drawLayer?.clearLayers();
+  state.shape = null;
   state.paths = null;
   $('btn-report').disabled = true;
   $('parcel-meta').hidden = true;
@@ -1050,8 +1134,7 @@ function showReport() {
 function showMap() {
   $('report-stage').hidden = true;
   $('map-stage').hidden = false;
-  if (state.mode === 'fallback') setTimeout(drawFallback, 50);
-  else if (state.map) google.maps.event.trigger(state.map, 'resize');
+  if (state._leafletMap) state._leafletMap.invalidateSize();
 }
 
 /* ---------- report UI ---------- */
@@ -1297,46 +1380,22 @@ function mapEmbedSection() {
 function initReportMapEmbed(r) {
   const el = $('report-map');
   if (!el) return;
-  if (state.mode !== 'google' || typeof google === 'undefined') {
-    el.innerHTML = `<p class="fine" style="padding:1rem">Live map unavailable — showing planning data only.</p>`;
-    return;
-  }
+  el.innerHTML = '';
   const ring = r.geometry?.coordinates?.[0];
   if (!Array.isArray(ring) || ring.length < 3) return;
-
-  const path = ring.map(([lng, lat]) => ({ lat, lng }));
-  const bounds = new google.maps.LatLngBounds();
-  path.forEach((p) => bounds.extend(p));
-
-  const map = new google.maps.Map(el, {
-    center: bounds.getCenter(),
-    zoom: 15,
-    mapTypeId: 'hybrid',
-    mapTypeControl: true,
-    mapTypeControlOptions: {
-      style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
-      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
-    },
-    streetViewControl: false,
-    fullscreenControl: true,
+  const latlngs = ring.map(([lng, lat]) => [lat, lng]);
+  const map = L.map(el, {
     zoomControl: true,
-    gestureHandling: 'cooperative',
+    attributionControl: false,
   });
-
-  new google.maps.Polygon({
-    paths: path,
-    strokeColor: '#a8801f',
-    strokeWeight: 3,
-    fillColor: '#a8801f',
-    fillOpacity: 0.15,
-    map,
-    clickable: false,
-  });
-
-  google.maps.event.addListenerOnce(map, 'idle', () => {
-    map.fitBounds(bounds, 40);
-    google.maps.event.trigger(map, 'resize');
-  });
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri',
+    maxZoom: 20,
+  }).addTo(map);
+  L.polygon(latlngs, {
+    color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.15, weight: 3,
+  }).addTo(map);
+  map.fitBounds(latlngs, { padding: [40, 40] });
 }
 
 function topologySection(topo, a) {
@@ -3139,59 +3198,31 @@ function wellsMapEmbed(w, centre) {
 
 function initWellsMinimap(elId, wells, centre) {
   const el = document.getElementById(elId);
-  if (!el || typeof google === 'undefined' || !google.maps) return;
-  const bounds = new google.maps.LatLngBounds();
-  wells.forEach((w) => bounds.extend({ lat: w.lat, lng: w.lng }));
-  bounds.extend({ lat: centre.latitude, lng: centre.longitude });
+  if (!el) return;
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri', maxZoom: 20,
+  }).addTo(map);
 
-  const map = new google.maps.Map(el, {
-    mapTypeId: 'hybrid',
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-    zoomControl: true,
-  });
+  const all = [[centre.latitude, centre.longitude]];
+  L.circleMarker([centre.latitude, centre.longitude], {
+    radius: 8, fillColor: '#a8801f', fillOpacity: 1,
+    color: '#16211b', weight: 2,
+  }).addTo(map).bindTooltip('Site centre');
 
-  google.maps.event.addListenerOnce(map, 'idle', () => {
-    map.fitBounds(bounds, 30);
-  });
-
-  // Site centre marker
-  new google.maps.Marker({
-    position: { lat: centre.latitude, lng: centre.longitude },
-    map,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 8,
-      fillColor: '#a8801f',
-      fillOpacity: 1,
-      strokeColor: '#16211b',
-      strokeWeight: 2,
-    },
-    title: 'Site centre',
-    zIndex: 10,
-  });
-
-  // Well markers with depth-color ramp
   wells.forEach((w) => {
+    all.push([w.lat, w.lng]);
     const depth = w.depth_m || 0;
     const t = Math.min(1, depth / 300);
     const fill = `hsl(24, ${40 + t * 30}%, ${60 - t * 35}%)`;
-    new google.maps.Marker({
-      position: { lat: w.lat, lng: w.lng },
-      map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 6,
-        fillColor: fill,
-        fillOpacity: 0.85,
-        strokeColor: '#fff',
-        strokeWeight: 1.5,
-      },
-      title: `${w.depth_m}m deep · ${w.distance_km}km away`,
-      zIndex: 5,
-    });
+    L.circleMarker([w.lat, w.lng], {
+      radius: 6, fillColor: fill, fillOpacity: 0.85,
+      color: '#fff', weight: 1.5,
+    }).addTo(map).bindTooltip(`${w.depth_m}m · ${w.distance_km}km`);
   });
+
+  map.fitBounds(all, { padding: [10, 10] });
 }
 
 function wellsMinimap(w, centre) {
@@ -3214,54 +3245,22 @@ function crimeMinimap(nearestCrimes, centre) {
 
 function initCrimeMinimap(elId, crimes, centre) {
   const el = document.getElementById(elId);
-  if (!el || typeof google === 'undefined' || !google.maps) return;
-  const bounds = new google.maps.LatLngBounds();
-  crimes.forEach((c) => bounds.extend({ lat: c.latitude, lng: c.longitude }));
-  bounds.extend({ lat: centre.latitude, lng: centre.longitude });
+  if (!el) return;
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: false });
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: '&copy; Esri', maxZoom: 20,
+  }).addTo(map);
 
-  const map = new google.maps.Map(el, {
-    mapTypeId: 'hybrid',
-    mapTypeControl: false,
-    streetViewControl: false,
-    fullscreenControl: false,
-    zoomControl: true,
-  });
-
-  google.maps.event.addListenerOnce(map, 'idle', () => {
-    map.fitBounds(bounds, 30);
-  });
-
-  new google.maps.Marker({
-    position: { lat: centre.latitude, lng: centre.longitude },
-    map,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 8,
-      fillColor: '#a8801f',
-      fillOpacity: 1,
-      strokeColor: '#16211b',
-      strokeWeight: 2,
-    },
-    title: 'Site centre',
-    zIndex: 10,
-  });
+  const all = [[centre.latitude, centre.longitude]];
+  L.circleMarker([centre.latitude, centre.longitude], { radius: 8, fillColor: '#a8801f', fillOpacity: 1, color: '#16211b', weight: 2 }).addTo(map).bindTooltip('Site centre');
 
   crimes.forEach((c) => {
-    new google.maps.Marker({
-      position: { lat: c.latitude, lng: c.longitude },
-      map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 6,
-        fillColor: '#8c2f1d',
-        fillOpacity: 0.8,
-        strokeColor: '#fff',
-        strokeWeight: 1.5,
-      },
-      title: `${c.occurrence_type || 'Occurrence'} · ${Math.round(c.distance_m)}m`,
-      zIndex: 5,
-    });
+    all.push([c.latitude, c.longitude]);
+    L.circleMarker([c.latitude, c.longitude], { radius: 6, fillColor: '#8c2f1d', fillOpacity: 0.8, color: '#fff', weight: 1.5 }).addTo(map).bindTooltip(`${c.occurrence_type || 'Occurrence'} · ${Math.round(c.distance_m)}m`);
   });
+
+  map.fitBounds(all, { padding: [10, 10] });
 }
 
 function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
