@@ -1109,6 +1109,7 @@ function renderReport(r) {
       ${treeCoverSection(r.tree_cover)}
       ${accessSection(r.access)}
       ${demographicsSection(r.demographics)}
+      ${atsSection(r.ats, r.parcel_address)}
 
       ${
         flags.length
@@ -2028,6 +2029,36 @@ function accessSection(acc) {
           </table>
         </div>
       ` : ''}
+    </section>`;
+}
+
+function atsSection(ats, pa) {
+  if (!ats) return '';
+  const centroid = pa?.centroid;
+  return `
+    <section class="report-block">
+      <h2>Legal land description & address</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Alberta Township System (ATS) quarter-section from parcel centroid${centroid ? ` (${centroid.lat.toFixed(5)}, ${centroid.lng.toFixed(5)})` : ''}.
+      </p>
+
+      <div class="well-range-card" style="border-left-color:var(--berry)">
+        <span class="mono">Prospective address</span>
+        <div class="well-range-value" style="font-size:clamp(1.1rem, 2.5vw, 1.5rem)">
+          ${esc(`Near ${ats.description}`)}
+        </div>
+        <p class="fine">
+          Quarter: ${esc(ats.quarter)} · Section: ${ats.section} · Township: ${ats.township} · Range: ${ats.range} · Meridian: ${esc(ats.meridian)}
+          ${pa?.locality ? ` · near ${esc(pa.locality)}` : ''}
+        </p>
+      </div>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Quarter</span><strong>${esc(ats.quarter)}</strong></div>
+        <div class="stat"><span class="k">Section</span><strong>${ats.section}</strong></div>
+        <div class="stat"><span class="k">Township</span><strong>${ats.township}</strong></div>
+        <div class="stat"><span class="k">Range</span><strong>${ats.range} ${esc(ats.meridian)}</strong></div>
+      </div>
     </section>`;
 }
 
