@@ -37,6 +37,20 @@
           <input id="site_name" type="text" placeholder="e.g. Sturgeon Waterdale" autocomplete="off">
         </div>
 
+        <div class="field">
+          <label for="search-box">Find location</label>
+          <input id="search-box" type="text" placeholder="Rural address, town, or place name…" autocomplete="off">
+        </div>
+
+        <div class="field coord-field">
+          <label>Or enter coordinates</label>
+          <div class="coord-row">
+            <input id="coord-lat" type="text" placeholder="Lat (e.g. 53.55)" autocomplete="off">
+            <input id="coord-lng" type="text" placeholder="Lng (e.g. -113.5)" autocomplete="off">
+            <button type="button" class="btn btn-secondary" id="btn-go-coords" style="padding:0.6rem 0.8rem;font-size:0.85rem">Go</button>
+          </div>
+        </div>
+
         <div class="draw-tools" role="group" aria-label="Drawing tools">
           <button type="button" class="btn" id="btn-draw-poly" aria-pressed="false">Draw parcel</button>
           <button type="button" class="btn btn-secondary" id="btn-draw-rect" aria-pressed="false">Rectangle</button>

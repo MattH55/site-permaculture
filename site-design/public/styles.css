@@ -175,9 +175,46 @@ h3 { font-size: 1.08rem; }
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.85rem;
   align-items: center;
 }
+
+/* Address search & coordinate input */
+.coord-field { margin-bottom: 0.2rem; }
+.coord-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+.coord-row input {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  font-size: 0.85rem;
+}
+.coord-row input:focus-visible { outline: 2px solid var(--berry); outline-offset: 1px; }
+.coord-row .btn-secondary {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.75rem;
+  font-size: 0.82rem;
+}
+
+/* Google Places Autocomplete dropdown — match brand */
+.pac-container {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  box-shadow: 0 8px 24px rgba(22,33,27,0.12);
+  font-family: 'Source Serif 4', Georgia, serif;
+}
+.pac-item { padding: 0.5rem 0.7rem; cursor: pointer; }
+.pac-item:hover { background: rgba(91,58,115,0.06); }
+.pac-item-query { font-family: 'Bricolage Grotesque', sans-serif; font-size: 0.92rem; }
+.pac-matched { font-weight: 700; }
 
 .btn.is-active,
 .btn[aria-pressed="true"] {

@@ -117,6 +117,50 @@ async function main() {
   $('btn-draw-rect').onclick = () => startDraw('rectangle');
   $('btn-clear').onclick = clearShape;
   $('btn-report').onclick = generateReport;
+
+  // Address search via Google Places Autocomplete
+  initPlaceSearch();
+
+  // Coordinate input
+  $('btn-go-coords')?.addEventListener('click', goToCoordinates);
+  mainPostInit();
+}
+
+function initPlaceSearch() {
+  const input = $('search-box');
+  if (!input || typeof google === 'undefined' || !google.maps?.places) return;
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: 'ca' },
+    fields: ['geometry', 'name', 'formatted_address'],
+    types: ['geocode', 'establishment'],
+  });
+  autocomplete.bindTo('bounds', state.map);
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (!place.geometry?.location) return;
+    state.map.setCenter(place.geometry.location);
+    state.map.setZoom(15);
+    $('search-box').value = place.name || place.formatted_address || '';
+  });
+}
+
+function goToCoordinates() {
+  if (!state.map) return;
+  const latStr = $('coord-lat')?.value?.trim();
+  const lngStr = $('coord-lng')?.value?.trim();
+  if (!latStr || !lngStr) return;
+  const lat = parseFloat(latStr);
+  const lng = parseFloat(lngStr);
+  if (isNaN(lat) || isNaN(lng)) {
+    setError('Invalid coordinates. Use decimal degrees (e.g. 53.55, -113.5).');
+    return;
+  }
+  state.map.setCenter({ lat, lng });
+  state.map.setZoom(16);
+  setError('');
+}
+
+function mainPostInit() {
   $('btn-back-map').onclick = showMap;
   $('btn-back-map-top')?.addEventListener('click', showMap);
   $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
@@ -156,7 +200,7 @@ function loadGoogleMaps(key) {
     const s = document.createElement('script');
     s.src =
       `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}` +
-      `&libraries=geometry&v=weekly&loading=async`;
+      `&libraries=geometry,places&v=weekly&loading=async`;
     s.async = true;
     s.onload = () => {
       // geometry may load slightly after script.onload on some builds
