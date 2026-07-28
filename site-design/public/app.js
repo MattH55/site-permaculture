@@ -3189,6 +3189,89 @@ function initCrimeMinimap(elId, crimes, centre) {
   });
 }
 
+function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
+  if (!wells?.length) return '';
+  const depths = wells.map((w) => w.depth_m).filter((d) => d > 0);
+  if (!depths.length) return '';
+
+  const W = 320, H = 130, padX = 24, padY = 22;
+  const usableW = W - padX * 2, usableH = H - padY * 2;
+  const min = Math.min(...depths, low || 0);
+  const max = Math.max(...depths, high || 200);
+  const span = max - min || 1;
+
+  // Histogram bins
+  const bins = 14;
+  const binW = span / bins;
+  const counts = new Array(bins).fill(0);
+  for (const d of depths) {
+    const i = Math.min(bins - 1, Math.floor((d - min) / binW));
+    counts[i]++;
+  }
+  const maxC = Math.max(...counts, 1);
+
+  const bars = counts.map((c, i) => {
+    const x = padX + (i / bins) * usableW;
+    const h = Math.max(2, (c / maxC) * usableH);
+    const y = padY + usableH - h;
+    const fill = i < bins / 3 ? 'var(--h2)' : i < bins * 2 / 3 ? 'var(--h4)' : 'var(--h6)';
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / bins - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" opacity="0.7" rx="1"><title>${c} wells · ~${Math.round(min + i * binW)}–${Math.round(min + (i + 1) * binW)}m</title></rect>`;
+  }).join('');
+
+  // Predicted range overlay
+  let rangeOverlay = '';
+  if (low != null && high != null) {
+    const lx = padX + ((low - min) / span) * usableW;
+    const hx = padX + ((high - min) / span) * usableW;
+    rangeOverlay = `
+      <rect x="${lx.toFixed(1)}" y="${padY}" width="${Math.max(3, (hx - lx)).toFixed(1)}" height="${usableH.toFixed(1)}" fill="rgba(145, 78, 44, 0.18)" stroke="#a8801f" stroke-width="1.5" stroke-dasharray="4 2" rx="2">
+        <title>Predicted range: ${low}–${high}m</title>
+      </rect>
+      <text x="${((lx + hx) / 2).toFixed(1)}" y="${(padY - 4).toFixed(1)}" class="svg-label" text-anchor="middle" fill="#a8801f">${low}–${high}m</text>`;
+  }
+
+  return `
+    <div class="well-chart-wrap">
+      <span class="mono topo-label">Nearby well depth distribution (${depths.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Well depth distribution histogram">
+        <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
+        ${bars}
+        ${rangeOverlay}
+        <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(min)}m</text>
+        <text x="${(padX + usableW - 12).toFixed(1)}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(max)}m</text>
+      </svg>
+    </div>`;
+}
+
+function wellDistanceDepthSvg(wells, centre) {
+  if (!wells?.length || !centre) return '';
+  const points = wells.filter((w) => w.distance_km != null && w.depth_m > 0);
+  if (!points.length) return '';
+
+  const W = 320, H = 150, padX = 30, padY = 22;
+  const usableW = W - padX * 2, usableH = H - padY * 2;
+  const maxDist = Math.max(...points.map((p) => p.distance_km), 1);
+  const maxDepth = Math.max(...points.map((p) => p.depth_m), 50);
+
+  const dots = points.map((p) => {
+    const x = padX + (p.distance_km / maxDist) * usableW;
+    const y = padY + usableH - (p.depth_m / maxDepth) * usableH;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#5b3a73" opacity="0.7"><title>${p.depth_m}m · ${p.distance_km}km</title></circle>`;
+  }).join('');
+
+  return `
+    <div class="well-chart-wrap">
+      <span class="mono topo-label">Distance vs depth (${points.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distance vs depth scatter plot">
+        <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
+        ${dots}
+        <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">0 km</text>
+        <text x="${(padX + usableW - 8).toFixed(1)}" y="${(H - 4).toFixed(1)}" class="svg-label">${maxDist.toFixed(1)}km</text>
+        <text x="4" y="${(padY + 8).toFixed(1)}" class="svg-label">${Math.round(maxDepth)}m</text>
+      </svg>
+    </div>`;
+}
+
 function wellDepthSection(w, centre) {
   if (!w) {
     return `
@@ -3199,11 +3282,62 @@ function wellDepthSection(w, centre) {
   }
   const low = w.estimated_depth_range_m?.low_m;
   const high = w.estimated_depth_range_m?.high_m;
+  const swl = w.estimated_static_water_level_m;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
     well_control_sparse: 'Sparse nearby well control',
     no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock model only',
   }[w.confidence] || w.confidence;
+
+  const distChart = wellDepthDistributionSvg(w.nearby_wells, w.estimated_depth_m, low, high);
+  const scatterChart = wellDistanceDepthSvg(w.nearby_wells, centre);
+
+  // Enriched data cards
+  const yieldSum = w.yield_summary;
+  const pumpSum = w.pump_test_summary;
+  const chemSum = w.chemistry_summary;
+  const lithSum = w.lithology_summary;
+
+  const enrichCards = [];
+  if (yieldSum?.count) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Well yield (${yieldSum.count} wells)</span>
+        <strong>mean ${yieldSum.mean} · max ${yieldSum.max}</strong>
+        <p class="fine">min ${yieldSum.min} · ${esc(yieldSum.unit || 'rate')}</p>
+      </article>`);
+  }
+  if (pumpSum?.count) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Pump tests (${pumpSum.count} wells)</span>
+        <strong>SWL ${fmt(pumpSum.swl_range_m?.low, 'm')}–${fmt(pumpSum.swl_range_m?.high, 'm')}</strong>
+        <p class="fine">${pumpSum.yield_range ? `yield ${pumpSum.yield_range.low}–${pumpSum.yield_range.high}` : ''}</p>
+      </article>`);
+  }
+  if (chemSum?.count) {
+    const topElems = Object.entries(chemSum.elements || {}).slice(0, 5)
+      .map(([k, v]) => `${esc(k)}: ${v.mean}`).join(' · ');
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Water chemistry (${chemSum.count} wells)</span>
+        <p class="fine">${topElems || 'elements present'}</p>
+      </article>`);
+  }
+  if (lithSum?.top_materials?.length) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Top lithology</span>
+        <p class="fine">${esc(lithSum.top_materials.slice(0, 3).join(', '))}</p>
+      </article>`);
+  }
+  if (w.geophysics_available) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Geophysical logs</span>
+        <strong>${w.geophysics_available} wells</strong>
+      </article>`);
+  }
 
   return `
     <section class="report-block well-depth-block">
@@ -3220,27 +3354,25 @@ function wellDepthSection(w, centre) {
         </div>
         <p class="fine">
           Midpoint estimate ${fmt(w.estimated_depth_m, 'm')}
-          ${w.estimated_static_water_level_m != null
-            ? ` · static water level ~${fmt(w.estimated_static_water_level_m, 'm')} below grade`
-            : ''}
+          ${swl != null ? ` · static water level ~${fmt(swl, 'm')} below grade` : ''}
         </p>
       </div>
 
       <div class="summary-grid">
-        <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(
-          w.nearby_well_count ?? '—'
-        )}</strong></div>
-        <div class="stat"><span class="k">Search radius</span><strong>${fmt(
-          w.nearby_well_search_radius_km,
-          'km'
-        )}</strong></div>
+        <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Search radius</span><strong>${fmt(w.nearby_well_search_radius_km, 'km')}</strong></div>
         <div class="stat"><span class="k">Confidence</span><strong>${esc(confLabel)}</strong></div>
-        <div class="stat"><span class="k">Target unit</span><strong>${esc(
-          w.target_hydrostratigraphic_unit || '—'
-        )}</strong></div>
+        <div class="stat"><span class="k">Target unit</span><strong>${esc(w.target_hydrostratigraphic_unit || '—')}</strong></div>
       </div>
 
       ${wellsMinimap(w, centre)}
+
+      <div class="well-charts">
+        ${distChart}
+        ${scatterChart}
+      </div>
+
+      ${enrichCards.length ? `<div class="prox-grid" style="margin-top:0.85rem">${enrichCards.join('')}</div>` : ''}
 
       <div class="flag" data-severity="caution" style="margin-top:1rem">
         <strong>Required — consult a licensed driller</strong>

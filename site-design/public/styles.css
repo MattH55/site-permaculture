@@ -1149,6 +1149,26 @@ h3 { font-size: 1.08rem; }
 .wildlife-recs li {
   margin-bottom: 0.35rem;
 }
+
+/* Well depth charts */
+.well-charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.85rem;
+  margin-top: 0.75rem;
+}
+.well-chart-wrap {
+  min-width: 0;
+}
+.well-dist-svg {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius);
+  display: block;
+}
+@media (max-width: 640px) {
+  .well-charts { grid-template-columns: 1fr; }
+}
 .contour-index {
   fill: none;
   stroke: #5b3a73;
