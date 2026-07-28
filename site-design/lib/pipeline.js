@@ -28,6 +28,7 @@ import { assessWildlife, checkWildlifeSensitivity } from './wildlife.js';
 import { queryGbig, lookupWmu } from './wildlife-enrich.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 import { assessAccessSync } from './access.js';
+import { demographicsHeuristic } from './demographics.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -281,6 +282,7 @@ export async function generateSiteReport(input = {}) {
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
     record.access = assessAccessSync(centre, nearestCityDist);
+    record.demographics = demographicsHeuristic(centre);
 
     const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;

@@ -1108,6 +1108,7 @@ function renderReport(r) {
       ${wildlifeSection(r.wildlife || a.wildlife)}
       ${treeCoverSection(r.tree_cover)}
       ${accessSection(r.access)}
+      ${demographicsSection(r.demographics)}
 
       ${
         flags.length
@@ -2027,6 +2028,37 @@ function accessSection(acc) {
           </table>
         </div>
       ` : ''}
+    </section>`;
+}
+
+function demographicsSection(demo) {
+  if (!demo || !demo.available) return '';
+  const d = demo.demographics || {};
+
+  const rows = [
+    ['total_population', 'Population (2021)'],
+    ['pop_density_per_km2', 'Density (/km²)'],
+    ['median_age', 'Median age'],
+    ['median_after_tax_income', 'Median after-tax income'],
+    ['avg_household_size', 'Avg household size'],
+    ['pct_owner_households', 'Owner households'],
+    ['pct_bachelor_or_higher', 'Bachelor+ degree'],
+    ['pct_labour_force_participation', 'Labour force participation'],
+    ['pct_car_truck_van_commute', 'Commute by car/truck'],
+    ['pct_ag_forestry_fishing_industry', 'Ag/forestry/fishing employment'],
+  ].filter(([key]) => d[key]).map(([key, label]) => {
+    const v = d[key];
+    return `<div class="stat"><span class="k">${esc(label)}</span><strong>${esc(v.value != null ? v.value.toLocaleString('en-CA') : '—')}${v.unit ? ' ' + esc(v.unit) : ''}</strong></div>`;
+  }).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Regional demographics</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(demo.geography_name || 'Census area')} · ${esc(demo.census_year || '2021')} Census · ${esc(demo.methodology || '')}
+      </p>
+      <div class="summary-grid">${rows}</div>
+      <p class="fine"><a href="${esc(demo.source_url || 'https://www12.statcan.gc.ca/')}" target="_blank" rel="noopener">Source: Statistics Canada</a></p>
     </section>`;
 }
 
