@@ -1107,6 +1107,7 @@ function renderReport(r) {
       ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
       ${wildlifeSection(r.wildlife || a.wildlife)}
       ${treeCoverSection(r.tree_cover)}
+      ${accessSection(r.access)}
 
       ${
         flags.length
@@ -1974,6 +1975,58 @@ function wildlifeSection(wl) {
       </div>
 
       <p class="fine" style="margin-top:0.6rem">${esc(wl.methodology_note || '')}</p>
+    </section>`;
+}
+
+function accessSection(acc) {
+  if (!acc || !acc.available) return '';
+  const road = acc.nearest_road || {};
+  const market = acc.nearest_supermarket || {};
+  const trips = acc.trip_costs_to_supermarket || [];
+
+  const tripRows = trips.map((t) => `
+    <tr>
+      <td><strong>${esc(t.vehicle)}</strong></td>
+      <td>${esc(t.travelTimeOneWayFormatted)}</td>
+      <td class="mono">${t.roundTripCostCad != null ? `$${t.roundTripCostCad.toFixed(2)}` : '—'}</td>
+      <td class="fine">${t.fuelConsumedL ? `${t.fuelConsumedL}L` : t.electricityCostCad ? `$${t.electricityCostCad.toFixed(2)} elec` : '—'}</td>
+    </tr>
+  `).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Access & mobility</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(acc.methodology || '')}. Gas: $${acc.gas_price_cad_l}/L.
+      </p>
+
+      <div class="prox-grid">
+        <article class="prox-card">
+          <span class="mono">Nearest road</span>
+          ${road.name
+            ? `<strong>${esc(road.name)}</strong>
+               <p>${esc(road.type || 'road')} · ${fmt(road.distance_m, 'm')}</p>`
+            : `<strong>—</strong><p class="fine">No road data</p>`}
+        </article>
+        <article class="prox-card">
+          <span class="mono">Nearest supermarket</span>
+          ${market.name
+            ? `<strong>${esc(market.name)}</strong>
+               <p>${fmt(market.distance_km, 'km')} · ${esc(market.type || 'grocery')}</p>`
+            : `<strong>—</strong><p class="fine">No grocery found within search radius</p>`}
+        </article>
+      </div>
+
+      ${tripRows ? `
+        <div class="econ-table-wrap" style="margin-top:0.5rem">
+          <table class="econ-table">
+            <thead>
+              <tr><th>Vehicle</th><th>Time (one-way)</th><th>Round trip cost</th><th>Fuel / energy</th></tr>
+            </thead>
+            <tbody>${tripRows}</tbody>
+          </table>
+        </div>
+      ` : ''}
     </section>`;
 }
 

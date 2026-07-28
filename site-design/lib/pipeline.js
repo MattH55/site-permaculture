@@ -27,6 +27,7 @@ import { assessTemperature } from './climate.js';
 import { assessWildlife, checkWildlifeSensitivity } from './wildlife.js';
 import { queryGbig, lookupWmu } from './wildlife-enrich.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
+import { assessAccess } from './access.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -274,11 +275,15 @@ export async function generateSiteReport(input = {}) {
   record.wmu = lookupWmu(centre);
 
   // GBIF — run async alongside other fetches (fire-and-forget, attach after)
-  queryGbig(bbox).then((gbif) => {
-    record.gbif_species = gbif;
-  }).catch(() => {});
+    queryGbig(bbox).then((gbif) => {
+      record.gbif_species = gbif;
+    }).catch(() => {});
 
-  const treeCover = estimateTreeCover(layers, proximity);
+    assessAccess(centre).then((access) => {
+      record.access = access;
+    }).catch(() => {});
+
+    const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
 
