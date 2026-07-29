@@ -30,6 +30,7 @@ import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 import { assessAccessSync } from './access.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
+import { queryProvincialContours } from './provincial-contours.js';
 
 const cache = new Map();
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
@@ -295,6 +296,11 @@ export async function generateSiteReport(input = {}) {
     const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
+
+  // Provincial contours (fire-and-forget — attaches to report after response)
+  queryProvincialContours(bbox, { limit: 1500 }).then((ctrs) => {
+    record._provincial_contours = ctrs;
+  }).catch(() => {});
 
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
