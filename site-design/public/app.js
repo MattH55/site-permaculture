@@ -151,18 +151,6 @@ function initLeafletMap(cfg) {
     opacity: 0.5,
   }).addTo(map);
 
-  // Layer control for switching basemaps
-  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 19,
-  });
-
-  const baseLayers = {
-    'Satellite': null, // already default
-    'OpenStreetMap': osmLayer,
-  };
-  L.control.layers(baseLayers, null, { position: 'topright', collapsed: true }).addTo(map);
-
   state.map = map;
   state._leafletMap = map;
   state._drawLayer = L.layerGroup().addTo(map);
