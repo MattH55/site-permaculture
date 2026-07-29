@@ -336,35 +336,30 @@ function setDrawButtons(activeKind) {
   }
   const mapDiv = $('map');
   if (mapDiv) {
-    mapDiv.style.cursor = activeKind ? 'crosshair' : '';
-    mapDiv.classList.toggle('is-drawing', !!activeKind);
+    // Override Leaflet's .leaflet-grab cursor with !important
+    if (activeKind) {
+      mapDiv.style.setProperty('cursor', 'crosshair', 'important');
+      mapDiv.classList.add('is-drawing');
+    } else {
+      mapDiv.style.setProperty('cursor', '', 'important');
+      mapDiv.classList.remove('is-drawing');
+    }
   }
 }
 
 function detachDrawListeners() {
-  for (const l of state.draw.listeners) {
-    try {
-      google.maps.event.removeListener(l);
-    } catch { /* ignore */ }
-  }
-  state.draw.listeners = [];
+  state._leafletMap?.off('click', state._drawClickHandler);
+  state._drawClickHandler = null;
 }
 
 function clearVertexMarkers() {
-  for (const m of state.vertexMarkers) m.setMap(null);
-  state.vertexMarkers = [];
+  state._drawLayer?.clearLayers();
 }
 
 function clearPreview() {
-  if (state.preview) {
-    state.preview.setMap(null);
-    state.preview = null;
-  }
-  if (state.draw.rectShape) {
-    state.draw.rectShape.setMap(null);
-    state.draw.rectShape = null;
-  }
   clearVertexMarkers();
+  state.preview = null;
+  state.draw.rectStart = null;
 }
 
 function stopDrawingMode() {
@@ -375,7 +370,6 @@ function stopDrawingMode() {
   state.draw.rectStart = null;
   clearPreview();
   setDrawButtons(null);
-  if (state.map) state.map.setOptions(mapGestureOpts(false));
 }
 
 function startDraw(kind) {
@@ -1070,8 +1064,7 @@ function showReport() {
 function showMap() {
   $('report-stage').hidden = true;
   $('map-stage').hidden = false;
-  if (state.mode === 'fallback') setTimeout(drawFallback, 50);
-  else if (state.map) google.maps.event.trigger(state.map, 'resize');
+  if (state._leafletMap) state._leafletMap.invalidateSize();
 }
 
 /* ---------- report UI ---------- */
