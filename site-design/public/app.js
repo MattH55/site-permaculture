@@ -1802,11 +1802,100 @@ function solarSection(solar) {
           : ''
       }
       ${bars}
+      ${solar?.monthly_latitude_tilt?.length ? dailySolarProfile(solar.monthly_latitude_tilt) : ''}
       <div class="flag" data-severity="info" style="margin-top:0.85rem">
         <strong>Methodology note</strong>
         <p>${esc(solar.methodology_note || '')} ${esc(solar.disclaimer || '')}</p>
       </div>
     </section>`;
+}
+
+function dailySolarProfile(monthly) {
+  // For each month, show a bell-shaped irradiance profile across 24 hours
+  // Peak at solar noon, zero before dawn/after dusk
+  const hours = 24;
+  const w = 380;
+  const h = 200;
+  const padX = 36;
+  const padY = 20;
+  const usableW = w - padX * 2;
+  const usableH = h - padY - 10;
+
+  const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  // Approximate daylight hours per month at 53°N latitude (Alberta)
+  const daylightHours = [8, 9.5, 12, 14, 15.5, 17, 16.5, 15, 13, 11, 8.5, 7.5];
+  // Sun hours for each month index (matching monthly data: Jan=0..Dec=11)
+  const sunHours = monthly.map((m, i) => {
+    const mi = monthNames.indexOf((m.month || '').slice(0, 3));
+    return mi >= 0 ? daylightHours[mi] : 12;
+  });
+  const peaks = monthly.map((m) => Number(m.latitude_tilt_kwh_m2_day) || 0);
+
+  const hScale = 12; // noon = hour 12, range 5am to 8pm = 15 points
+
+  const profiles = monthly.map((m, i) => {
+    const peak = peaks[i] || 0;
+    const dh = sunHours[i];
+    const riseHr = 12 - dh / 2;
+    const setHr = 12 + dh / 2;
+    const pts = [];
+    for (let hr = 5; hr <= 21; hr++) {
+      const t = (hr - riseHr) / (setHr - riseHr);
+      const val = t > 0 && t < 1 ? peak * Math.sin(t * Math.PI) : 0;
+      pts.push(Math.max(0, Math.round(val * 1000) / 1000));
+    }
+    return pts;
+  });
+
+  const maxPeak = Math.max(...peaks, 0.01);
+  const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const colors = ['#5b3a73','#2a6f97','#3d9dc9','#5bc0be','#2196f3','#1565c0','#1b4f72','#2e86c1','#3498db','#5dade2','#7fb3d8','#a5c8e1'];
+
+  // Single summary chart for July (highest) as the main profile
+  const julIdx = 6;
+  const julPeak = peaks[julIdx];
+  const julDH = sunHours[julIdx];
+  const julRise = 12 - julDH / 2;
+  const julSet = 12 + julDH / 2;
+
+  const profilePts = [];
+  for (let hr = 5; hr <= 21; hr++) {
+    const t = (hr - julRise) / (julSet - julRise);
+    const val = t > 0 && t < 1 ? julPeak * Math.sin(t * Math.PI) : 0;
+    profilePts.push({ hr, val: Math.max(0, Math.round(val * 1000) / 1000) });
+  }
+
+  const barH = profilePts.map((p) => {
+    const x = padX + (p.hr - 5) / (21 - 5) * usableW;
+    const bH = (p.val / (julPeak || 0.01)) * usableH;
+    const y = padY + usableH - bH;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / 16 - 2).toFixed(1)}" height="${bH.toFixed(1)}" fill="#a8801f" opacity="0.7" rx="1">
+      <title>${p.hr}:00 — ${p.val} kWh/m²·d</title>
+    </rect>
+    <text x="${(x + usableW / 32).toFixed(1)}" y="${(y - 3).toFixed(1)}" class="temp-val-label">${p.val}</text>`;
+  }).join('');
+
+  const hourLabels = [5,8,11,14,17,20].map((hr) => {
+    const x = padX + (hr - 5) / (21 - 5) * usableW;
+    return `<text x="${x.toFixed(1)}" y="${(padY + usableH + 12).toFixed(1)}" class="temp-month-label" text-anchor="middle">${hr}:00</text>`;
+  }).join('');
+
+  return `
+    <div class="temp-month-wrap" style="margin-top:0.85rem">
+      <span class="mono topo-label">Average daily irradiance profile (southern latitude tilt) — summer peak month</span>
+      <svg class="temp-month-svg" viewBox="0 0 ${w} ${h}" role="img" aria-label="Daily solar irradiance profile">
+        <rect x="0" y="0" width="${w}" height="${h}" fill="#f7f8f3" stroke="#c8cec1"/>
+        <line x1="${padX}" y1="${(padY + usableH).toFixed(1)}" x2="${(padX + usableW).toFixed(1)}" y2="${(padY + usableH).toFixed(1)}" stroke="#c8cec1" stroke-width="1"/>
+        <text x="4" y="${(padY + 8).toFixed(1)}" class="svg-label">${julPeak.toFixed(2)}</text>
+        <text x="4" y="${(padY + usableH).toFixed(1)}" class="svg-label">0</text>
+        ${barH}
+        ${hourLabels}
+      </svg>
+      <p class="fine" style="margin-top:0.3rem">
+        Bell-curve approximation for the highest-solar month (${labels[julIdx] || 'July'}).
+        Daylight window: ${sunHours[julIdx].toFixed(1)} hours. Peak: ${julPeak} kWh/m²·d at solar noon.
+      </p>
+    </div>`;
 }
 
 function monthlySolarBars(monthly) {
