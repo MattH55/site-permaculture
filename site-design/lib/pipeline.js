@@ -109,6 +109,12 @@ export async function generateSiteReport(input = {}) {
     search_radius_km: 5,
   });
 
+  // Wet Areas Mapping — depth-to-water + predicted streams
+  const [depthToWater, predictedStreams] = await Promise.all([
+    queryDepthToWater(centre).catch(() => null),
+    queryPredictedStreams(bbox).catch(() => ({ available: false, count: null })),
+  ]);
+
   // Contour lines reduced from the same sampled elevation grid — feeds the
   // rate engine's swale-meterage estimate (see lib/quote.js, lib/rate-engine.js).
   const contourLines = generateContourLines(
