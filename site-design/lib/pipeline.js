@@ -306,10 +306,9 @@ export async function generateSiteReport(input = {}) {
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
   record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
 
-  // Provincial contours fire-and-forget (attach after response)
-  queryProvincialContours(bbox, { limit: 1500 }).then((ctrs) => {
-    record._provincial_contours = ctrs;
-  }).catch(() => {});
+  // Provincial contours — await for report, then attach to record
+  const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
+  record._provincial_contours = provincialContours;
 
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
