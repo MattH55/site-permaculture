@@ -1113,6 +1113,7 @@ function renderReport(r) {
       ${atsSection(r.ats, r.parcel_address)}
       ${windSection(r.climate, r)}
       ${wetAreasSection(r.wet_areas_mapping)}
+      ${biodiversitySection(r.biodiversity)}
 
       ${
         flags.length
@@ -3442,6 +3443,46 @@ function windSection(climate, r) {
           </p>
         </div>
       </div>
+    </section>`;
+}
+
+function biodiversitySection(bio) {
+  if (!bio || !bio.available) return '';
+  const inner = bio.inner || {};
+  const outer = bio.outer || {};
+  
+  const speciesList = (inner.top_species || []).map(s => `
+    <div class="stat">
+      <span class="k">${esc(s.common || s.name)}</span>
+      <strong>${s.count} obs</strong>
+    </div>
+  `).join('');
+
+  const discoveries = (bio.discoveries || []).map(s => `
+    <div class="stat" style="border-top-color:var(--berry-lo)">
+      <span class="k">${esc(s.common || s.name)}</span>
+      <strong>Nearby fit</strong>
+    </div>
+  `).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Biodiversity — iNaturalist</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Analysis of observations within ${bio.metadata?.inner_radius_km}km (local) and ${bio.metadata?.outer_radius_km}km (landscape).
+      </p>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Local richness</span><strong>${inner.unique_species_count} species</strong></div>
+        <div class="stat"><span class="k">Landscape richness</span><strong>${outer.unique_species_count} species</strong></div>
+        <div class="stat"><span class="k">Threatened (vicinity)</span><strong>${inner.threatened_count}</strong></div>
+      </div>
+
+      <span class="mono topo-label">Most observed locally</span>
+      <div class="summary-grid" style="margin-top:0.5rem">${speciesList}</div>
+
+      <span class="mono topo-label">Nearby potential (observed 3km, not yet local)</span>
+      <div class="summary-grid" style="margin-top:0.5rem">${discoveries}</div>
     </section>`;
 }
 

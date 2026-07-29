@@ -32,6 +32,7 @@ import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
+import { assessBiodiversity } from './biodiversity.js';
 
 const cache = new Map();
 
@@ -293,6 +294,10 @@ export async function generateSiteReport(input = {}) {
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
     assessAccess(centre, nearestCityDist).then((access) => {
       record.access = access;
+    }).catch(() => {});
+
+    assessBiodiversity(centre).then((bio) => {
+      record.biodiversity = bio;
     }).catch(() => {});
     record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);
