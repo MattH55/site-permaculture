@@ -1803,6 +1803,7 @@ function solarSection(solar) {
       }
       ${bars}
       ${solar?.monthly_latitude_tilt?.length ? dailySolarProfile(solar.monthly_latitude_tilt) : ''}
+      ${solarCapacitySection(solar)}
       <div class="flag" data-severity="info" style="margin-top:0.85rem">
         <strong>Methodology note</strong>
         <p>${esc(solar.methodology_note || '')} ${esc(solar.disclaimer || '')}</p>
@@ -1896,6 +1897,163 @@ function dailySolarProfile(monthly) {
         Daylight window: ${sunHours[julIdx].toFixed(1)} hours. Peak: ${julPeak} kWh/m²·d at solar noon.
       </p>
     </div>`;
+}
+
+function solarCapacitySection(solar) {
+  if (!solar?.available) return '';
+  const m = solar.mean_daily_global_insolation_kwh_m2 || {};
+  const peak = m.south_latitude_tilt || 0;
+  if (peak <= 0) return '';
+
+  // Panel sizes (kW of array)
+  const panelSizes = [3, 5, 8, 10, 15, 20];
+  // System efficiency (inverter losses, wiring, dust, temp derate ~ 75%)
+  const sysEff = 0.75;
+  // Alberta avg sun hours from the peak month (use peak for "summer day" and annual for "typical day")
+  const annualPeak = peak;
+  const winterPeak = annualPeak * 0.35; // ~35% of summer in winter at 53°N
+
+  // Battery options
+  const batteries = [
+    { name: 'Tesla Powerwall 3', kwh: 13.5, cost: 12000 },
+    { name: 'Enphase IQ 5P', kwh: 5.0, cost: 6000 },
+    { name: 'LG RESU 16H', kwh: 16.0, cost: 14000 },
+    { name: 'Generac PWRcell', kwh: 18.0, cost: 16000 },
+  ];
+
+  // Typical appliances (name, watts, hours/day typical use → kWh/day)
+  const appliances = [
+    { name: 'LED lighting (10 bulbs)', watts: 100, hours: 6 },
+    { name: 'Refrigerator/freezer', watts: 150, hours: 24 },
+    { name: 'Well pump (½ HP)', watts: 750, hours: 2 },
+    { name: 'Washing machine', watts: 500, hours: 1 },
+    { name: 'Electric kettle', watts: 1500, hours: 0.3 },
+    { name: 'Microwave oven', watts: 1000, hours: 0.5 },
+    { name: 'Laptop + WiFi router', watts: 100, hours: 10 },
+    { name: 'Electric stove burner', watts: 2000, hours: 1 },
+    { name: 'Space heater (1 room)', watts: 1500, hours: 4 },
+    { name: 'Hot water tank (40 gal)', watts: 4500, hours: 2 },
+    { name: 'EV charger (Level 2)', watts: 7200, hours: 4 },
+    { name: 'Air conditioner (window)', watts: 1200, hours: 6 },
+    { name: 'Dehydrator', watts: 500, hours: 8 },
+    { name: 'Greenhouse heater', watts: 1500, hours: 6 },
+  ];
+
+  const appRows = appliances.map(a => {
+    const kwhDay = (a.watts * a.hours / 1000);
+    return `<tr>
+      <td>${esc(a.name)}</td>
+      <td class="mono">${a.watts}W</td>
+      <td class="mono">${a.hours}h</td>
+      <td class="mono">${kwhDay.toFixed(1)} kWh</td>
+    </tr>`;
+  }).join('');
+
+  const panelRows = panelSizes.map(kw => {
+    const summerDay = kw * annualPeak * sysEff;
+    const winterDay = kw * winterPeak * sysEff;
+    const avgDay = (summerDay + winterDay) / 2;
+    const summerMonth = summerDay * 30;
+    const winterMonth = winterDay * 30;
+    const annual = avgDay * 365;
+    return `<tr>
+      <td><strong>${kw} kW</strong></td>
+      <td class="mono">${summerDay.toFixed(1)}</td>
+      <td class="mono">${winterDay.toFixed(1)}</td>
+      <td class="mono">${avgDay.toFixed(1)}</td>
+      <td class="mono">${Math.round(summerMonth).toLocaleString()}</td>
+      <td class="mono">${Math.round(winterMonth).toLocaleString()}</td>
+      <td class="mono">${Math.round(annual).toLocaleString()}</td>
+    </tr>`;
+  }).join('');
+
+  // How many days a panel+battery can run a basic off-grid load
+  const basicLoad = 10; // kWh/day (fridge, lights, pump, devices)
+  const batteryRows = batteries.map(b => {
+    const daysOnBattery = (b.kwh * 0.9 / basicLoad); // 90% DoD
+    return `<tr>
+      <td><strong>${esc(b.name)}</strong></td>
+      <td class="mono">${b.kwh} kWh</td>
+      <td class="mono">~$${Math.round(b.cost).toLocaleString()}</td>
+      <td class="mono">${daysOnBattery.toFixed(1)} days</td>
+      <td class="fine">${daysOnBattery < 1 ? 'Partial backup only' : daysOnBattery < 2 ? 'Overnight + morning' : 'Multi-day backup'}</td>
+    </tr>`;
+  }).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Solar sizing & appliance planner</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Based on ${peak.toFixed(2)} kWh/m²·d annual mean insolation at latitude tilt for this location.
+        System efficiency assumed at 75% (inverter, wiring, dust, temperature derate).
+      </p>
+
+      <span class="mono topo-label">Panel array production (kWh/day)</span>
+      <div class="econ-table-wrap" style="margin-top:0.5rem">
+        <table class="econ-table">
+          <thead>
+            <tr>
+              <th>Array size</th>
+              <th>Summer day</th>
+              <th>Winter day</th>
+              <th>Avg day</th>
+              <th>Summer month</th>
+              <th>Winter month</th>
+              <th>Annual</th>
+            </tr>
+          </thead>
+          <tbody>${panelRows}</tbody>
+        </table>
+      </div>
+      <p class="fine" style="margin-top:0.3rem">
+        "Summer day" uses full ${peak.toFixed(2)} kWh/m²·d; "Winter day" uses ~35% of that (Alberta Dec/Jan at 53°N).
+      </p>
+
+      <span class="mono topo-label">Battery storage options</span>
+      <div class="econ-table-wrap" style="margin-top:0.5rem">
+        <table class="econ-table">
+          <thead>
+            <tr>
+              <th>Battery</th>
+              <th>Capacity</th>
+              <th>Installed est.</th>
+              <th>Days on 10kWh/day</th>
+              <th>Use case</th>
+            </tr>
+          </thead>
+          <tbody>${batteryRows}</tbody>
+        </table>
+      </div>
+      <p class="fine" style="margin-top:0.3rem">
+        "Days" = usable capacity (90% DoD) ÷ 10 kWh/day basic load. Actual backup depends on your load and charge rate.
+      </p>
+
+      <span class="mono topo-label">Typical appliance power draw</span>
+      <p class="fine" style="margin:0.3rem 0 0.5rem">Match your daily kWh production above to the appliances below.</p>
+      <div class="econ-table-wrap">
+        <table class="econ-table">
+          <thead>
+            <tr>
+              <th>Appliance</th>
+              <th>Watts</th>
+              <th>Typical use</th>
+              <th>kWh/day</th>
+            </tr>
+          </thead>
+          <tbody>${appRows}</tbody>
+        </table>
+      </div>
+
+      <div class="well-range-card" style="border-left-color:var(--caution);margin-top:1rem">
+        <span class="mono">Quick sizing guide</span>
+        <p class="fine" style="margin:0.3rem 0 0">
+          <strong>5 kW array</strong> ≈ ${Math.round(5 * annualPeak * sysEff)} kWh/day summer · powers fridge + lights + pump + devices<br>
+          <strong>10 kW array</strong> ≈ ${Math.round(10 * annualPeak * sysEff)} kWh/day summer · adds cooking + laundry + heating assist<br>
+          <strong>15 kW array</strong> ≈ ${Math.round(15 * annualPeak * sysEff)} kWh/day summer · covers most household loads<br>
+          <strong>20 kW array</strong> ≈ ${Math.round(20 * annualPeak * sysEff)} kWh/day summer · EV charging + full electric home
+        </p>
+      </div>
+    </section>`;
 }
 
 function monthlySolarBars(monthly) {
