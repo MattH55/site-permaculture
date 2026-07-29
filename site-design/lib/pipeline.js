@@ -30,8 +30,11 @@ import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 import { assessAccessSync } from './access.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
+import { queryProvincialContours } from './provincial-contours.js';
+import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 
 const cache = new Map();
+
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 const CACHE_MAX = 200;
 
@@ -301,6 +304,12 @@ export async function generateSiteReport(input = {}) {
     const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
+  record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
+
+  // Provincial contours fire-and-forget (attach after response)
+  queryProvincialContours(bbox, { limit: 1500 }).then((ctrs) => {
+    record._provincial_contours = ctrs;
+  }).catch(() => {});
 
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
