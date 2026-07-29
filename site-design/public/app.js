@@ -151,16 +151,20 @@ function initLeafletMap(cfg) {
     opacity: 0.5,
   }).addTo(map);
 
-  // Wet Areas Mapping — depth-to-water WMS overlay
-  const wamLayer = L.tileLayer.wms('https://geospatial.alberta.ca/umbriel/rest/services/hydrography/wet_areas_mapping_classified_depth_to_water_estimates/ImageServer/WMS', {
-    layers: '0',
-    format: 'image/png',
-    transparent: true,
-    opacity: 0.55,
-    attribution: 'Alberta — Wet Areas Mapping',
-  });
-  const overlayMaps = { 'Wet Areas (depth-to-water)': wamLayer };
-  L.control.layers(null, overlayMaps, { position: 'topright', collapsed: true }).addTo(map);
+  // Wet Areas Mapping — depth-to-water WMS overlay (requires leaflet.wms plugin)
+  try {
+    if (typeof L.tileLayer.wms === 'function') {
+      const wamLayer = L.tileLayer.wms('https://geospatial.alberta.ca/umbriel/rest/services/hydrography/wet_areas_mapping_classified_depth_to_water_estimates/ImageServer/WMS', {
+        layers: '0',
+        format: 'image/png',
+        transparent: true,
+        opacity: 0.55,
+        attribution: 'Alberta — Wet Areas Mapping',
+      });
+      const overlayMaps = { 'Wet Areas (depth-to-water)': wamLayer };
+      L.control.layers(null, overlayMaps, { position: 'topright', collapsed: true }).addTo(map);
+    }
+  } catch (e) { console.warn('WMS overlay unavailable:', e.message); }
 
   state.map = map;
   state._leafletMap = map;
