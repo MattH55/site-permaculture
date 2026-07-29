@@ -3407,10 +3407,10 @@ function windSection(climate, r) {
       }).join('')}
       <!-- Prevailing wind arrow -->
       <line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#2a6f97" stroke-width="3" stroke-linecap="round"/>
-      <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)},${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)},${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)},${ay.toFixed(1)}" fill="#2a6f97"/>
+      <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="#2a6f97"/>
       <!-- Shelterbelt line (perpendicular) -->
       <line x1="${sbx1.toFixed(1)}" y1="${sby1.toFixed(1)}" x2="${sbx2.toFixed(1)}" y2="${sby2.toFixed(1)}" stroke="var(--ok)" stroke-width="3" stroke-dasharray="6 3" stroke-linecap="round"/>
-      <text x="${(cx + Math.cos(sbRad) * r * 0.72).toFixed(1)}" y="${(cy + Math.sin(sbRad) * r * 0.72).toFixed(1)}" class="svg-label" fill="var(--ok)" font-size="8">shelterbelt</text>
+      <text x="${(cx + Math.cos(sbRad) * r * 0.72).toFixed(1)}" y="${(cy + Math.sin(sbRad) * r * 0.72).toFixed(1)}" class="svg-label" fill="var(--ok)" font-size="8px">shelterbelt</text>
     </svg>`;
 
   return `
