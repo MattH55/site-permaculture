@@ -1094,6 +1094,7 @@ function renderReport(r) {
       ${landValueSection(landValue)}
       ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
       ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
+      ${provincialContoursMap(r._provincial_contours, centre)}
       ${wildlifeSection(r.wildlife || a.wildlife)}
       ${treeCoverSection(r.tree_cover)}
       ${accessSection(r.access)}
@@ -3350,6 +3351,74 @@ function wellDepthSection(w, centre) {
         )}</p>
       </div>
     </section>`;
+}
+
+function provincialContoursMap(contours, centre) {
+  if (!contours || !contours.features?.length) return '';
+  const id = 'prov-contours-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: false });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri', maxZoom: 18,
+    }).addTo(map);
+    const all = [[centre.latitude, centre.longitude]];
+    contours.features.forEach((f) => {
+      if (f.geometry.type === 'LineString') {
+        const coords = f.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        const isIndex = f.properties?.contour_type === 'index';
+        L.polyline(coords, {
+          color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.35)',
+          weight: isIndex ? 2 : 1,
+          opacity: isIndex ? 0.9 : 0.6,
+        }).addTo(map);
+        const mid = coords[Math.floor(coords.length / 2)];
+        all.push(mid);
+      }
+    });
+    L.circleMarker([centre.latitude, centre.longitude], { radius: 6, fillColor: '#a8801f', fillOpacity: 1, color: '#16211b', weight: 2 }).addTo(map);
+    try { map.fitBounds(all, { padding: [15, 15] }); } catch {}
+  }, 150);
+  return `
+    <section class="report-block">
+      <h2>Provincial elevation contours</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Live ArcGIS contour polylines (Alberta Provincial Elevation MapServer).
+        Bold lines are index contours (every 5th interval).
+      </p>
+      <div id="${id}" class="report-map minimap-embed" style="height:280px"></div>
+    </section>`;
+}
+
+function landSalesMinimap(lv, centre) {
+  const samples = lv?.municipal_sample?.samples || [];
+  const points = samples.filter((s) => s.latitude != null && s.longitude != null);
+  if (!points.length || !centre) return '';
+  const id = 'land-sales-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: false });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: '&copy; Esri', maxZoom: 18,
+    }).addTo(map);
+    const all = [[centre.latitude, centre.longitude]];
+    points.forEach((p) => {
+      const vpa = p.assessed_total_per_acre || 1000;
+      const t = Math.min(1, vpa / 20000); // normalize to ~20k/acre
+      const fill = `hsl(${120 - t * 80}, ${50 + t * 30}%, ${55 - t * 25}%)`;
+      all.push([p.latitude, p.longitude]);
+      L.circleMarker([p.latitude, p.longitude], {
+        radius: 5, fillColor: fill, fillOpacity: 0.75, color: '#fff', weight: 1,
+      }).addTo(map).bindTooltip(`$${Math.round(vpa).toLocaleString()}/ac`);
+    });
+    L.circleMarker([centre.latitude, centre.longitude], { radius: 7, fillColor: '#a8801f', fillOpacity: 1, color: '#16211b', weight: 2 }).addTo(map).bindTooltip('Site');
+    try { map.fitBounds(all, { padding: [10, 10] }); } catch {}
+  }, 150);
+  return `<div id="${id}" class="report-map minimap-embed" style="height:220px;margin-top:0.6rem"></div>`;
 }
 
 function quoteSection(q) {
