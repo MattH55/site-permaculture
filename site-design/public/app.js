@@ -1112,7 +1112,7 @@ function renderReport(r) {
       ${provincialContoursMap(r._provincial_contours, centre)}
       ${wildlifeSection(r.wildlife || a.wildlife)}
       ${treeCoverSection(r.tree_cover)}
-      ${accessSection(r.access)}
+      ${accessSection(r.access, city?.name, city?.distance_km)}
       ${demographicsSection(r.demographics)}
       ${atsSection(r.ats, r.parcel_address)}
       ${windSection(r.climate, r)}
@@ -2198,11 +2198,11 @@ function wildlifeSection(wl) {
     </section>`;
 }
 
-function accessSection(acc) {
+function accessSection(acc, cityName, cityDistKm) {
   if (!acc || !acc.available) return '';
   const road = acc.nearest_road || {};
-  const market = acc.nearest_supermarket || {};
-  const trips = acc.trip_costs_to_supermarket || [];
+  const trips = acc.trip_costs_to_city || acc.trip_costs_to_supermarket || [];
+  const distLabel = acc.nearest_city_distance_km || cityDistKm;
 
   const tripRows = trips.map((t) => `
     <tr>
@@ -2226,14 +2226,16 @@ function accessSection(acc) {
           ${road.name
             ? `<strong>${esc(road.name)}</strong>
                <p>${esc(road.type || 'road')} · ${fmt(road.distance_m, 'm')}</p>`
-            : `<strong>—</strong><p class="fine">No road data</p>`}
+            : road.available === false
+              ? `<strong>—</strong><p class="fine">No named road within 10 km. Property may be accessed by range road or trail.</p>`
+              : `<strong>—</strong><p class="fine">No road data available.</p>`}
         </article>
         <article class="prox-card">
-          <span class="mono">Nearest supermarket</span>
-          ${market.name
-            ? `<strong>${esc(market.name)}</strong>
-               <p>${fmt(market.distance_km, 'km')} · ${esc(market.type || 'grocery')}</p>`
-            : `<strong>—</strong><p class="fine">No grocery found within search radius</p>`}
+          <span class="mono">Driving to city centre</span>
+          ${cityName
+            ? `<strong>${esc(cityName)}</strong>
+               <p>${fmt(distLabel, 'km')} one-way</p>`
+            : `<strong>—</strong><p class="fine">No nearby city identified.</p>`}
         </article>
       </div>
 
@@ -2246,6 +2248,9 @@ function accessSection(acc) {
             <tbody>${tripRows}</tbody>
           </table>
         </div>
+        <p class="fine" style="margin-top:0.35rem">
+          Round-trip cost to ${esc(cityName || 'nearest city')} (${fmt(distLabel, 'km')} each way).
+        </p>
       ` : ''}
     </section>`;
 }

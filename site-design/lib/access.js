@@ -60,7 +60,8 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 export async function findNearestRoad(centre) {
   const { latitude, longitude } = centre;
-  const query = `[out:json][timeout:15];way(around:500,${latitude},${longitude})[highway];out tags 3;`;
+  // Search 10km radius — rural Alberta parcels are often far from named roads
+  const query = `[out:json][timeout:20];way(around:10000,${latitude},${longitude})[highway];out tags center 5;`;
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 15_000);
@@ -102,16 +103,17 @@ export async function findNearestSupermarket(centre) {
 }
 
 export async function assessAccess(centre, nearestCityDistanceKm) {
-  const [road, supermarket] = await Promise.all([findNearestRoad(centre), findNearestSupermarket(centre)]);
-  const distKm = supermarket?.distance_km || nearestCityDistanceKm || null;
+  const road = await findNearestRoad(centre);
+  // Use nearest city distance for trip cost calculations (not supermarket)
+  const distKm = nearestCityDistanceKm || null;
   const costs = distKm ? tripCostsForDistance(distKm) : [];
   return {
     available: true,
     nearest_road: road,
-    nearest_supermarket: supermarket,
-    trip_costs_to_supermarket: costs,
+    trip_costs_to_city: costs,
+    nearest_city_distance_km: distKm,
     gas_price_cad_l: GAS_PRICE_CAD_L,
-    methodology: 'OpenStreetMap Overpass API + Alberta gas price estimate',
+    methodology: 'OpenStreetMap Overpass API (roads) + proximity city distance (travel costs)',
   };
 }
 
