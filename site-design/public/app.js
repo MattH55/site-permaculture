@@ -415,50 +415,34 @@ function ensureFinishButton(show) {
   btn.disabled = true;
 }
 
-function onPolygonClick(e) {
+function leafletPolygonClick(e) {
   if (!state.draw.active || state.draw.kind !== 'polygon') return;
-  if (!e.latLng) return;
-  state.draw.points.push(e.latLng);
+  const ll = e.latlng;
+  state.draw.points.push(ll);
+  L.circleMarker([ll.lat, ll.lng], {
+    radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
+    color: '#f7f8f3', weight: 2,
+  }).addTo(state._drawLayer);
 
-  // Vertex marker
-  const m = new google.maps.Marker({
-    map: state.map,
-    position: e.latLng,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 5,
-      fillColor: '#5b3a73',
-      fillOpacity: 1,
-      strokeColor: '#f7f8f3',
-      strokeWeight: 2,
-    },
-    clickable: false,
-    zIndex: 3,
-  });
-  state.vertexMarkers.push(m);
-
-  // Preview line / open polygon
-  if (!state.preview) {
-    state.preview = new google.maps.Polyline({
-      map: state.map,
-      path: state.draw.points,
-      strokeColor: '#5b3a73',
-      strokeOpacity: 0.95,
-      strokeWeight: 2.5,
-      clickable: false,
-      zIndex: 2,
+  if (state.draw.points.length >= 2) {
+    state._drawLayer.clearLayers();
+    state.draw.points.forEach((p) => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
+        color: '#f7f8f3', weight: 2,
+      }).addTo(state._drawLayer);
     });
-  } else {
-    state.preview.setPath(state.draw.points);
+    L.polyline(state.draw.points.map((p) => [p.lat, p.lng]), {
+      color: '#5b3a73', weight: 2.5, opacity: 0.95,
+    }).addTo(state._drawLayer);
   }
 
   const finishBtn = $('btn-finish-poly');
   if (finishBtn) finishBtn.disabled = state.draw.points.length < 3;
 
-  $('draw-hint').textContent =
-    state.draw.points.length < 3
-      ? `Corner ${state.draw.points.length} placed — need at least 3. Keep clicking.`
-      : `${state.draw.points.length} corners — double-click or Finish parcel to close.`;
+  $('draw-hint').textContent = state.draw.points.length < 3
+    ? `Corner ${state.draw.points.length} placed — need at least 3.`
+    : `${state.draw.points.length} corners — double-click or Finish parcel to close.`;
 }
 
 function finishPolygonDraw() {
@@ -467,94 +451,42 @@ function finishPolygonDraw() {
     setError('Need at least 3 corners to make a parcel.');
     return;
   }
-
-  const path = state.draw.points.map((ll) => ({ lat: ll.lat(), lng: ll.lng() }));
-  clearPreview();
-
-  const poly = new google.maps.Polygon({
-    map: state.map,
-    paths: path,
-    ...styleOpts({ editable: true }),
-  });
-  state.shape = poly;
-  state.paths = pathFromPolygon(poly);
-
-  const sync = () => {
-    state.paths = pathFromPolygon(poly);
-    updateParcelMeta();
-  };
-  poly.getPath().addListener('set_at', sync);
-  poly.getPath().addListener('insert_at', sync);
-  poly.getPath().addListener('remove_at', sync);
-
+  const latlngs = state.draw.points.map((ll) => [ll.lat, ll.lng]);
+  state.paths = latlngs.map(([lat, lng]) => [lng, lat]);
+  state.shape = { leaflet: true };
+  state._drawLayer.clearLayers();
+  L.polygon(latlngs, {
+    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
+  }).addTo(state._drawLayer);
   stopDrawingMode();
   ensureFinishButton(false);
   updateParcelMeta();
-  $('draw-hint').textContent =
-    'Parcel set. Drag purple handles to refine, then Generate site report.';
+  $('draw-hint').textContent = 'Parcel set. Generate site report.';
   setError('');
 }
 
-function onRectClick(e) {
+function leafletRectClick(e) {
   if (!state.draw.active || state.draw.kind !== 'rectangle') return;
-  if (!e.latLng) return;
-
-  // First corner
+  const ll = e.latlng;
   if (!state.draw.rectStart) {
-    state.draw.rectStart = e.latLng;
-    const m = new google.maps.Marker({
-      map: state.map,
-      position: e.latLng,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 5,
-        fillColor: '#5b3a73',
-        fillOpacity: 1,
-        strokeColor: '#f7f8f3',
-        strokeWeight: 2,
-      },
-      clickable: false,
-      zIndex: 3,
-    });
-    state.vertexMarkers.push(m);
-    state.draw.rectShape = new google.maps.Rectangle({
-      map: state.map,
-      bounds: new google.maps.LatLngBounds(e.latLng, e.latLng),
-      ...styleOpts({ clickable: false }),
-    });
-    const moveL = state.map.addListener('mousemove', (ev) => {
-      if (!state.draw.rectStart || !ev.latLng || !state.draw.rectShape) return;
-      const b = new google.maps.LatLngBounds(state.draw.rectStart, state.draw.rectStart);
-      b.extend(ev.latLng);
-      state.draw.rectShape.setBounds(b);
-    });
-    state.draw.listeners.push(moveL);
+    state.draw.rectStart = ll;
+    state._drawLayer.clearLayers();
+    L.circleMarker([ll.lat, ll.lng], { radius: 5, fillColor: '#5b3a73', fillOpacity: 1, color: '#f7f8f3', weight: 2 }).addTo(state._drawLayer);
     $('draw-hint').textContent = 'Now click the opposite corner.';
     return;
   }
-
-  // Second corner — finish
-  const b = new google.maps.LatLngBounds(state.draw.rectStart, state.draw.rectStart);
-  b.extend(e.latLng);
-  clearPreview();
-
-  const rect = new google.maps.Rectangle({
-    map: state.map,
-    bounds: b,
-    ...styleOpts({ editable: true, draggable: true }),
-  });
-  state.shape = rect;
-  state.paths = pathFromRect(rect);
-  rect.addListener('bounds_changed', () => {
-    state.paths = pathFromRect(rect);
-    updateParcelMeta();
-  });
-
+  const a = state.draw.rectStart;
+  const b = ll;
+  const path = [[a.lat, a.lng], [b.lat, a.lng], [b.lat, b.lng], [a.lat, b.lng]];
+  state.paths = path.map(([lat, lng]) => [lng, lat]);
+  state.shape = { leaflet: true };
+  state._drawLayer.clearLayers();
+  L.polygon(path, {
+    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
+  }).addTo(state._drawLayer);
   stopDrawingMode();
   updateParcelMeta();
-  $('draw-hint').textContent =
-    'Parcel set. Adjust the rectangle handles, then Generate site report.';
-  setError('');
+  $('draw-hint').textContent = 'Parcel set. Generate site report.';
 }
 
 function pathFromPolygon(poly) {
