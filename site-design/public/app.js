@@ -3628,9 +3628,9 @@ function windSection(climate, r) {
   const idx = dirIdx >= 0 ? dirIdx : 7; // default NW
 
   // SVG wind butterfly: compass + prevailing arrow + shelterbelt recommendation
-  const w = 260, h = 260, cx = w / 2, cy = h / 2, r = 110;
+  const w = 260, h = 260, cx = w / 2, cy = h / 2, cr = 110;
   const dirAngle = (idx / 8) * 360 - 90; // 0=N at top, clockwise
-  const arrowLen = r * 0.75;
+  const arrowLen = cr * 0.75;
 
   // Prevailing wind arrow
   const arrowRad = (dirAngle * Math.PI) / 180;
@@ -3640,21 +3640,21 @@ function windSection(climate, r) {
   // Shelterbelt line (perpendicular to wind)
   const sbAngle = dirAngle + 90; // perpendicular
   const sbRad = (sbAngle * Math.PI) / 180;
-  const sbx1 = cx + Math.cos(sbRad) * r * 0.6;
-  const sby1 = cy + Math.sin(sbRad) * r * 0.6;
-  const sbx2 = cx - Math.cos(sbRad) * r * 0.6;
-  const sby2 = cy - Math.sin(sbRad) * r * 0.6;
+  const sbx1 = cx + Math.cos(sbRad) * cr * 0.6;
+  const sby1 = cy + Math.sin(sbRad) * cr * 0.6;
+  const sbx2 = cx - Math.cos(sbRad) * cr * 0.6;
+  const sby2 = cy - Math.sin(sbRad) * cr * 0.6;
 
   const windSvg = `
     <svg class="wind-butterfly" viewBox="0 0 ${w} ${h}" role="img" aria-label="Wind direction and shelterbelt orientation">
       <rect x="0" y="0" width="${w}" height="${h}" fill="#fff" stroke="var(--line)" rx="8"/>
-      <circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="var(--line)" stroke-width="1"/>
-      <circle cx="${cx}" cy="${cy}" r="${r * 0.5}" fill="none" stroke="var(--line)" stroke-width="0.5" stroke-dasharray="2 3"/>
+      <circle cx="${cx}" cy="${cy}" r="${cr}" fill="none" stroke="var(--line)" stroke-width="1"/>
+      <circle cx="${cx}" cy="${cy}" r="${cr * 0.5}" fill="none" stroke="var(--line)" stroke-width="0.5" stroke-dasharray="2 3"/>
       <!-- Compass labels -->
       ${dirs.map((d, i) => {
         const a = ((i / 8) * 360 - 90) * Math.PI / 180;
-        const tx = cx + Math.cos(a) * (r + 12);
-        const ty = cy + Math.sin(a) * (r + 12);
+        const tx = cx + Math.cos(a) * (cr + 12);
+        const ty = cy + Math.sin(a) * (cr + 12);
         return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${d === windDir.toUpperCase() ? 'bold' : 'normal'}" fill="${d === windDir.toUpperCase() ? 'var(--berry)' : 'var(--ink-soft)'}">${esc(d)}</text>`;
       }).join('')}
       <!-- Prevailing wind arrow -->
@@ -3662,7 +3662,7 @@ function windSection(climate, r) {
       <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="#2a6f97"/>
       <!-- Shelterbelt line (perpendicular) -->
       <line x1="${sbx1.toFixed(1)}" y1="${sby1.toFixed(1)}" x2="${sbx2.toFixed(1)}" y2="${sby2.toFixed(1)}" stroke="var(--ok)" stroke-width="3" stroke-dasharray="6 3" stroke-linecap="round"/>
-      <text x="${(cx + Math.cos(sbRad) * r * 0.72).toFixed(1)}" y="${(cy + Math.sin(sbRad) * r * 0.72).toFixed(1)}" class="svg-label" fill="var(--ok)" font-size="8px">shelterbelt</text>
+      <text x="${(cx + Math.cos(sbRad) * cr * 0.72).toFixed(1)}" y="${(cy + Math.sin(sbRad) * cr * 0.72).toFixed(1)}" class="svg-label" fill="var(--ok)" font-size="8px">shelterbelt</text>
     </svg>`;
 
   return `
