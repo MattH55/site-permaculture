@@ -27,7 +27,7 @@ import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
 import { checkWildlifeSensitivity, queryGbig, lookupWmu } from './wildlife-enrich.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
-import { assessAccessSync } from './access.js';
+import { assessAccess } from './access.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
@@ -291,7 +291,10 @@ export async function generateSiteReport(input = {}) {
     }).catch(() => {});
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
-    record.access = assessAccessSync(centre, nearestCityDist);
+    assessAccess(centre, nearestCityDist).then((access) => {
+      record.access = access;
+    }).catch(() => {});
+    record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);
     record.ats = latLngToAts(centre);
     record.parcel_address = {

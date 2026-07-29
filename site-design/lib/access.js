@@ -50,15 +50,71 @@ export function tripCostsForDistance(distanceKm, opts = {}) {
   return results;
 }
 
-export function assessAccessSync(centre, nearestCityDistanceKm) {
-  const costs = nearestCityDistanceKm ? tripCostsForDistance(nearestCityDistanceKm) : [];
+function haversineKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
+export async function findNearestRoad(centre) {
+  const { latitude, longitude } = centre;
+  const query = `[out:json][timeout:15];way(around:500,${latitude},${longitude})[highway];out tags 3;`;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain' }, body: query });
+    clearTimeout(t);
+    if (!res.ok) throw new Error(`Overpass ${res.status}`);
+    const data = await res.json();
+    if (!data.elements?.length) return { name: null, type: null, distance_m: null, available: false };
+    let best = null, bestDist = Infinity;
+    for (const el of data.elements) {
+      if (!el.tags?.highway) continue;
+      const d = el.center ? haversineKm(latitude, longitude, el.center.lat, el.center.lon) * 1000 : 300;
+      if (d < bestDist) { bestDist = d; best = el; }
+    }
+    if (!best) return { name: null, type: null, distance_m: null, available: false };
+    return { name: best.tags?.name || best.tags?.ref || null, type: best.tags?.highway || null, distance_m: Math.round(bestDist), available: true };
+  } catch (e) { console.warn('Road query failed:', e.message); return { name: null, type: null, distance_m: null, available: false }; }
+}
+
+export async function findNearestSupermarket(centre) {
+  const { latitude, longitude } = centre;
+  const query = `[out:json][timeout:20];(node["shop"="supermarket"](around:50000,${latitude},${longitude});node["shop"="grocery"](around:50000,${latitude},${longitude});node["shop"="convenience"](around:50000,${latitude},${longitude}););out body 5;`;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20_000);
+    const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain' }, body: query });
+    clearTimeout(t);
+    if (!res.ok) throw new Error(`Overpass ${res.status}`);
+    const data = await res.json();
+    if (!data.elements?.length) return { name: null, type: null, distance_km: null, available: false };
+    let best = null, bestDist = Infinity;
+    for (const el of data.elements) {
+      const d = haversineKm(latitude, longitude, el.lat, el.lon);
+      if (d < bestDist) { bestDist = d; best = el; }
+    }
+    if (!best) return { name: null, type: null, distance_km: null, available: false };
+    return { name: best.tags?.name || best.tags?.brand || 'Grocery store', type: best.tags?.shop || 'supermarket', distance_km: Math.round(bestDist * 10) / 10, lat: best.lat, lng: best.lon, available: true };
+  } catch (e) { console.warn('Supermarket query failed:', e.message); return { name: null, type: null, distance_km: null, available: false }; }
+}
+
+export async function assessAccess(centre, nearestCityDistanceKm) {
+  const [road, supermarket] = await Promise.all([findNearestRoad(centre), findNearestSupermarket(centre)]);
+  const distKm = supermarket?.distance_km || nearestCityDistanceKm || null;
+  const costs = distKm ? tripCostsForDistance(distKm) : [];
   return {
     available: true,
-    nearest_road: { name: null, type: null, distance_m: null, available: false },
-    nearest_supermarket: { name: null, type: null, distance_km: nearestCityDistanceKm || null, available: !!nearestCityDistanceKm },
+    nearest_road: road,
+    nearest_supermarket: supermarket,
     trip_costs_to_supermarket: costs,
     gas_price_cad_l: GAS_PRICE_CAD_L,
-    methodology: 'OSM Overpass (async) + Alberta gas price estimate',
+    methodology: 'OpenStreetMap Overpass API + Alberta gas price estimate',
   };
+}
+
+export function assessAccessSync(centre, nearestCityDistanceKm) {
+  return assessAccess(centre, nearestCityDistanceKm);
 }
