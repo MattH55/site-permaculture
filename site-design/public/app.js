@@ -157,8 +157,11 @@ function initLeafletMap(cfg) {
     maxZoom: 19,
   });
 
-  // No layer control needed — just satellite by default. Users can toggle via the attribution corner if needed.
-  map.attributionControl.setPrefix('&copy; <a href="https://www.esri.com/">Esri</a> · <a href="https://osm.org/copyright">OSM</a>');
+  const baseLayers = {
+    'Satellite': null, // already default
+    'OpenStreetMap': osmLayer,
+  };
+  L.control.layers(baseLayers, null, { position: 'topright', collapsed: true }).addTo(map);
 
   state.map = map;
   state._leafletMap = map;
@@ -178,39 +181,24 @@ function initLeafletMap(cfg) {
 
 function initPlaceSearch() {
   const input = $('search-box');
-  if (!input) return;
-  let debounceTimer;
-  input.addEventListener('input', () => {
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      const q = input.value.trim();
-      if (q.length < 3) return;
-      const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ca`;
-      fetch(url).then((r) => r.json()).then((results) => {
-        if (!results.length) return;
-        // Create a datalist for suggestions
-        let datalist = $('search-suggestions');
-        if (!datalist) {
-          datalist = document.createElement('datalist');
-          datalist.id = 'search-suggestions';
-          input.setAttribute('list', 'search-suggestions');
-          input.parentElement.appendChild(datalist);
-        }
-        datalist.innerHTML = results.map((r) => `<option value="${r.display_name}">`).join('');
-      }).catch(() => {});
-    }, 400);
+  if (!input || typeof google === 'undefined' || !google.maps?.places) return;
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: 'ca' },
+    fields: ['geometry', 'name', 'formatted_address'],
+    types: ['geocode', 'establishment'],
   });
-  input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
-      const q = input.value.trim();
-      if (!q) return;
-      flyToAddress(q);
-    }
+  autocomplete.bindTo('bounds', state.map);
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (!place.geometry?.location) return;
+    state.map.setCenter(place.geometry.location);
+    state.map.setZoom(15);
+    $('search-box').value = place.name || place.formatted_address || '';
   });
 }
 
 function goToCoordinates() {
-  if (!state._leafletMap) return;
+  if (!state.map) return;
   const latStr = $('coord-lat')?.value?.trim();
   const lngStr = $('coord-lng')?.value?.trim();
   if (!latStr || !lngStr) return;
@@ -220,7 +208,8 @@ function goToCoordinates() {
     setError('Invalid coordinates. Use decimal degrees (e.g. 53.55, -113.5).');
     return;
   }
-  state._leafletMap.setView([lat, lng], 16);
+  state.map.setCenter({ lat, lng });
+  state.map.setZoom(16);
   setError('');
 }
 
@@ -346,16 +335,6 @@ function initGoogleMap(cfg) {
   setDrawButtons(null);
 }
 
-function flyToAddress(q) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=5&countrycodes=ca`;
-  fetch(url).then((r) => r.json()).then((results) => {
-    if (!results.length) { setError('Location not found.'); return; }
-    const r = results[0];
-    state._leafletMap.setView([parseFloat(r.lat), parseFloat(r.lon)], 15);
-    $('search-box').value = r.display_name || q;
-  }).catch(() => setError('Search failed.'));
-}
-
 function setDrawButtons(activeKind) {
   const poly = $('btn-draw-poly');
   const rect = $('btn-draw-rect');
@@ -375,15 +354,28 @@ function setDrawButtons(activeKind) {
 }
 
 function detachDrawListeners() {
-  state._leafletMap?.off('click', state._drawClickHandler);
-  state._drawClickHandler = null;
+  for (const l of state.draw.listeners) {
+    try {
+      google.maps.event.removeListener(l);
+    } catch { /* ignore */ }
+  }
+  state.draw.listeners = [];
 }
 
 function clearVertexMarkers() {
-  if (state._drawLayer) state._drawLayer.clearLayers();
+  for (const m of state.vertexMarkers) m.setMap(null);
+  state.vertexMarkers = [];
 }
 
 function clearPreview() {
+  if (state.preview) {
+    state.preview.setMap(null);
+    state.preview = null;
+  }
+  if (state.draw.rectShape) {
+    state.draw.rectShape.setMap(null);
+    state.draw.rectShape = null;
+  }
   clearVertexMarkers();
 }
 
@@ -395,10 +387,27 @@ function stopDrawingMode() {
   state.draw.rectStart = null;
   clearPreview();
   setDrawButtons(null);
+  if (state.map) state.map.setOptions(mapGestureOpts(false));
 }
 
 function startDraw(kind) {
   setError('');
+  if (state.mode === 'fallback') {
+    fallbackStartDraw(kind);
+    return;
+  }
+  if (!state.map || !window.google?.maps) {
+    setError('Map is still loading — try again in a second.');
+    return;
+  }
+
+  // Toggle off if same tool clicked again
+  if (state.draw.active && state.draw.kind === kind) {
+    stopDrawingMode();
+    $('draw-hint').textContent = 'Drawing cancelled. Click Draw parcel when ready.';
+    return;
+  }
+
   clearShape(false);
   stopDrawingMode();
 
@@ -408,63 +417,22 @@ function startDraw(kind) {
   state.draw.rectStart = null;
   setDrawButtons(kind);
 
+  // Keep pan enabled while drawing — only disable double-click zoom for polygons
+  state.map.setOptions(mapGestureOpts(true));
+
   if (kind === 'polygon') {
-    $('draw-hint').textContent = 'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
+    $('draw-hint').textContent =
+      'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
     ensureFinishButton(true);
-    state._drawClickHandler = (e) => leafletPolygonClick(e);
-    state._leafletMap.on('click', state._drawClickHandler);
+    const clickL = state.map.addListener('click', onPolygonClick);
+    state.draw.listeners.push(clickL);
   } else {
     ensureFinishButton(false);
-    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner.';
-    state._drawClickHandler = (e) => leafletRectClick(e);
-    state._leafletMap.on('click', state._drawClickHandler);
+    $('draw-hint').textContent =
+      'Click one corner of the parcel, then click the opposite corner.';
+    const clickL = state.map.addListener('click', onRectClick);
+    state.draw.listeners.push(clickL);
   }
-}
-
-function leafletPolygonClick(e) {
-  if (!state.draw.active || state.draw.kind !== 'polygon') return;
-  const ll = e.latlng;
-  state.draw.points.push(ll);
-  const marker = L.circleMarker([ll.lat, ll.lng], {
-    radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
-    color: '#f7f8f3', weight: 2,
-  }).addTo(state._drawLayer);
-  state.vertexMarkers.push(marker);
-
-  if (state.preview) state._drawLayer.removeLayer(state.preview);
-  if (state.draw.points.length >= 2) {
-    state.preview = L.polyline(state.draw.points.map((p) => [p.lat, p.lng]), {
-      color: '#5b3a73', weight: 2.5, opacity: 0.95,
-    }).addTo(state._drawLayer);
-  }
-
-  const fb = $('btn-finish-poly');
-  if (fb) fb.disabled = state.draw.points.length < 3;
-  $('draw-hint').textContent = state.draw.points.length < 3 ? `Corner ${state.draw.points.length} placed` : `${state.draw.points.length} corners — double-click to finish.`;
-}
-
-function leafletRectClick(e) {
-  if (!state.draw.active || state.draw.kind !== 'rectangle') return;
-  const ll = e.latlng;
-  if (!state.draw.rectStart) {
-    state.draw.rectStart = ll;
-    L.circleMarker([ll.lat, ll.lng], { radius: 5, fillColor: '#5b3a73', fillOpacity: 1, color: '#f7f8f3', weight: 2 }).addTo(state._drawLayer);
-    state._drawLayer.clearLayers();
-    $('draw-hint').textContent = 'Now click the opposite corner.';
-    return;
-  }
-  const a = state.draw.rectStart;
-  const b = ll;
-  const path = [[a.lat, a.lng], [b.lat, a.lng], [b.lat, b.lng], [a.lat, b.lng]];
-  state.paths = path.map(([lat, lng]) => [lng, lat]);
-  state.shape = { leaflet: true };
-  clearPreview();
-  L.polygon(path, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
-  stopDrawingMode();
-  updateParcelMeta();
-  $('draw-hint').textContent = 'Parcel set. Generate site report.';
 }
 
 function ensureFinishButton(show) {
@@ -539,21 +507,30 @@ function finishPolygonDraw() {
     return;
   }
 
-  const latlngs = state.draw.points.map((ll) => [ll.lat, ll.lng]);
-  const path = latlngs.map(([lat, lng]) => ({ lat, lng }));
+  const path = state.draw.points.map((ll) => ({ lat: ll.lat(), lng: ll.lng() }));
   clearPreview();
 
-  clearPreview();
-  state.paths = path.map((p) => [p.lng, p.lat]);
-  state.shape = { leaflet: true };
-  L.polygon(latlngs, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
+  const poly = new google.maps.Polygon({
+    map: state.map,
+    paths: path,
+    ...styleOpts({ editable: true }),
+  });
+  state.shape = poly;
+  state.paths = pathFromPolygon(poly);
+
+  const sync = () => {
+    state.paths = pathFromPolygon(poly);
+    updateParcelMeta();
+  };
+  poly.getPath().addListener('set_at', sync);
+  poly.getPath().addListener('insert_at', sync);
+  poly.getPath().addListener('remove_at', sync);
 
   stopDrawingMode();
   ensureFinishButton(false);
   updateParcelMeta();
-  $('draw-hint').textContent = 'Parcel set. Generate site report.';
+  $('draw-hint').textContent =
+    'Parcel set. Drag purple handles to refine, then Generate site report.';
   setError('');
 }
 
@@ -644,8 +621,12 @@ function pathFromRect(rect) {
 function clearShape(resetHint = true) {
   stopDrawingMode();
   ensureFinishButton(false);
-  state._drawLayer?.clearLayers();
-  state.shape = null;
+
+  if (state.shape) {
+    if (state.mode === 'google') state.shape.setMap(null);
+    state.shape = null;
+  }
+  if (state.mode === 'fallback') fallbackClear();
   state.paths = null;
   $('btn-report').disabled = true;
   $('parcel-meta').hidden = true;
@@ -1122,7 +1103,8 @@ function showReport() {
 function showMap() {
   $('report-stage').hidden = true;
   $('map-stage').hidden = false;
-  if (state._leafletMap) state._leafletMap.invalidateSize();
+  if (state.mode === 'fallback') setTimeout(drawFallback, 50);
+  else if (state.map) google.maps.event.trigger(state.map, 'resize');
 }
 
 /* ---------- report UI ---------- */
@@ -1368,22 +1350,46 @@ function mapEmbedSection() {
 function initReportMapEmbed(r) {
   const el = $('report-map');
   if (!el) return;
-  el.innerHTML = '';
+  if (state.mode !== 'google' || typeof google === 'undefined') {
+    el.innerHTML = `<p class="fine" style="padding:1rem">Live map unavailable — showing planning data only.</p>`;
+    return;
+  }
   const ring = r.geometry?.coordinates?.[0];
   if (!Array.isArray(ring) || ring.length < 3) return;
-  const latlngs = ring.map(([lng, lat]) => [lat, lng]);
-  const map = L.map(el, {
+
+  const path = ring.map(([lng, lat]) => ({ lat, lng }));
+  const bounds = new google.maps.LatLngBounds();
+  path.forEach((p) => bounds.extend(p));
+
+  const map = new google.maps.Map(el, {
+    center: bounds.getCenter(),
+    zoom: 15,
+    mapTypeId: 'hybrid',
+    mapTypeControl: true,
+    mapTypeControlOptions: {
+      style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
+      mapTypeIds: ['hybrid', 'satellite', 'roadmap', 'terrain'],
+    },
+    streetViewControl: false,
+    fullscreenControl: true,
     zoomControl: true,
-    attributionControl: false,
+    gestureHandling: 'cooperative',
   });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri',
-    maxZoom: 20,
-  }).addTo(map);
-  L.polygon(latlngs, {
-    color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.15, weight: 3,
-  }).addTo(map);
-  map.fitBounds(latlngs, { padding: [40, 40] });
+
+  new google.maps.Polygon({
+    paths: path,
+    strokeColor: '#a8801f',
+    strokeWeight: 3,
+    fillColor: '#a8801f',
+    fillOpacity: 0.15,
+    map,
+    clickable: false,
+  });
+
+  google.maps.event.addListenerOnce(map, 'idle', () => {
+    map.fitBounds(bounds, 40);
+    google.maps.event.trigger(map, 'resize');
+  });
 }
 
 function topologySection(topo, a) {
