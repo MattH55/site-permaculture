@@ -380,22 +380,6 @@ function stopDrawingMode() {
 
 function startDraw(kind) {
   setError('');
-  if (state.mode === 'fallback') {
-    fallbackStartDraw(kind);
-    return;
-  }
-  if (!state.map || !window.google?.maps) {
-    setError('Map is still loading — try again in a second.');
-    return;
-  }
-
-  // Toggle off if same tool clicked again
-  if (state.draw.active && state.draw.kind === kind) {
-    stopDrawingMode();
-    $('draw-hint').textContent = 'Drawing cancelled. Click Draw parcel when ready.';
-    return;
-  }
-
   clearShape(false);
   stopDrawingMode();
 
@@ -405,21 +389,16 @@ function startDraw(kind) {
   state.draw.rectStart = null;
   setDrawButtons(kind);
 
-  // Keep pan enabled while drawing — only disable double-click zoom for polygons
-  state.map.setOptions(mapGestureOpts(true));
-
   if (kind === 'polygon') {
-    $('draw-hint').textContent =
-      'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
+    $('draw-hint').textContent = 'Click the map to place corners. Double-click (or press Finish) to close the parcel.';
     ensureFinishButton(true);
-    const clickL = state.map.addListener('click', onPolygonClick);
-    state.draw.listeners.push(clickL);
+    state._drawClickHandler = (e) => leafletPolygonClick(e);
+    state._leafletMap.on('click', state._drawClickHandler);
   } else {
     ensureFinishButton(false);
-    $('draw-hint').textContent =
-      'Click one corner of the parcel, then click the opposite corner.';
-    const clickL = state.map.addListener('click', onRectClick);
-    state.draw.listeners.push(clickL);
+    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner.';
+    state._drawClickHandler = (e) => leafletRectClick(e);
+    state._leafletMap.on('click', state._drawClickHandler);
   }
 }
 
