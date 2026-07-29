@@ -49,11 +49,13 @@ async function fetchINaturalist(bbox) {
   const allResults = [];
 
   for (const taxonId of taxonIds) {
+    // Expand bbox by ~2km (0.02°) for better wildlife coverage
+    const padLat = 0.02, padLng = 0.02;
     const url =
       `https://api.inaturalist.org/v1/observations?` +
       `taxon_id=${taxonId}` +
-      `&swlat=${bbox.south}&swlng=${bbox.west}` +
-      `&nelat=${bbox.north}&nelng=${bbox.east}` +
+      `&swlat=${bbox.south - padLat}&swlng=${bbox.west - padLng}` +
+      `&nelat=${bbox.north + padLat}&nelng=${bbox.east + padLng}` +
       `&per_page=50&order_by=observed_on&order=desc` +
       `&quality_grade=research` +
       `&d1=${fiveYearsAgo()}`;

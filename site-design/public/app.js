@@ -3240,8 +3240,15 @@ function wellDepthSection(w, centre) {
         <p class="fine">No estimate available for this site.</p>
       </section>`;
   }
-  const low = w.estimated_depth_range_m?.low_m;
-  const high = w.estimated_depth_range_m?.high_m;
+  // Use actual nearby well depths, not predicted range
+  const nearbyWells = w.nearby_wells || [];
+  const depths = nearbyWells.map((nw) => nw.depth_m).filter((d) => d > 0);
+  const shallowNw = depths.length ? Math.min(...depths) : null;
+  const deepNw = depths.length ? Math.max(...depths) : null;
+  depths.sort((a, b) => a - b);
+  const medianNw = depths.length ? depths[Math.floor(depths.length / 2)] : null;
+  const q1Nw = depths.length >= 4 ? depths[Math.floor(depths.length / 4)] : null;
+  const q3Nw = depths.length >= 4 ? depths[Math.floor(depths.length * 3 / 4)] : null;
   const swl = w.estimated_static_water_level_m;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
@@ -3249,7 +3256,7 @@ function wellDepthSection(w, centre) {
     no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock model only',
   }[w.confidence] || w.confidence;
 
-  const distChart = wellDepthDistributionSvg(w.nearby_wells, w.estimated_depth_m, low, high);
+  const distChart = wellDepthDistributionSvg(w.nearby_wells, medianNw, shallowNw, deepNw);
   const scatterChart = wellDistanceDepthSvg(w.nearby_wells, centre);
 
   // Enriched data cards
@@ -3308,21 +3315,22 @@ function wellDepthSection(w, centre) {
       </p>
 
       <div class="well-range-card">
-        <span class="mono">Estimated drilled depth range</span>
+        <span class="mono">Nearby well depths</span>
         <div class="well-range-value">
-          ${fmt(low, 'm')} <span class="well-range-sep">–</span> ${fmt(high, 'm')}
+          ${fmt(shallowNw, 'm')} <span class="well-range-sep">–</span> ${fmt(deepNw, 'm')}
         </div>
         <p class="fine">
-          Midpoint estimate ${fmt(w.estimated_depth_m, 'm')}
-          ${swl != null ? ` · static water level ~${fmt(swl, 'm')} below grade` : ''}
+          Median ${fmt(medianNw, 'm')}${q1Nw != null && q3Nw != null ? ` · IQR ${fmt(q1Nw, 'm')}–${fmt(q3Nw, 'm')}` : ''}
+          · ${depths.length} nearby wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
+          ${swl != null ? ` · static water level ~${fmt(swl, 'm')}` : ''}
         </p>
       </div>
 
       <div class="summary-grid">
         <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
         <div class="stat"><span class="k">Search radius</span><strong>${fmt(w.nearby_well_search_radius_km, 'km')}</strong></div>
-        <div class="stat"><span class="k">Confidence</span><strong>${esc(confLabel)}</strong></div>
-        <div class="stat"><span class="k">Target unit</span><strong>${esc(w.target_hydrostratigraphic_unit || '—')}</strong></div>
+        <div class="stat"><span class="k">Median depth</span><strong>${fmt(medianNw, 'm')}</strong></div>
+        <div class="stat"><span class="k">Min / Max</span><strong>${fmt(shallowNw, 'm')} – ${fmt(deepNw, 'm')}</strong></div>
       </div>
 
       ${wellsMinimap(w, centre)}
