@@ -1155,6 +1155,7 @@ function renderReport(r) {
       ${windSection(r.climate, r, r.wind_rose)}
       ${wetAreasSection(r.wet_areas_mapping)}
       ${biodiversitySection(r.biodiversity)}
+      ${cellServiceSection(centre)}
 
       ${
         flags.length
@@ -3906,6 +3907,58 @@ function biodiversitySection(bio) {
     </section>`;
 }
 
+function cellServiceSection(centre) {
+  if (!centre) return '';
+  const lat = centre.latitude;
+  const lng = centre.longitude;
+  const nperfUrl = `https://www.nperf.com/en/map/${lat}/${lng}/12/-/`;
+  const cellmapperUrl = `https://www.cellmapper.net/map?lat=${lat}&lng=${lng}&z=12`;
+  const broadbandUrl = `https://broadbandmap.com/availability#location=${lat},${lng}&z=14`;
+
+  return `
+    <section class="report-block">
+      <h2>Cell service & connectivity</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Coverage varies significantly by carrier and terrain. Use the tools below to check real-world signal
+        at this exact location before relying on cellular connectivity for work, security, or emergency use.
+      </p>
+
+      <div class="prox-grid">
+        <article class="prox-card">
+          <span class="mono">nPerf — actual speed tests</span>
+          <strong>Crowd-sourced coverage</strong>
+          <p>Real user speed tests (2G/3G/4G/5G), auto-updated hourly for coverage and every 15 min for speed.
+            Best tool for seeing what people actually experience at this location.</p>
+          <a href="${esc(nperfUrl)}" target="_blank" rel="noopener" class="rec-service-link">Open nPerf map →</a>
+        </article>
+        <article class="prox-card">
+          <span class="mono">CellMapper — tower locations</span>
+          <strong>Crowd-sourced tower data</strong>
+          <p>Shows actual cell tower placements and coverage bands. Useful for understanding which carriers have
+            physical infrastructure nearby and signal propagation patterns.</p>
+          <a href="${esc(cellmapperUrl)}" target="_blank" rel="noopener" class="rec-service-link">Open CellMapper →</a>
+        </article>
+        <article class="prox-card">
+          <span class="mono">BroadbandMap — US roaming view</span>
+          <strong>US carrier roaming coverage</strong>
+          <p>Shows AT&T/T-Mobile/Verizon roaming coverage in Canada. Less relevant for local plans but useful if
+            US-based visitors or clients will be on site.</p>
+          <a href="${esc(broadbandUrl)}" target="_blank" rel="noopener" class="rec-service-link">Open BroadbandMap →</a>
+        </article>
+      </div>
+
+      <div class="flag" data-severity="info" style="margin-top:0.75rem">
+        <strong>Rural Alberta connectivity note</strong>
+        <p>
+          Most rural Sturgeon County properties have LTE coverage from at least one major carrier (Telus, Rogers, Bell),
+          but signal strength drops off significantly in low-lying terrain or dense tree cover. If reliable connectivity
+          is critical (remote work, security cameras, IoT), test with a signal booster or consider Starlink as a
+          primary or backup connection. Fixed wireless from local ISPs may also be available.
+        </p>
+      </div>
+    </section>`;
+}
+
 function wetAreasSection(wam) {
   if (!wam) return '';
   const dtw = wam.depth_to_water;
@@ -4426,6 +4479,7 @@ function renderSectionPanes(r, ctx) {
     ${accessSection(r.access, city?.name, city?.distance_km)}
     ${demographicsSection(r.demographics)}
     ${atsSection(r.ats, r.parcel_address)}
+    ${cellServiceSection(centre)}
   `, $('report-access'));
 
   // Recommendations: site conditions → recommendations → investment → sales CTA
