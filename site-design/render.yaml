@@ -24,6 +24,16 @@ services:
         value: "20"
       - key: NODE_ENV
         value: production
-      # Paste in Render Dashboard after create (do not commit the key)
+      # Paste in Render Dashboard after create (do not commit keys)
       - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: INQUIRY_TO
+        value: info@expandingedge.ca
+      # Account-owner inbox until expandingedge.ca is verified in Resend
+      - key: RESEND_FALLBACK_TO
+        sync: false
+      # After verifying domain: Expanding Edge <noreply@expandingedge.ca>
+      - key: INQUIRY_FROM
         sync: false

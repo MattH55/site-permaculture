@@ -71,8 +71,14 @@ export function buildServiceQuote(opts = {}) {
   }
 
   // Shelterbelt / windbreak — meterage from one exposed edge of the parcel.
+  // Always size for rural parcels so the "build your plan" menu has a real line item.
   let shelterbeltMetersBasis = null;
-  if (elementTypes.has('windbreak') || elementTypes.has('shelterbelt_zone')) {
+  if (
+    elementTypes.has('windbreak') ||
+    elementTypes.has('shelterbelt_zone') ||
+    footprint_ha == null ||
+    footprint_ha >= 0.4
+  ) {
     shelterbeltMetersBasis = estimateShelterbeltMeters(footprint_ha);
     recommendations.push({ serviceId: 'shelterbelt', size: shelterbeltMetersBasis, opts: travelOpts });
   }

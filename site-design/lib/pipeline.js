@@ -47,6 +47,8 @@ import { fetchSmallWater, toFecunditySmallWaterPatch } from './small-water.js';
 import { recommendServicePackages } from './service-packages.js';
 import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 import { querySoilSurvey } from './soil-survey.js';
+import { buildSiteMapFeatures } from './site-map-features.js';
+import { buildActionMenu } from './action-menu.js';
 
 const cache = new Map();
 
@@ -628,6 +630,59 @@ export async function generateSiteReport(input = {}) {
   record.service_packages = service_packages;
 
   record.service_quote = service_quote;
+
+  // Harmonized selectable intervention menu (value-first UX → choose → estimate → inquire)
+  try {
+    record.action_menu = buildActionMenu({
+      service_packages,
+      service_quote,
+      planting_plan,
+      recommended_plantings: record.recommended_plantings,
+      wetlands: wetlandsDetail,
+      small_water: smallWater,
+      proximity,
+      proximity_context: record.proximity_context,
+      predicted_well_depth,
+      terrain: t,
+      hydrology: siteInput.hydrology,
+    });
+  } catch (e) {
+    console.warn('action_menu build failed', e.message);
+    record.action_menu = { items: [], error: e.message };
+  }
+
+  // Unified property map: parcel + elevation/contours + plantings + water + settlements
+  // Built from the same drawn ring used for all other spatial displays.
+  try {
+    record.site_map = buildSiteMapFeatures({
+      ring,
+      bbox,
+      centre,
+      topology,
+      planting_plan,
+      wetlands: wetlandsDetail,
+      small_water: smallWater,
+      provincial_contours: provincialContours,
+      tree_cover: treeCover,
+      tree_sample_grid: record.tree_sample_grid,
+      proximity,
+      climate: record.climate || climate,
+      wind_rose: windRose,
+      satellite,
+    });
+  } catch (e) {
+    console.warn('site_map build failed', e.message);
+    record.site_map = {
+      version: 1,
+      error: e.message,
+      parcel: {
+        type: 'Polygon',
+        coordinates: [ring],
+        bbox: [bbox.west, bbox.south, bbox.east, bbox.north],
+      },
+    };
+  }
+
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
@@ -658,6 +713,13 @@ export async function generateSiteReport(input = {}) {
         source_url: null,
       });
     }
+    record.data_provenance.push({
+      field: 'site_map',
+      source_name:
+        'Unified property map — DEM contours, plant placement, AMWI/S2 water, proximity settlements, canopy image analysis (client)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: null,
+    });
   }
 
   const report = {

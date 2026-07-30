@@ -39,14 +39,14 @@ const VALUE_LABELS = {
 /** Report flow: site → packages (Food/Water/Energy/Shelter) → evidence */
 const CORE_LABELS = [
   { id: 'overview', label: 'Overview', color: 'var(--h1)' },
-  { id: 'services', label: 'Services', color: 'var(--h7)' },
   { id: 'water', label: 'Water', color: 'var(--h3)' },
   { id: 'energy', label: 'Energy', color: 'var(--h6)' },
   { id: 'food', label: 'Food', color: 'var(--h5)' },
   { id: 'shelter', label: 'Shelter', color: 'var(--h4)' },
   { id: 'topo', label: 'Site data', color: 'var(--h2)' },
   { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
-  { id: 'rules', label: 'Placement', color: 'var(--h7)' },
+  { id: 'services', label: 'Your plan', color: 'var(--h7)' },
+  { id: 'rules', label: 'Tech notes', color: 'var(--h7)' },
   { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
 /** Side-rail add-ons — not part of the core site design package */
@@ -139,6 +139,11 @@ const state = {
   plantGoals: ['balanced'],
   plantScenario: 'market_garden',
   plantReplanning: false,
+  /** Build-your-plan: selected intervention ids */
+  selectedInterventions: null,
+  /** Email captured for full report download */
+  reportEmail: null,
+  reportUnlocked: false,
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -224,7 +229,11 @@ function initLeafletMap(cfg) {
 
   state.map = map;
   state._leafletMap = map;
+  // In-progress drawing (vertices, rubber-band) vs finished parcel outline
   state._drawLayer = L.layerGroup().addTo(map);
+  state._shapeLayer = L.layerGroup().addTo(map);
+  state._previewRect = null;
+  state._previewPoly = null;
 
   // Keep tiles sharp after orientation / layout changes (mobile critical)
   const resizeMap = () => {
@@ -241,6 +250,9 @@ function initLeafletMap(cfg) {
       finishPolygonDraw();
     }
   });
+
+  // Live rubber-band while drawing (mousemove)
+  map.on('mousemove', (e) => leafletDrawMouseMove(e));
 
   $('draw-hint').textContent = 'Satellite map ready. Drag to pan · scroll to zoom · Draw parcel to outline land.';
   setDrawButtons(null);
@@ -331,17 +343,17 @@ function switchReportPane(which) {
   tabPlant?.setAttribute('aria-selected', String(isPlant));
   document.body.classList.toggle('is-plant-pane', isPlant);
 
-  // Initialize Leaflet maps for the newly visible pane (they need invalidateSize)
+  // Leaflet maps need invalidateSize when their pane becomes visible
   setTimeout(() => {
     active?.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
-      if (el._leaflet_id) return; // already initialized
-      // Leaflet maps created via setTimeout in the section functions handle themselves
+      const map = el._eeLeafletMap;
+      if (map && typeof map.invalidateSize === 'function') {
+        try {
+          map.invalidateSize({ animate: false });
+        } catch { /* ignore */ }
+      }
     });
-    // Trigger invalidateSize on any maps in the active pane
-    active?.querySelectorAll('.leaflet-container').forEach((m) => {
-      if (m._leaflet_map) m._leaflet_map.invalidateSize();
-    });
-  }, 100);
+  }, 120);
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -465,23 +477,20 @@ function detachDrawListeners() {
   state._drawClickHandler = null;
 }
 
-function clearVertexMarkers() {
+function clearDrawPreview() {
   state._drawLayer?.clearLayers();
-}
-
-function clearPreview() {
-  clearVertexMarkers();
+  state._previewRect = null;
+  state._previewPoly = null;
   state.preview = null;
-  state.draw.rectStart = null;
 }
 
-function stopDrawingMode() {
+function stopDrawingMode({ clearInProgress = true } = {}) {
   detachDrawListeners();
   state.draw.active = false;
   state.draw.kind = null;
   state.draw.points = [];
   state.draw.rectStart = null;
-  clearPreview();
+  if (clearInProgress) clearDrawPreview();
   setDrawButtons(null);
 }
 
@@ -503,10 +512,102 @@ function startDraw(kind) {
     state._leafletMap.on('click', state._drawClickHandler);
   } else {
     ensureFinishButton(false);
-    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner.';
+    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner. Move the mouse to preview the rectangle.';
     state._drawClickHandler = (e) => leafletRectClick(e);
     state._leafletMap.on('click', state._drawClickHandler);
   }
+}
+
+/** Live rubber-band: polygon closing edge / rectangle from first corner. */
+function leafletDrawMouseMove(e) {
+  if (!state.draw.active || !state._drawLayer || !e?.latlng) return;
+  const ll = e.latlng;
+
+  if (state.draw.kind === 'rectangle' && state.draw.rectStart) {
+    const a = state.draw.rectStart;
+    const path = [
+      [a.lat, a.lng],
+      [ll.lat, a.lng],
+      [ll.lat, ll.lng],
+      [a.lat, ll.lng],
+    ];
+    redrawInProgress({
+      markers: [[a.lat, a.lng]],
+      polygon: path,
+      dashed: true,
+    });
+    return;
+  }
+
+  if (state.draw.kind === 'polygon' && state.draw.points.length >= 1) {
+    const pts = state.draw.points.map((p) => [p.lat, p.lng]);
+    const cursor = [ll.lat, ll.lng];
+    const line = [...pts, cursor];
+    // Preview fill when ≥2 corners (triangle with cursor)
+    const poly = state.draw.points.length >= 2 ? [...pts, cursor] : null;
+    redrawInProgress({
+      markers: pts,
+      polyline: line,
+      polygon: poly,
+      dashed: true,
+    });
+  }
+}
+
+/**
+ * Redraw in-progress drawing graphics (keeps finished shape on _shapeLayer).
+ * @param {{ markers?: number[][], polyline?: number[][], polygon?: number[][], dashed?: boolean }} opts
+ */
+function redrawInProgress(opts = {}) {
+  if (!state._drawLayer) return;
+  state._drawLayer.clearLayers();
+  const color = '#5b3a73';
+  const gold = '#a8801f';
+
+  if (opts.polygon?.length >= 3) {
+    L.polygon(opts.polygon, {
+      color: gold,
+      fillColor: gold,
+      fillOpacity: opts.dashed ? 0.12 : 0.22,
+      weight: 2.5,
+      dashArray: opts.dashed ? '6 4' : null,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  } else if (opts.polyline?.length >= 2) {
+    L.polyline(opts.polyline, {
+      color: gold,
+      weight: 2.5,
+      opacity: 0.95,
+      dashArray: opts.dashed ? '6 4' : null,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  }
+
+  (opts.markers || []).forEach((m) => {
+    L.circleMarker(m, {
+      radius: 5,
+      fillColor: color,
+      fillOpacity: 1,
+      color: '#f7f8f3',
+      weight: 2,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  });
+}
+
+function setFinishedParcelShape(latlngs) {
+  if (!state._shapeLayer || !state._leafletMap) return;
+  state._shapeLayer.clearLayers();
+  if (!latlngs?.length) return;
+  const poly = L.polygon(latlngs, {
+    color: '#a8801f',
+    fillColor: '#a8801f',
+    fillOpacity: 0.22,
+    weight: 3,
+  }).addTo(state._shapeLayer);
+  try {
+    state._leafletMap.fitBounds(poly.getBounds(), { padding: [36, 36], maxZoom: 18 });
+  } catch { /* ignore */ }
 }
 
 function ensureFinishButton(show) {
@@ -530,32 +631,24 @@ function ensureFinishButton(show) {
 
 function leafletPolygonClick(e) {
   if (!state.draw.active || state.draw.kind !== 'polygon') return;
+  L.DomEvent.stopPropagation(e);
   const ll = e.latlng;
   state.draw.points.push(ll);
-  L.circleMarker([ll.lat, ll.lng], {
-    radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
-    color: '#f7f8f3', weight: 2,
-  }).addTo(state._drawLayer);
 
-  if (state.draw.points.length >= 2) {
-    state._drawLayer.clearLayers();
-    state.draw.points.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
-        color: '#f7f8f3', weight: 2,
-      }).addTo(state._drawLayer);
-    });
-    L.polyline(state.draw.points.map((p) => [p.lat, p.lng]), {
-      color: '#5b3a73', weight: 2.5, opacity: 0.95,
-    }).addTo(state._drawLayer);
-  }
+  const pts = state.draw.points.map((p) => [p.lat, p.lng]);
+  redrawInProgress({
+    markers: pts,
+    polyline: pts.length >= 2 ? pts : null,
+    polygon: pts.length >= 3 ? pts : null,
+    dashed: false,
+  });
 
   const finishBtn = $('btn-finish-poly');
   if (finishBtn) finishBtn.disabled = state.draw.points.length < 3;
 
   $('draw-hint').textContent = state.draw.points.length < 3
-    ? `Corner ${state.draw.points.length} placed — need at least 3.`
-    : `${state.draw.points.length} corners — double-click or Finish parcel to close.`;
+    ? `Corner ${state.draw.points.length} placed — need at least 3. Move mouse to preview the edge.`
+    : `${state.draw.points.length} corners — move mouse to preview · double-click or Finish to close.`;
 }
 
 function finishPolygonDraw() {
@@ -567,11 +660,9 @@ function finishPolygonDraw() {
   const latlngs = state.draw.points.map((ll) => [ll.lat, ll.lng]);
   state.paths = latlngs.map(([lat, lng]) => [lng, lat]);
   state.shape = { leaflet: true };
-  state._drawLayer.clearLayers();
-  L.polygon(latlngs, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
-  stopDrawingMode();
+  clearDrawPreview();
+  setFinishedParcelShape(latlngs);
+  stopDrawingMode({ clearInProgress: true });
   ensureFinishButton(false);
   updateParcelMeta();
   $('draw-hint').textContent = 'Parcel set. Generate site report.';
@@ -580,12 +671,12 @@ function finishPolygonDraw() {
 
 function leafletRectClick(e) {
   if (!state.draw.active || state.draw.kind !== 'rectangle') return;
+  L.DomEvent.stopPropagation(e);
   const ll = e.latlng;
   if (!state.draw.rectStart) {
     state.draw.rectStart = ll;
-    state._drawLayer.clearLayers();
-    L.circleMarker([ll.lat, ll.lng], { radius: 5, fillColor: '#5b3a73', fillOpacity: 1, color: '#f7f8f3', weight: 2 }).addTo(state._drawLayer);
-    $('draw-hint').textContent = 'Now click the opposite corner.';
+    redrawInProgress({ markers: [[ll.lat, ll.lng]] });
+    $('draw-hint').textContent = 'Move the mouse to stretch the rectangle, then click the opposite corner.';
     return;
   }
   const a = state.draw.rectStart;
@@ -593,11 +684,9 @@ function leafletRectClick(e) {
   const path = [[a.lat, a.lng], [b.lat, a.lng], [b.lat, b.lng], [a.lat, b.lng]];
   state.paths = path.map(([lat, lng]) => [lng, lat]);
   state.shape = { leaflet: true };
-  state._drawLayer.clearLayers();
-  L.polygon(path, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
-  stopDrawingMode();
+  clearDrawPreview();
+  setFinishedParcelShape(path);
+  stopDrawingMode({ clearInProgress: true });
   updateParcelMeta();
   $('draw-hint').textContent = 'Parcel set. Generate site report.';
 }
@@ -625,20 +714,22 @@ function pathFromRect(rect) {
 }
 
 function clearShape(resetHint = true) {
-  stopDrawingMode();
+  stopDrawingMode({ clearInProgress: true });
   ensureFinishButton(false);
 
   if (state.shape) {
-    if (state.mode === 'google') state.shape.setMap(null);
+    if (state.mode === 'google' && state.shape.setMap) state.shape.setMap(null);
     state.shape = null;
   }
+  state._shapeLayer?.clearLayers();
+  clearDrawPreview();
   if (state.mode === 'fallback') fallbackClear();
   state.paths = null;
   $('btn-report').disabled = true;
   $('parcel-meta').hidden = true;
   if (resetHint) {
     $('draw-hint').textContent =
-      'Click Draw parcel, then click the map to place corners (double-click to finish).';
+      'Click Draw parcel, then click the map to place corners (double-click to finish). Use Rectangle for a box — drag-preview shows as you move.';
   }
   setError('');
 }
@@ -1108,8 +1199,8 @@ function isMobileLayout() {
 function showReport() {
   $('map-stage').hidden = true;
   $('report-stage').hidden = false;
-  // Mobile users land on Services packages first; desktop on full report
-  switchReportPane(isMobileLayout() ? 'services' : 'site');
+  // Value first: land on overview (insights), not sales. Plan is at the end.
+  switchReportPane('overview');
   window.scrollTo({ top: 0, behavior: 'smooth' });
   // Scroll active rail chip into view on small screens
   requestAnimationFrame(() => {
@@ -1131,6 +1222,9 @@ function showMap() {
 /* ---------- report UI ---------- */
 
 function renderReport(r) {
+  // Fresh plan selections for each new report
+  state.selectedInterventions = null;
+  // Keep email unlock across re-draws of the same session if already unlocked
   paintCore(true);
   // Reset value filter only when a new report arrives
   if (state.report !== r) {
@@ -1214,7 +1308,7 @@ function renderReport(r) {
         }</strong></div>
       </div>
 
-      ${mapEmbedSection()}
+      ${mapEmbedSection('full')}
 
       ${topologySection(topo, a)}
       ${temperatureSection(r.temperature || a.temperature)}
@@ -1251,14 +1345,14 @@ function renderReport(r) {
           : ''
       }
 
-      ${servicePackagesSection(r.service_packages)}
-
       ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
 
-      <section class="report-block placement-block">
-        <h2>Placement details</h2>
-        <p class="fine" style="margin-top:-0.3rem">
-          Technique-level placement from site measurements — feeds the service packages above.
+      ${nextStepsSection(r, 'full')}
+
+      <details class="report-block placement-block tech-notes-details">
+        <summary><h2 style="display:inline">Technical placement notes</h2></summary>
+        <p class="fine" style="margin-top:0.5rem">
+          Technique-level detail from site measurements — reference only. Choose what to pursue in <strong>Your plan</strong> above.
         </p>
         ${siteDriversSection(siteDrivers)}
         ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
@@ -1271,10 +1365,7 @@ function renderReport(r) {
                 : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
           }
         </div>
-        ${servicesCtaSection(services)}
-      </section>
-
-      ${quoteSection(r.service_quote || a.service_quote, r.service_packages)}
+      </details>
 
       <div class="plant-cta panel side-offer-cta-panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
         <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
@@ -1282,7 +1373,6 @@ function renderReport(r) {
         <p class="fine" style="margin:0 0 0.8rem">
           A side tool — not part of the core site design package. Early preview of Alberta-suited
           crops, gross economics, and vendor search links for seeds, saplings, and fertilizer.
-          Results are experimental; always verify hardiness and stock with suppliers.
         </p>
         <button type="button" class="btn btn-secondary" id="btn-goto-plant">Try planting planner (beta) →</button>
       </div>
@@ -1347,6 +1437,7 @@ function renderReport(r) {
   };
   $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
   bindValueFilters(allEls);
+  bindNextStepsInteractions(r);
   renderPlantingPane(r.planting_plan);
   // Inject per-section PDF download buttons after DOM is populated
   setTimeout(() => injectSectionPdfButtons(), 200);
@@ -1369,29 +1460,756 @@ function renderReport(r) {
   };
 }
 
-/** Placeholder host for the live Google Map embed — populated by initReportMapEmbed() after insertion. */
-function mapEmbedSection() {
+/**
+ * Live unified property map host (parcel + elevation + contours + plantings + water).
+ * @param {string} [idSuffix] unique suffix so overview + full report don't share one #id
+ */
+function mapEmbedSection(idSuffix = 'main') {
+  const id = `report-map-${idSuffix}`;
+  const legendId = `report-map-legend-${idSuffix}`;
+  const statusId = `report-map-status-${idSuffix}`;
   return `
     <section class="report-block report-map-block">
-      <h2>Your parcel</h2>
+      <h2>Property map</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Live satellite view — the exact boundary you drew.
+        Live satellite view of the boundary you drew, with elevation surface, contours,
+        water inventory, proposed plantings, and image-detected canopy / structures.
+        Use the layer control (top-right) to toggle overlays. The same parcel coordinates
+        drive wetlands, small-water, and other maps in this report.
       </p>
-      <div id="report-map" class="report-map"></div>
+      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Unified property map with elevation, contours, and plantings"></div>
+      <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
+      <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
     </section>`;
 }
 
-function initReportMapEmbed(r) {
-  const el = $('report-map');
-  if (!el) return;
+/**
+ * Init Leaflet unified property map(s) from drawn parcel + site_map payload.
+ * Safe for hidden panes: unique containers + delayed invalidateSize.
+ */
+function initReportMapEmbed(r, preferredId) {
+  if (typeof L === 'undefined') return;
+  const latlngs = getParcelLatLngsFromReport(r);
+  if (!latlngs) return;
+
+  const candidates = preferredId
+    ? [document.getElementById(preferredId)].filter(Boolean)
+    : [
+        document.getElementById('report-map-overview'),
+        document.getElementById('report-map-full'),
+        document.getElementById('report-map-main'),
+        document.getElementById('report-map'),
+      ].filter(Boolean);
+
+  const els = [
+    ...candidates.filter((el) => el.offsetParent !== null || el.offsetWidth > 0),
+    ...candidates,
+  ];
+  const seen = new Set();
+  for (const el of els) {
+    if (!el || seen.has(el)) continue;
+    seen.add(el);
+    mountUnifiedPropertyMap(el, latlngs, r);
+  }
+}
+
+/** Parcel ring as Leaflet [lat,lng][] from report geometry or live draw state. */
+function getParcelLatLngsFromReport(r) {
+  const ring =
+    r?.geometry?.coordinates?.[0] ||
+    r?.site_map?.parcel?.coordinates?.[0] ||
+    (Array.isArray(state.paths) && state.paths.length >= 3 ? state.paths : null);
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const latlngs = ring
+    .filter((p) => Array.isArray(p) && p.length >= 2)
+    .map(([lng, lat]) => [Number(lat), Number(lng)])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  if (latlngs.length < 3) return null;
+  const a = latlngs[0];
+  const b = latlngs[latlngs.length - 1];
+  if (a[0] !== b[0] || a[1] !== b[1]) latlngs.push([...a]);
+  return latlngs;
+}
+
+/**
+ * Unified property map: parcel boundary + elevation + contours + plantings + water
+ * + nearby settlements + client-side image analysis (trees / water / structures).
+ */
+function mountUnifiedPropertyMap(el, latlngs, report) {
+  if (!el || typeof L === 'undefined' || !latlngs?.length) return;
+  if (el._leaflet_id && el._eeLeafletMap) {
+    try {
+      el._eeLeafletMap.remove();
+    } catch { /* ignore */ }
+    el._eeLeafletMap = null;
+  }
   el.innerHTML = '';
-  const ring = r.geometry?.coordinates?.[0];
-  if (!Array.isArray(ring) || ring.length < 3) return;
-  const latlngs = ring.map(([lng, lat]) => [lat, lng]);
-  const map = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '&copy; Esri', maxZoom: 20 }).addTo(map);
-  L.polygon(latlngs, { color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.15, weight: 3 }).addTo(map);
-  try { map.fitBounds(latlngs, { padding: [30, 30] }); } catch {}
+  el.classList.add('report-map', 'report-map-unified');
+  if (!el.style.height) el.style.minHeight = '380px';
+
+  let map;
+  try {
+    map = L.map(el, {
+      zoomControl: true,
+      attributionControl: true,
+      scrollWheelZoom: true,
+    });
+  } catch (err) {
+    console.warn('Unified map init failed', err);
+    el.innerHTML = '<p class="fine">Map could not load — try reopening this section.</p>';
+    return;
+  }
+  el._eeLeafletMap = map;
+
+  const imagery = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Esri World Imagery · DEM · AMWI · Copernicus', maxZoom: 20 }
+  ).addTo(map);
+
+  const labels = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+    { opacity: 0.55, maxZoom: 20 }
+  ).addTo(map);
+
+  const sm = report?.site_map || {};
+  const overlays = {};
+  const baseMaps = { Imagery: imagery };
+
+  // ── Parcel (always on) ──
+  const parcelLayer = L.polygon(latlngs, {
+    color: '#a8801f',
+    fillColor: '#a8801f',
+    fillOpacity: 0.1,
+    weight: 3,
+  }).addTo(map);
+  parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew — source for all map overlays');
+  overlays['Your parcel'] = parcelLayer;
+
+  // ── Elevation surface (canvas image overlay) ──
+  const elevPayload = sm.elevation || elevPayloadFromTopology(report, latlngs);
+  const elevLayer = buildElevationImageOverlay(elevPayload);
+  if (elevLayer) {
+    elevLayer.addTo(map);
+    overlays['Elevation surface'] = elevLayer;
+  }
+
+  // ── DEM contours ──
+  const demFc = sm.contours?.dem;
+  if (demFc?.features?.length) {
+    const demContours = L.geoJSON(demFc, {
+      style: (f) => {
+        const isIndex = f.properties?.contour_type === 'index';
+        return {
+          color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.55)',
+          weight: isIndex ? 2.2 : 1.1,
+          opacity: isIndex ? 0.95 : 0.7,
+          fill: false,
+        };
+      },
+      onEachFeature: (f, lyr) => {
+        const z = f.properties?.elevation_m;
+        if (z != null) lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
+      },
+    }).addTo(map);
+    overlays['Contours (DEM)'] = demContours;
+  }
+
+  // ── Provincial contours (optional) ──
+  const provFc = sm.contours?.provincial;
+  if (provFc?.features?.length) {
+    const prov = L.geoJSON(provFc, {
+      style: (f) => {
+        const isIndex = f.properties?.contour_type === 'index';
+        return {
+          color: isIndex ? '#2a6f97' : 'rgba(42,111,151,0.4)',
+          weight: isIndex ? 1.8 : 1,
+          opacity: 0.75,
+          fill: false,
+        };
+      },
+    });
+    overlays['Contours (provincial)'] = prov;
+  }
+
+  // ── Water (wetlands + small water data) ──
+  const waterFc = sm.water || packageWaterFromReport(report);
+  if (waterFc?.features?.length) {
+    const wetLayer = L.layerGroup();
+    const confirmedWater = L.layerGroup();
+    const possibleWater = L.layerGroup();
+    L.geoJSON(waterFc, {
+      style: (f) => {
+        const layer = f.properties?.layer || f.properties?.class || '';
+        const isPoss =
+          f.properties?.class === 'possible' || /low/i.test(String(f.properties?.confidence || ''));
+        if (layer === 'wetlands' || f.properties?.class === 'wetland_inventory') {
+          return {
+            color: '#0b6e4f',
+            weight: 2,
+            fillColor: '#2a9d8f',
+            fillOpacity: 0.45,
+          };
+        }
+        return {
+          color: isPoss ? '#c45c26' : '#1d6a9a',
+          weight: 2,
+          fillColor: isPoss ? '#e9c46a' : '#4cc9f0',
+          fillOpacity: isPoss ? 0.35 : 0.45,
+          dashArray: isPoss ? '6 4' : null,
+        };
+      },
+      onEachFeature: (f, lyr) => {
+        const p = f.properties || {};
+        const isPoss = p.class === 'possible' || /low/i.test(String(p.confidence || ''));
+        lyr.bindPopup(
+          `<strong>${esc(p.type || p.class || 'water')}</strong><br/>` +
+            `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
+            `${p.area_m2 != null ? p.area_m2 + ' m²<br/>' : ''}` +
+            `Source: ${esc(p.source || p.layer || '—')}<br/>` +
+            `Confidence: <strong>${esc(p.confidence || (p.layer === 'wetlands' ? 'high' : '—'))}</strong>` +
+            (isPoss
+              ? '<br/><em>Verify on site walk — not permanent water</em>'
+              : '<br/><span class="fine">Screening only — not regulatory delineation</span>')
+        );
+        if (p.layer === 'wetlands' || p.class === 'wetland_inventory') lyr.addTo(wetLayer);
+        else if (isPoss) lyr.addTo(possibleWater);
+        else lyr.addTo(confirmedWater);
+      },
+    });
+    if (wetLayer.getLayers().length) {
+      wetLayer.addTo(map);
+      overlays['Wetlands (AMWI)'] = wetLayer;
+    }
+    if (confirmedWater.getLayers().length) {
+      confirmedWater.addTo(map);
+      overlays['Open water (data)'] = confirmedWater;
+    }
+    if (possibleWater.getLayers().length) {
+      possibleWater.addTo(map);
+      overlays['Possible seeps'] = possibleWater;
+    }
+  }
+
+  // ── Planting plan ──
+  const plantFc =
+    sm.plantings?.features?.length
+      ? sm.plantings
+      : null;
+  if (plantFc?.features?.length) {
+    const plantLayer = L.layerGroup();
+    const roleColors = {
+      windbreak: '#5b3a73',
+      riparian: '#1d6a9a',
+      canopy: '#2f5d3a',
+      shrub: '#4a7c59',
+      herbaceous: '#a8801f',
+    };
+    plantFc.features.forEach((f) => {
+      const [lng, lat] = f.geometry?.coordinates || [];
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const p = f.properties || {};
+      const role = p.role || 'herbaceous';
+      const color = roleColors[role] || '#a8801f';
+      const m = L.circleMarker([lat, lng], {
+        radius: role === 'canopy' || role === 'windbreak' ? 8 : 6,
+        fillColor: color,
+        fillOpacity: 0.92,
+        color: '#16211b',
+        weight: 1.5,
+      });
+      const yieldLine =
+        p.product_yield_mid_kg != null
+          ? `Yield (mid): ~${esc(p.product_yield_mid_kg)} kg/yr<br/>`
+          : '';
+      const cashLine =
+        p.cash_yield_mid_cad != null
+          ? `Cash (mid): $${Math.round(p.cash_yield_mid_cad).toLocaleString()}/yr<br/>`
+          : '';
+      m.bindPopup(
+        `<strong>${esc(p.common_name || 'Planting')}</strong>` +
+          (p.scientific_name ? `<br/><em class="fine">${esc(p.scientific_name)}</em>` : '') +
+          `<br/>Role: ${esc(role)}` +
+          (p.score != null ? `<br/>Fit score: ${esc(p.score)}` : '') +
+          (p.quantity != null ? `<br/>Qty: ${esc(p.quantity)}` : '') +
+          `<br/>${yieldLine}${cashLine}` +
+          `<span class="fine">Indicative placement — adjust after site walk</span>`
+      );
+      m.bindTooltip(p.common_name || role, { direction: 'top', offset: [0, -6] });
+      m.addTo(plantLayer);
+    });
+    plantLayer.addTo(map);
+    overlays['Proposed plantings'] = plantLayer;
+  }
+
+  // ── Settlements (named places) ──
+  const settleFc = sm.settlements;
+  if (settleFc?.features?.length) {
+    const settleLayer = L.layerGroup();
+    settleFc.features.forEach((f) => {
+      const [lng, lat] = f.geometry?.coordinates || [];
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const p = f.properties || {};
+      L.circleMarker([lat, lng], {
+        radius: p.kind === 'city' ? 7 : 5,
+        fillColor: '#8c2f1d',
+        fillOpacity: 0.85,
+        color: '#fff',
+        weight: 1.5,
+      })
+        .bindPopup(
+          `<strong>${esc(p.name)}</strong><br/>${esc(p.kind || 'settlement')}` +
+            (p.distance_km != null ? `<br/>${esc(p.distance_km)} km from parcel` : '')
+        )
+        .addTo(settleLayer);
+    });
+    overlays['Nearby settlements'] = settleLayer;
+    settleLayer.addTo(map);
+  }
+
+  // Image-analysis layers (trees / water / structures) — filled async
+  const treeDetect = L.layerGroup().addTo(map);
+  const waterDetect = L.layerGroup();
+  const structureDetect = L.layerGroup();
+  overlays['Trees (image analysis)'] = treeDetect;
+  overlays['Water (image analysis)'] = waterDetect;
+  overlays['Structures (image analysis)'] = structureDetect;
+
+  L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
+  labels.addTo(map);
+
+  // Legend
+  const legendEl = document.getElementById(el.id.replace('report-map-', 'report-map-legend-'));
+  if (legendEl) {
+    legendEl.innerHTML = `
+      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Parcel</span>
+      <span class="fine"><span class="legend-swatch" style="background:linear-gradient(90deg,#3d2914,#c2ae88);border-color:#5b3a73"></span>Elevation</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Contours</span>
+      <span class="fine"><span class="legend-swatch" style="background:#2a9d8f;border-color:#0b6e4f"></span>Wetlands / water</span>
+      <span class="fine"><span class="legend-swatch" style="background:#2f5d3a;border-color:#16211b;border-radius:50%"></span>Plantings</span>
+      <span class="fine"><span class="legend-swatch" style="background:#4a7c59;border-color:#2f5d3a;border-radius:50%"></span>Trees (AI)</span>
+      <span class="fine"><span class="legend-swatch" style="background:#8c2f1d;border-color:#fff;border-radius:50%"></span>Settlements</span>
+    `;
+  }
+
+  const statusEl = document.getElementById(el.id.replace('report-map-', 'report-map-status-'));
+  if (statusEl) {
+    const bits = [];
+    if (elevLayer) bits.push('elevation');
+    if (demFc?.features?.length) bits.push(`${demFc.features.length} contour lines`);
+    if (plantFc?.features?.length) bits.push(`${plantFc.features.length} plantings`);
+    if (waterFc?.features?.length) bits.push(`${waterFc.features.length} water features`);
+    bits.push('running image analysis…');
+    statusEl.textContent = bits.length
+      ? `Layers: ${bits.join(' · ')}`
+      : 'Parcel boundary only — generate a full report for elevation and plantings.';
+  }
+
+  // Client-side satellite image analysis for trees / water / structures
+  runPropertyImageAnalysis(map, latlngs, {
+    treeLayer: treeDetect,
+    waterLayer: waterDetect,
+    structureLayer: structureDetect,
+    statusEl,
+    treeCoverPct: sm.trees?.cover_pct ?? report?.tree_cover?.tree_cover_pct,
+  }).catch(() => {
+    if (statusEl) {
+      statusEl.textContent = (statusEl.textContent || '').replace(
+        / · running image analysis…|running image analysis…/,
+        ' · image analysis unavailable'
+      );
+    }
+  });
+
+  const fit = () => {
+    try {
+      map.invalidateSize({ animate: false });
+      map.fitBounds(parcelLayer.getBounds(), { padding: [32, 32], maxZoom: 18 });
+      parcelLayer.bringToFront();
+    } catch { /* ignore */ }
+  };
+  requestAnimationFrame(() => {
+    fit();
+    setTimeout(fit, 80);
+    setTimeout(fit, 320);
+  });
+}
+
+/** Build elevation overlay payload from topology when site_map is absent. */
+function elevPayloadFromTopology(report, latlngs) {
+  const topo = report?.topology;
+  const g = topo?.grid;
+  if (!g?.elevations_m?.length || !g.rows || !g.cols) return null;
+  let bbox = null;
+  if (report?.geometry?.bbox?.length === 4) {
+    const [west, south, east, north] = report.geometry.bbox;
+    bbox = { west, south, east, north };
+  } else if (latlngs?.length) {
+    const b = L.latLngBounds(latlngs);
+    bbox = {
+      west: b.getWest(),
+      south: b.getSouth(),
+      east: b.getEast(),
+      north: b.getNorth(),
+    };
+  }
+  if (!bbox) return null;
+  return {
+    rows: g.rows,
+    cols: g.cols,
+    elevations_m: g.elevations_m,
+    values: g.values,
+    min_m: topo.elevation_min_m,
+    max_m: topo.elevation_max_m,
+    mean_m: topo.elevation_m,
+    bbox,
+  };
+}
+
+/** Fallback water FC when site_map missing (older cached reports). */
+function packageWaterFromReport(report) {
+  const features = [];
+  for (const f of report?.wetlands?.wetland_polygons?.features || []) {
+    features.push({
+      ...f,
+      properties: { ...(f.properties || {}), layer: 'wetlands', class: 'wetland_inventory' },
+    });
+  }
+  for (const f of report?.small_water?.feature_collection?.features || []) {
+    features.push({
+      ...f,
+      properties: { ...(f.properties || {}), layer: 'small_water' },
+    });
+  }
+  return features.length ? { type: 'FeatureCollection', features } : null;
+}
+
+/**
+ * Elevation heatmap as Leaflet imageOverlay from topology / site_map grid.
+ */
+function buildElevationImageOverlay(elev) {
+  if (!elev || !elev.elevations_m?.length || !elev.rows || !elev.cols) return null;
+  const bbox = elev.bbox;
+  if (!bbox || bbox.west == null) return null;
+  const { rows, cols, elevations_m: z } = elev;
+  const min = elev.min_m ?? Math.min(...z.filter((v) => v != null && Number.isFinite(v)));
+  const max = elev.max_m ?? Math.max(...z.filter((v) => v != null && Number.isFinite(v)));
+  const span = max - min || 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(cols, rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = z[r * cols + c];
+      const i = (r * cols + c) * 4;
+      if (v == null || !Number.isFinite(v)) {
+        img.data[i + 3] = 0;
+        continue;
+      }
+      const t = (v - min) / span;
+      // Parkland soil palette: dark low → gold high
+      const h = 32;
+      const s = 35 + t * 30;
+      const l = 28 + t * 42;
+      const [rr, gg, bb] = hslToRgb(h / 360, s / 100, l / 100);
+      img.data[i] = rr;
+      img.data[i + 1] = gg;
+      img.data[i + 2] = bb;
+      img.data[i + 3] = 150;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const url = canvas.toDataURL('image/png');
+  const bounds = [
+    [bbox.south, bbox.west],
+    [bbox.north, bbox.east],
+  ];
+  return L.imageOverlay(url, bounds, { opacity: 0.55, interactive: false });
+}
+
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+/**
+ * Client-side Esri imagery export + pixel analysis for trees, water, and
+ * possible structures/settlements within the parcel bbox.
+ */
+async function runPropertyImageAnalysis(map, latlngs, opts = {}) {
+  const bounds = L.latLngBounds(latlngs);
+  const pad = 0.00015;
+  const west = bounds.getWest() - pad;
+  const south = bounds.getSouth() - pad;
+  const east = bounds.getEast() + pad;
+  const north = bounds.getNorth() + pad;
+  const size = 512;
+  const url =
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export' +
+    `?bbox=${west},${south},${east},${north}` +
+    '&bboxSR=4326&imageSR=4326' +
+    `&size=${size},${size}&format=jpg&f=image`;
+
+  let img;
+  try {
+    img = await loadImageCors(url);
+  } catch {
+    // Fallback: sample tree grid heuristically if export blocked
+    placeHeuristicTreeMarkers(opts.treeLayer, latlngs, opts.treeCoverPct);
+    if (opts.statusEl) {
+      opts.statusEl.textContent = (opts.statusEl.textContent || '')
+        .replace(/ · running image analysis…|running image analysis…/, '')
+        + ' · canopy estimate (export blocked)';
+    }
+    return;
+  }
+
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, size, size);
+  const data = ctx.getImageData(0, 0, size, size).data;
+
+  const cell = 16; // sample every 16px → ~32×32 grid
+  const trees = [];
+  const waters = [];
+  const structures = [];
+
+  for (let py = cell / 2; py < size; py += cell) {
+    for (let px = cell / 2; px < size; px += cell) {
+      const i = (Math.floor(py) * size + Math.floor(px)) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      const sum = r + g + b + 1e-6;
+      const brightness = sum / 3;
+      const sat = max === 0 ? 0 : (max - min) / max;
+      const greenness = (2 * g - r - b) / sum;
+      const blueness = (2 * b - r - g) / sum;
+
+      // Map pixel → lat/lng (image y grows down = north→south)
+      const lng = west + (px / size) * (east - west);
+      const lat = north - (py / size) * (north - south);
+      if (!pointInParcel(lat, lng, latlngs)) continue;
+
+      // Vegetation / trees: green-dominant, moderate brightness
+      if (greenness > 0.08 && g > r + 8 && g > b + 5 && brightness > 35 && brightness < 200) {
+        trees.push({ lat, lng, score: greenness });
+      }
+      // Water: blue-dominant or very dark low-sat (open water / shadow)
+      else if (
+        (blueness > 0.06 && b > r + 10 && b > g) ||
+        (brightness < 55 && sat < 0.25 && b >= g)
+      ) {
+        waters.push({ lat, lng, score: blueness });
+      }
+      // Structures / roofs: gray or bright low-sat patches
+      else if (sat < 0.18 && brightness > 90 && brightness < 210 && Math.abs(r - g) < 18 && Math.abs(g - b) < 18) {
+        structures.push({ lat, lng, score: 1 - sat });
+      }
+    }
+  }
+
+  // Cluster / thin markers so the map stays readable
+  const treePts = thinPoints(trees, 12);
+  const waterPts = thinPoints(waters, 8);
+  const structPts = thinPoints(structures, 6);
+
+  if (opts.treeLayer) {
+    opts.treeLayer.clearLayers();
+    treePts.forEach((p) => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 4,
+        fillColor: '#4a7c59',
+        fillOpacity: 0.75,
+        color: '#2f5d3a',
+        weight: 1,
+      })
+        .bindTooltip('Possible tree / canopy', { direction: 'top' })
+        .addTo(opts.treeLayer);
+    });
+  }
+  if (opts.waterLayer) {
+    opts.waterLayer.clearLayers();
+    waterPts.forEach((p) => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 5,
+        fillColor: '#4cc9f0',
+        fillOpacity: 0.7,
+        color: '#1d6a9a',
+        weight: 1,
+      })
+        .bindTooltip('Possible water (image)', { direction: 'top' })
+        .addTo(opts.waterLayer);
+    });
+  }
+  if (opts.structureLayer) {
+    opts.structureLayer.clearLayers();
+    structPts.forEach((p) => {
+      L.circleMarker([p.lat, p.lng], {
+        radius: 5,
+        fillColor: '#c4c4c4',
+        fillOpacity: 0.85,
+        color: '#5a5a5a',
+        weight: 1.5,
+      })
+        .bindTooltip('Possible structure / hard surface', { direction: 'top' })
+        .addTo(opts.structureLayer);
+    });
+  }
+
+  if (opts.statusEl) {
+    const cover =
+      opts.treeCoverPct != null ? ` · heuristic canopy ~${opts.treeCoverPct}%` : '';
+    opts.statusEl.textContent =
+      `Image analysis: ${treePts.length} canopy · ${waterPts.length} water · ${structPts.length} structure candidates` +
+      cover +
+      ' (screening only)';
+  }
+}
+
+function loadImageCors(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('image load failed'));
+    img.src = url;
+  });
+}
+
+function pointInParcel(lat, lng, latlngs) {
+  // Ray casting on [lat,lng] ring
+  let inside = false;
+  for (let i = 0, j = latlngs.length - 1; i < latlngs.length; j = i++) {
+    const yi = latlngs[i][0];
+    const xi = latlngs[i][1];
+    const yj = latlngs[j][0];
+    const xj = latlngs[j][1];
+    const intersect =
+      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function thinPoints(pts, maxN) {
+  if (!pts.length) return [];
+  const sorted = [...pts].sort((a, b) => (b.score || 0) - (a.score || 0));
+  const out = [];
+  const minSep = 0.00008;
+  for (const p of sorted) {
+    if (out.length >= maxN) break;
+    if (out.some((q) => Math.hypot(q.lat - p.lat, q.lng - p.lng) < minSep)) continue;
+    out.push(p);
+  }
+  return out;
+}
+
+function placeHeuristicTreeMarkers(layer, latlngs, coverPct) {
+  if (!layer || !latlngs?.length) return;
+  layer.clearLayers();
+  const n = coverPct != null ? Math.min(10, Math.max(2, Math.round(coverPct / 10))) : 4;
+  const b = L.latLngBounds(latlngs);
+  for (let i = 0; i < n; i++) {
+    const lat = b.getSouth() + ((i + 1) / (n + 1)) * (b.getNorth() - b.getSouth());
+    const lng = b.getWest() + (0.3 + (i % 3) * 0.2) * (b.getEast() - b.getWest());
+    if (!pointInParcel(lat, lng, latlngs)) continue;
+    L.circleMarker([lat, lng], {
+      radius: 4,
+      fillColor: '#4a7c59',
+      fillOpacity: 0.6,
+      color: '#2f5d3a',
+      weight: 1,
+    })
+      .bindTooltip('Estimated canopy (heuristic)', { direction: 'top' })
+      .addTo(layer);
+  }
+}
+
+/** @deprecated use mountUnifiedPropertyMap — kept as thin alias */
+function mountParcelSatelliteMap(el, latlngs, report) {
+  mountUnifiedPropertyMap(el, latlngs, report || state.report);
+}
+
+/**
+ * Lightweight client-side re-placement after planting goal replan.
+ * Server placement (site-map-features) is authoritative on full report generate.
+ */
+function clientPlacePlantings(plan, latlngs) {
+  const plants = plan?.recommended || [];
+  if (!plants.length || !latlngs?.length) {
+    return { type: 'FeatureCollection', features: [], note: 'No plantings' };
+  }
+  const b = L.latLngBounds(latlngs);
+  const features = plants.slice(0, 16).map((p, i) => {
+    const role = /shelter|wind|caragana|poplar|spruce/i.test(
+      `${p.common_name || ''} ${p.guild_layer || ''} ${p.primary_value || ''}`
+    )
+      ? 'windbreak'
+      : /wet|riparian|sedge|willow/i.test(`${p.common_name || ''} ${p.primary_value || ''}`)
+        ? 'riparian'
+        : p.guild_layer === 'canopy' || p.guild_layer === 'tree'
+          ? 'canopy'
+          : p.guild_layer === 'shrub'
+            ? 'shrub'
+            : 'herbaceous';
+    const t = (i + 1) / (Math.min(plants.length, 16) + 1);
+    const u = 0.25 + (i % 4) * 0.15;
+    let lat = b.getSouth() + t * (b.getNorth() - b.getSouth());
+    let lng = b.getWest() + u * (b.getEast() - b.getWest());
+    if (role === 'windbreak') {
+      lat = b.getNorth() - 0.15 * (b.getNorth() - b.getSouth());
+      lng = b.getWest() + t * (b.getEast() - b.getWest());
+    } else if (role === 'riparian') {
+      lat = b.getSouth() + 0.2 * (b.getNorth() - b.getSouth());
+      lng = b.getWest() + t * (b.getEast() - b.getWest());
+    }
+    const e = p.economics || {};
+    return {
+      type: 'Feature',
+      properties: {
+        id: p.id || p.common_name || `plant-${i}`,
+        common_name: p.common_name || 'Plant',
+        scientific_name: p.scientific_name || null,
+        role,
+        guild_layer: p.guild_layer || null,
+        score: p.score ?? null,
+        quantity: e.suggested_quantity ?? null,
+        product_yield_mid_kg: e.yield_on_parcel_kg?.mid_kg ?? null,
+        cash_yield_mid_cad: e.gross_revenue_cad?.mid ?? null,
+        placement_rule: role,
+      },
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+    };
+  });
+  return {
+    type: 'FeatureCollection',
+    features,
+    note: 'Indicative placement after goal replan — regenerate full report for wind/water-aware layout.',
+  };
 }
 
 function topologySection(topo, a) {
@@ -2717,6 +3535,18 @@ function landValueSection(lv) {
     dataYear: lv.land_value_data_year,
   });
 
+  const samples = (mun?.samples || []).filter(
+    (s) => s.latitude != null && s.longitude != null && Number.isFinite(Number(s.latitude))
+  );
+  const parcel = getParcelLatLngs();
+  const centre = state.report?.location
+    ? { lat: state.report.location.latitude, lng: state.report.location.longitude }
+    : null;
+  const mapId = 'land-value-map-' + Math.random().toString(36).slice(2, 8);
+  if (samples.length || parcel || centre) {
+    setTimeout(() => initLandValueMap(mapId, samples, parcel, centre, refRate), 140);
+  }
+
   return `
     <section class="report-block land-value-block">
       <h2>Land value <span class="badge zone">Informational only</span></h2>
@@ -2766,6 +3596,24 @@ function landValueSection(lv) {
       }
 
       ${
+        samples.length || parcel
+          ? `<div style="margin-top:0.85rem">
+              <span class="mono topo-label">Nearby assessments map</span>
+              <p class="fine" style="margin:0.2rem 0 0.35rem">
+                Gold outline = your parcel · Circles = nearby assessed parcels (colour = relative $/acre).
+              </p>
+              <div id="${mapId}" class="report-map minimap-embed" style="height:300px"></div>
+              <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center">
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
+              </div>
+            </div>`
+          : ''
+      }
+
+      ${
         rural
           ? `<div class="rural-value-card">
               <span class="mono">${
@@ -2802,10 +3650,150 @@ function landValueSection(lv) {
     </section>`;
 }
 
+/**
+ * Map: parcel + nearby municipal assessment samples coloured by $/acre.
+ */
+function initLandValueMap(elId, samples, parcelLatLngs, centre, refRate) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  el.innerHTML = '';
+
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Esri · Municipal open assessment data', maxZoom: 18 }
+  ).addTo(map);
+
+  const rates = samples
+    .map((s) => s.land_value_per_acre ?? s.assessed_total_per_acre)
+    .filter((v) => v != null && v > 0);
+  const rMin = rates.length ? Math.min(...rates) : 0;
+  const rMax = rates.length ? Math.max(...rates) : 1;
+  const colorFor = (rate) => {
+    if (rate == null || !(rMax > rMin)) return '#2a6f97';
+    const t = Math.max(0, Math.min(1, (rate - rMin) / (rMax - rMin)));
+    // blue (low) → gold → orange (high)
+    if (t < 0.5) {
+      const u = t * 2;
+      const r = Math.round(42 + (233 - 42) * u);
+      const g = Math.round(111 + (196 - 111) * u);
+      const b = Math.round(151 + (106 - 151) * u);
+      return `rgb(${r},${g},${b})`;
+    }
+    const u = (t - 0.5) * 2;
+    const r = Math.round(233 + (196 - 233) * u);
+    const g = Math.round(196 + (92 - 196) * u);
+    const b = Math.round(106 + (38 - 106) * u);
+    return `rgb(${r},${g},${b})`;
+  };
+
+  const bounds = [];
+
+  const parcel = parcelLatLngs || getParcelLatLngs();
+  if (parcel?.length >= 3) {
+    const poly = L.polygon(parcel, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.15,
+      weight: 3,
+    }).addTo(map);
+    poly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    bounds.push(poly.getBounds());
+  }
+
+  if (centre?.lat != null && centre?.lng != null) {
+    L.circleMarker([centre.lat, centre.lng], {
+      radius: 8,
+      color: '#fff',
+      weight: 2,
+      fillColor: '#5b3a73',
+      fillOpacity: 1,
+    })
+      .bindPopup(
+        `<strong>Site centre</strong>${
+          refRate != null ? `<br/>Context ${fmtCad(refRate)}/acre` : ''
+        }`
+      )
+      .addTo(map);
+    bounds.push(L.latLngBounds([[centre.lat, centre.lng]]));
+  }
+
+  samples.forEach((s) => {
+    const rate = s.land_value_per_acre ?? s.assessed_total_per_acre;
+    const m = L.circleMarker([s.latitude, s.longitude], {
+      radius: 7,
+      color: '#fff',
+      weight: 1.5,
+      fillColor: colorFor(rate),
+      fillOpacity: 0.9,
+    }).addTo(map);
+    m.bindPopup(
+      `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
+        `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${
+          s.land_separable ? 'land residual' : 'total assessed'
+        }<br/>` +
+        `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
+        `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}<br/>` +
+        `<span class="fine">Assessed value — not sale price</span>`
+    );
+    bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+  });
+
+  try {
+    if (bounds.length) {
+      const b = bounds.reduce((acc, x) => acc.extend(x), L.latLngBounds(bounds[0]));
+      map.fitBounds(b, { padding: [28, 28], maxZoom: 16 });
+    } else if (centre) {
+      map.setView([centre.lat, centre.lng], 13);
+    }
+  } catch { /* ignore */ }
+
+  requestAnimationFrame(() => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  });
+}
+
 function sourceLabel(src) {
   if (src === 'municipal_assessment') return 'Municipal assessment';
   if (src === 'cli_municipality_aggregate') return 'CLI municipality aggregate';
   return 'None';
+}
+
+/** Format product yield (kg) mid at maturity. Accepts yield_on_parcel_kg or {mid_kg}. */
+function fmtProductYieldMid(y, unit = 'kg') {
+  if (!y) return '—';
+  const mid = y.mid_kg ?? y.mid ?? null;
+  if (mid == null) return '—';
+  const u = unit || y.unit || 'kg';
+  return `${fmtQty(mid)} ${esc(u)}/yr`;
+}
+
+/** Format product yield range low–high. */
+function fmtProductYieldRange(y, unit = 'kg') {
+  if (!y) return '—';
+  const lo = y.low_kg ?? y.low ?? null;
+  const hi = y.high_kg ?? y.high ?? null;
+  const mid = y.mid_kg ?? y.mid ?? null;
+  const u = unit || y.unit || 'kg';
+  if (lo != null && hi != null) return `${fmtQty(lo)}–${fmtQty(hi)} ${u}`;
+  if (mid != null) return `~${fmtQty(mid)} ${u}`;
+  return '—';
+}
+
+/** Format cash yield (gross CAD) range. */
+function fmtCashYieldRange(g) {
+  if (!g) return '—';
+  if (g.low != null && g.high != null) return `${fmtMoney(g.low)}–${fmtMoney(g.high)}/yr`;
+  if (g.mid != null) return `~${fmtMoney(g.mid)}/yr`;
+  return '—';
+}
+
+function fmtQty(n) {
+  if (n == null || Number.isNaN(Number(n))) return '—';
+  const v = Number(n);
+  if (v >= 100) return Math.round(v).toLocaleString('en-CA');
+  if (v >= 10) return (Math.round(v * 10) / 10).toLocaleString('en-CA');
+  return (Math.round(v * 10) / 10).toString();
 }
 
 function fmtCad(n) {
@@ -3185,8 +4173,8 @@ function renderPlantingPane(plan) {
               <th>Value</th>
               <th>Suit.</th>
               <th>Wholesale $/kg</th>
-              <th>Yield / ha</th>
-              <th>Gross / parcel</th>
+              <th>Product yield</th>
+              <th>Cash yield</th>
               <th>Channels</th>
             </tr>
           </thead>
@@ -3195,8 +4183,9 @@ function renderPlantingPane(plan) {
               .map((c) => {
                 const e = c.economics || {};
                 const w = e.price_wholesale_cad_per_kg;
-                const y = e.yield_kg_per_ha;
+                const yPatch = e.yield_on_parcel_kg;
                 const g = e.gross_revenue_cad;
+                const unit = e.unit || 'kg';
                 const vl =
                   VALUE_LABELS[c.primary_value] || c.primary_value || '—';
                 return `<tr>
@@ -3204,14 +4193,8 @@ function renderPlantingPane(plan) {
                   <td class="fine">${esc(vl)}</td>
                   <td>${esc(c.suitability)} (${esc(c.score)})</td>
                   <td>${w ? `${fmtMoney(w.low)}–${fmtMoney(w.high)}` : '—'}</td>
-                  <td>${y ? `${esc(y.low)}–${esc(y.high)} kg` : '—'}</td>
-                  <td class="econ-rev">${
-                    g
-                      ? `${fmtMoney(g.low)}–${fmtMoney(g.high)}`
-                      : e.non_cash_value
-                        ? 'Non-cash'
-                        : '—'
-                  }</td>
+                  <td class="econ-yield">${fmtProductYieldRange(yPatch, unit)}</td>
+                  <td class="econ-rev">${fmtCashYieldRange(g)}</td>
                   <td class="fine">${esc((e.market_channels || []).slice(0, 3).join(', ') || '—')}</td>
                 </tr>`;
               })
@@ -3219,7 +4202,7 @@ function renderPlantingPane(plan) {
           </tbody>
         </table>
       </div>
-      <p class="fine">${esc(plan.economics_disclaimer || '')}</p>
+      <p class="fine">Product yield = kg/yr on the polyculture patch · Cash yield = gross CAD/yr at maturity (before full labour). ${esc(plan.economics_disclaimer || '')}</p>
     </div>`
       : '';
 
@@ -3281,34 +4264,69 @@ function renderPlantingPane(plan) {
     const e = p.economics;
     const valueAdd =
       e?.value_add?.gross_mid_cad
-        ? `<br><span class="fine">Value-add (${esc(
-            e.value_add.product || 'processed'
-          )}): ~${fmtMoney(e.value_add.gross_mid_cad)} if ×${esc(
-            e.value_add.multiplier
-          )} processing step</span>`
+        ? `Value-add (${esc(e.value_add.product || 'processed')}): ~${fmtMoney(e.value_add.gross_mid_cad)} (conservative partial capture)`
         : '';
     const est = e?.establishment_cost_cad;
+    const unit = e?.unit || 'kg';
+    const y = e?.yield_on_parcel_kg;
+    const g = e?.gross_revenue_cad;
+
+    // Product yield (physical) + cash yield (CAD) as primary metrics
+    const yieldBlock =
+      y?.mid_kg != null || g?.mid != null
+        ? `<div class="plant-yield-grid summary-grid" style="margin:0.5rem 0 0.35rem">
+            <div class="stat">
+              <span class="k">Product yield</span>
+              <strong>${fmtProductYieldMid(y, unit)}</strong>
+              <span class="fine">${y?.mid_kg != null ? `${fmtProductYieldRange(y, unit)} range · at maturity` : '—'}</span>
+            </div>
+            <div class="stat">
+              <span class="k">Cash yield</span>
+              <strong>${g?.mid != null ? fmtMoney(g.mid) + '/yr' : '—'}</strong>
+              <span class="fine">${fmtCashYieldRange(g)}${g?.mid != null ? ' gross' : ''}</span>
+            </div>
+            ${
+              e?.annual_opex_cad_est != null && g?.mid != null
+                ? `<div class="stat">
+                    <span class="k">Net (after opex est.)</span>
+                    <strong>${fmtMoney(Math.max(0, g.mid - e.annual_opex_cad_est))}/yr</strong>
+                    <span class="fine">opex ~${fmtMoney(e.annual_opex_cad_est)}</span>
+                  </div>`
+                : ''
+            }
+          </div>`
+        : '';
+
     const econBits = [];
-    if (e?.gross_revenue_cad?.mid != null) {
-      econBits.push(
-        `<strong>Gross ~${fmtMoney(e.gross_revenue_cad.mid)}/yr</strong> at maturity (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)})`
-      );
-    }
     if (est?.total != null) {
       econBits.push(`Est. <strong>${fmtMoney(est.total)}</strong> (~${esc(est.quantity)} plants)`);
     }
     if (e?.payback_years != null) econBits.push(`~${esc(e.payback_years)} yr payback`);
+    else if (g?.mid) econBits.push('payback uncertain within horizon');
     if (e?.npv_cad?.mid != null) {
-      econBits.push(`NPV ${fmtMoney(e.npv_cad.mid)} / ${esc(e.npv_cad.horizon_years)}y @ ${Math.round((e.npv_cad.discount_rate || 0.05) * 100)}%`);
+      econBits.push(`NPV ${fmtMoney(e.npv_cad.mid)} / ${esc(e.npv_cad.horizon_years)}y`);
     }
-    const econLine = econBits.length
-      ? `<p class="plant-econ">${econBits.join(' · ')}
-           ${e.establishment_years ? `<br><span class="fine">~${esc(e.establishment_years)} yr establish · labour ${esc(e.labour_intensity || '—')}</span>` : ''}
-           ${e.market_channels?.length ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>` : ''}
-           ${valueAdd}
-         </p>`
-      : e?.non_cash_value
-        ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+    const econLine =
+      yieldBlock || econBits.length || e?.non_cash_value
+        ? `${yieldBlock}
+           ${
+             econBits.length
+               ? `<p class="plant-econ fine">${econBits.join(' · ')}</p>`
+               : ''
+           }
+           <p class="fine" style="margin:0.15rem 0 0">
+             Product yield = physical harvest on the polyculture patch (~${esc(Math.round((e?.polyculture_share || 0.05) * 100))}% of parcel).
+             Cash yield = gross CAD at maturity (realization ${esc(e?.realization_factor ?? '—')}) — not full-field monoculture income.
+             ${e?.establishment_years ? `· ~${esc(e.establishment_years)} yr to establish` : ''}
+             ${e?.labour_intensity ? `· labour ${esc(e.labour_intensity)}` : ''}
+           </p>
+           ${e?.market_channels?.length ? `<p class="fine">Markets: ${esc(e.market_channels.join(', '))}</p>` : ''}
+           ${valueAdd ? `<p class="fine">${valueAdd}</p>` : ''}
+           ${
+             !y && !g && e?.non_cash_value
+               ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+               : ''
+           }`
         : '';
     const leverLine = p.lever_benefits?.length
       ? `<p class="fine"><strong>Helps levers:</strong> ${p.lever_benefits.map(esc).join(', ')}</p>`
@@ -3327,43 +4345,68 @@ function renderPlantingPane(plan) {
           ${sec.map((s) => `<span class="value-chip secondary">${esc(s)}</span>`).join('')}
         </div>`
       : '';
+    // Compact metrics always visible in the collapsed summary
+    const summaryMetrics = [
+      y?.mid_kg != null ? `${fmtProductYieldMid(y, unit)}` : null,
+      g?.mid != null ? `${fmtMoney(g.mid)}/yr` : null,
+      est?.total != null ? `est. ${fmtMoney(est.total)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     return `
-      <article class="plant-card" data-suit="${esc(p.suitability)}" data-value="${esc(
+      <article class="plant-card plant-card-collapsible" data-suit="${esc(p.suitability)}" data-value="${esc(
         p.primary_value || ''
       )}">
-        ${chips}
-        ${
-          p.value_headline
-            ? `<p class="value-headline plant-value-headline">${esc(p.value_headline)}</p>`
-            : ''
-        }
-        <div class="plant-head">
-          <h3>${esc(p.common_name)}</h3>
-          <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
-        </div>
-        <div class="basis">${esc(p.scientific_name || '')}${
-          p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
-        }${p.category ? ` · ${esc(p.category)}` : ''}${
-          p.alberta_native ? ' · Alberta native' : ''
-        }${
-          p.alberta_in_range ? ' · USDA: Alberta in range' : ''
-        }</div>
-        ${fitLine}
-        ${plantSpecLine(p)}
-        ${leverLine}
-        ${
-          p.reasons?.length
-            ? `<p class="plant-ok">${p.reasons.slice(0, 5).map(esc).join(' · ')}</p>`
-            : ''
-        }
-        ${
-          p.limits?.length
-            ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
-            : ''
-        }
-        ${econLine}
-        ${supplierBlock(p.suppliers)}
-        ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
+        <details class="plant-details">
+          <summary class="plant-card-summary">
+            <div class="plant-summary-main">
+              ${chips}
+              <div class="plant-head">
+                <h3>${esc(p.common_name)}</h3>
+                <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
+              </div>
+              <div class="basis plant-summary-meta">${esc(p.scientific_name || '')}${
+                p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
+              }${p.category ? ` · ${esc(p.category)}` : ''}${
+                p.alberta_native ? ' · Alberta native' : ''
+              }</div>
+              ${
+                summaryMetrics
+                  ? `<p class="plant-summary-metrics fine">${summaryMetrics}</p>`
+                  : ''
+              }
+            </div>
+            <span class="plant-expand-hint" aria-hidden="true">Details</span>
+          </summary>
+          <div class="plant-card-body">
+            ${
+              p.value_headline
+                ? `<p class="value-headline plant-value-headline">${esc(p.value_headline)}</p>`
+                : ''
+            }
+            ${
+              p.alberta_in_range
+                ? `<div class="basis">USDA: Alberta in range</div>`
+                : ''
+            }
+            ${fitLine}
+            ${plantSpecLine(p)}
+            ${leverLine}
+            ${
+              p.reasons?.length
+                ? `<p class="plant-ok">${p.reasons.slice(0, 5).map(esc).join(' · ')}</p>`
+                : ''
+            }
+            ${
+              p.limits?.length
+                ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
+                : ''
+            }
+            ${econLine}
+            ${supplierBlock(p.suppliers)}
+            ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
+          </div>
+        </details>
       </article>`;
   }
 
@@ -3440,7 +4483,10 @@ function renderPlantingPane(plan) {
       <div class="stat"><span class="k">Plan NPV (${esc(pe.horizon_years)}y)</span><strong>${pe.npv_sum_cad != null ? fmtMoney(pe.npv_sum_cad) : '—'}</strong></div>
       <div class="stat"><span class="k">Cash models</span><strong>${esc(pe.n_with_cash_model)} / ${esc(pe.n_plants)}</strong></div>
     </div>
-    <p class="fine">${esc(pe.disclaimer || '')}</p>`
+    <p class="fine">${esc(pe.disclaimer || '')}</p>
+    ${pe.polyculture_competition_factor != null && pe.polyculture_competition_factor < 1
+      ? `<p class="fine">Multi-crop competition factor ${esc(pe.polyculture_competition_factor)} applied so species do not each claim the whole farm.</p>`
+      : ''}`
     : '';
 
   const guildBlock = (plan.suggested_guilds || []).length
@@ -3488,6 +4534,13 @@ function renderPlantingPane(plan) {
         'Filter plants by value'
       )}
       ${cashBlock}
+      <div class="plant-list-toolbar" id="plant-list-toolbar">
+        <span class="fine">${filtered.length} plants · collapsed by default</span>
+        <div class="plant-list-toolbar-actions">
+          <button type="button" class="btn-quiet" id="btn-expand-plants">Expand all</button>
+          <button type="button" class="btn-quiet" id="btn-collapse-plants">Collapse all</button>
+        </div>
+      </div>
       <div class="plant-list" id="plant-list">${
         rows ||
         '<p class="fine">No plants in this value filter — try All.</p>'
@@ -3537,6 +4590,14 @@ function renderPlantingPane(plan) {
   });
   $('btn-replan-plants')?.addEventListener('click', () => replanPlantings());
 
+  const setAllPlantDetailsOpen = (open) => {
+    el.querySelectorAll('#plant-list details.plant-details').forEach((d) => {
+      d.open = open;
+    });
+  };
+  $('btn-expand-plants')?.addEventListener('click', () => setAllPlantDetailsOpen(true));
+  $('btn-collapse-plants')?.addEventListener('click', () => setAllPlantDetailsOpen(false));
+
   // Plant value filter (reuse chip UI; scope to planting pane)
   const plantBar = el.querySelector('.value-filter-bar');
   plantBar?.querySelectorAll('[data-value-filter]').forEach((btn) => {
@@ -3554,6 +4615,9 @@ function renderPlantingPane(plan) {
       host.innerHTML = list.length
         ? list.map(plantCard).join('')
         : '<p class="fine">No plants in this value filter — try All.</p>';
+      // Filtered list stays collapsed by default
+      const toolbar = el.querySelector('#plant-list-toolbar .fine');
+      if (toolbar) toolbar.textContent = `${list.length} plants · collapsed by default`;
     });
   });
 }
@@ -3696,6 +4760,17 @@ async function replanPlantings() {
       design_elements: data.design_elements || r.design_elements,
       recommendations: data.recommendations || r.recommendations,
     };
+    // Refresh planting markers on unified property map (same drawn parcel)
+    if (state.report.site_map) {
+      state.report.site_map = {
+        ...state.report.site_map,
+        plantings: clientPlacePlantings(plan, getParcelLatLngs()),
+        layers_available: {
+          ...(state.report.site_map.layers_available || {}),
+          plantings: !!(plan.recommended?.length),
+        },
+      };
+    }
     if (state.report.fecundity && data.planting_intervention_value) {
       state.report.fecundity = {
         ...state.report.fecundity,
@@ -3705,6 +4780,8 @@ async function replanPlantings() {
     state.plantGoals = plan.goals || state.plantGoals;
     state._plantPlan = null;
     renderPlantingPane(plan);
+    // Re-mount property maps so planting markers update
+    setTimeout(() => initReportMapEmbed(state.report), 80);
     if (status) {
       status.hidden = false;
       const pe = plan.plan_economics;
@@ -3738,17 +4815,30 @@ function recommendedPlantingsSection(table, intervention) {
   if (!table && !intervention) return '';
   const rows =
     table?.rows ||
-    table?.recommended?.map((p) => ({
-      common_name: p.common_name,
-      scientific_name: p.scientific_name,
-      score: p.score,
-      functions: p.primary_value ? [p.primary_value] : [],
-      quantity: p.economics?.suggested_quantity,
-      establishment_cost_cad: p.economics?.establishment_cost_cad?.total,
-      gross_revenue_mid_cad: p.economics?.gross_revenue_cad?.mid,
-      payback_years: p.economics?.payback_years,
-      improves_levers: p.lever_benefits || p.improves_levers || [],
-    })) ||
+    table?.recommended?.map((p) => {
+      const e = p.economics || {};
+      const y = e.yield_on_parcel_kg;
+      const g = e.gross_revenue_cad;
+      return {
+        common_name: p.common_name,
+        scientific_name: p.scientific_name,
+        score: p.score,
+        functions: p.primary_value ? [p.primary_value] : [],
+        quantity: e.suggested_quantity,
+        unit: e.unit || 'kg',
+        product_yield_kg: y
+          ? { low: y.low_kg, mid: y.mid_kg, high: y.high_kg, unit: e.unit || 'kg' }
+          : null,
+        cash_yield_cad: g
+          ? { low: g.low, mid: g.mid, high: g.high }
+          : null,
+        product_yield_mid_kg: y?.mid_kg ?? null,
+        establishment_cost_cad: e.establishment_cost_cad?.total,
+        gross_revenue_mid_cad: g?.mid,
+        payback_years: e.payback_years,
+        improves_levers: p.lever_benefits || p.improves_levers || [],
+      };
+    }) ||
     intervention?.species ||
     [];
   if (!rows.length) return '';
@@ -3767,6 +4857,13 @@ function recommendedPlantingsSection(table, intervention) {
       const levers = Array.isArray(r.improves_levers)
         ? r.improves_levers.join('; ')
         : r.improves_levers || '—';
+      const unit = r.unit || r.product_yield_kg?.unit || 'kg';
+      const py = r.product_yield_kg
+        ? { low_kg: r.product_yield_kg.low, mid_kg: r.product_yield_kg.mid, high_kg: r.product_yield_kg.high }
+        : r.product_yield_mid_kg != null
+          ? { mid_kg: r.product_yield_mid_kg }
+          : null;
+      const cy = r.cash_yield_cad || (r.gross_revenue_mid_cad != null ? { mid: r.gross_revenue_mid_cad } : null);
       return `<tr>
         <td><strong>${esc(r.common_name || r.id || '—')}</strong>${
           r.scientific_name ? `<br><span class="fine mono">${esc(r.scientific_name)}</span>` : ''
@@ -3774,7 +4871,8 @@ function recommendedPlantingsSection(table, intervention) {
         <td class="fine">${esc(fn)}</td>
         <td>${r.quantity != null ? esc(r.quantity) : '—'}</td>
         <td>${r.establishment_cost_cad != null ? fmtMoney(r.establishment_cost_cad) : '—'}</td>
-        <td>${r.gross_revenue_mid_cad != null ? fmtMoney(r.gross_revenue_mid_cad) : '—'}</td>
+        <td class="econ-yield">${fmtProductYieldMid(py, unit)}<br><span class="fine">${fmtProductYieldRange(py, unit)}</span></td>
+        <td class="econ-rev">${cy?.mid != null ? fmtMoney(cy.mid) : '—'}<br><span class="fine">${fmtCashYieldRange(cy)}</span></td>
         <td>${r.payback_years != null ? `~${esc(r.payback_years)} yr` : '—'}</td>
         <td class="fine">${esc(levers)}</td>
       </tr>`;
@@ -3847,6 +4945,7 @@ function recommendedPlantingsSection(table, intervention) {
         Species ranked by site fit${goalsLabel ? ` · goals: <strong>${esc(goalsLabel)}</strong>` : ''}
         ${hardiness ? ` · hardiness ${esc(hardiness)}${eff && eff !== hardiness ? ` (effective ${esc(eff)})` : ''}` : ''}.
         Confidence: hardiness <strong>high</strong> · soil/moisture <strong>medium–high</strong> · yield &amp; price <strong>medium</strong> (ranges).
+        Indicative markers appear on the <strong>Property map</strong> (toggle “Proposed plantings”).
         <span class="badge beta" style="margin-left:0.35rem">Beta</span>
       </p>
       ${valueBlock}
@@ -3859,7 +4958,8 @@ function recommendedPlantingsSection(table, intervention) {
               <th>Function</th>
               <th>Qty</th>
               <th>Est. cost</th>
-              <th>Projected gross</th>
+              <th>Product yield</th>
+              <th>Cash yield</th>
               <th>Payback</th>
               <th>Improves</th>
             </tr>
@@ -3867,6 +4967,10 @@ function recommendedPlantingsSection(table, intervention) {
           <tbody>${body}</tbody>
         </table>
       </div>
+      <p class="fine" style="margin-top:0.4rem">
+        <strong>Product yield</strong> = physical harvest (kg/yr) on the polyculture patch at maturity.
+        <strong>Cash yield</strong> = gross CAD/yr at maturity (before full labour). Patch-scale only — not full-field monoculture.
+      </p>
       ${guildHtml}
       <p class="fine" style="margin-top:0.65rem">
         Planning ranges only — not a business plan. Verify stock, hardiness cultivars, and markets before ordering.
@@ -4368,6 +5472,7 @@ function wellDepthSection(w, centre) {
 function provincialContoursMap(contours, centre) {
   if (!contours || !contours.features?.length) return '';
   const id = 'prov-contours-' + Math.random().toString(36).slice(2, 8);
+  const parcel = getParcelLatLngs();
   setTimeout(() => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -4376,29 +5481,53 @@ function provincialContoursMap(contours, centre) {
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri', maxZoom: 18,
     }).addTo(map);
-    const all = [[centre.latitude, centre.longitude]];
+    const boundsGroup = [];
+    if (parcel?.length >= 3) {
+      const poly = L.polygon(parcel, {
+        color: '#a8801f',
+        fillColor: '#a8801f',
+        fillOpacity: 0.12,
+        weight: 3,
+      }).addTo(map);
+      poly.bindPopup('<strong>Your parcel</strong>');
+      boundsGroup.push(poly);
+    }
     contours.features.forEach((f) => {
-      if (f.geometry.type === 'LineString') {
+      if (f.geometry?.type === 'LineString') {
         const coords = f.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
         const isIndex = f.properties?.contour_type === 'index';
-        L.polyline(coords, {
+        const line = L.polyline(coords, {
           color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.35)',
           weight: isIndex ? 2 : 1,
           opacity: isIndex ? 0.9 : 0.6,
         }).addTo(map);
-        const mid = coords[Math.floor(coords.length / 2)];
-        all.push(mid);
+        boundsGroup.push(line);
       }
     });
-    L.circleMarker([centre.latitude, centre.longitude], { radius: 6, fillColor: '#a8801f', fillOpacity: 1, color: '#16211b', weight: 2 }).addTo(map);
-    try { map.fitBounds(all, { padding: [15, 15] }); } catch {}
+    if (centre?.latitude != null) {
+      L.circleMarker([centre.latitude, centre.longitude], {
+        radius: 6,
+        fillColor: '#a8801f',
+        fillOpacity: 1,
+        color: '#16211b',
+        weight: 2,
+      }).addTo(map);
+    }
+    try {
+      if (boundsGroup.length) {
+        map.fitBounds(L.featureGroup(boundsGroup).getBounds(), { padding: [15, 15] });
+      } else if (centre?.latitude != null) {
+        map.setView([centre.latitude, centre.longitude], 14);
+      }
+    } catch { /* ignore */ }
   }, 150);
   return `
     <section class="report-block">
       <h2>Provincial elevation contours</h2>
       <p class="fine" style="margin-top:-0.35rem">
         Live ArcGIS contour polylines (Alberta Provincial Elevation MapServer).
-        Bold lines are index contours (every 5th interval).
+        Bold lines are index contours (every 5th interval). Gold outline = your parcel.
+        The same contours also appear on the unified <strong>Property map</strong>.
       </p>
       <div id="${id}" class="report-map minimap-embed" style="height:280px"></div>
     </section>`;
@@ -4930,8 +6059,9 @@ function smallWaterSection(sw) {
   const poss = sw.possible_small_water_or_seeps || [];
   const mapId = 'small-water-map-' + Math.random().toString(36).slice(2, 8);
   const fc = sw.feature_collection;
-  if (fc?.features?.length) {
-    setTimeout(() => initSmallWaterMap(mapId, fc, sw.map_layers), 130);
+  const parcel = getParcelLatLngs();
+  if (fc?.features?.length || parcel) {
+    setTimeout(() => initSmallWaterMap(mapId, fc, sw.map_layers, parcel), 130);
   }
 
   const openRows = open
@@ -5015,8 +6145,9 @@ function smallWaterSection(sw) {
             </div>`
           : ''
       }
-      ${fc?.features?.length ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>
+      ${fc?.features?.length || parcel ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>
         <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
           <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>Confirmed / mapped</span>
           <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(233,196,106,0.5);border:2px dashed #c45c26;vertical-align:middle;margin-right:4px"></span>Possible seeps (verify)</span>
           <span class="fine">MNDWI heatmap optional (blue = wetter)</span>
@@ -5033,7 +6164,7 @@ function smallWaterSection(sw) {
     </section>`;
 }
 
-function initSmallWaterMap(elId, featureCollection, mapLayers) {
+function initSmallWaterMap(elId, featureCollection, mapLayers, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
   el.innerHTML = '';
@@ -5044,6 +6175,23 @@ function initSmallWaterMap(elId, featureCollection, mapLayers) {
   }).addTo(map);
 
   const overlays = {};
+  const boundsGroup = [];
+
+  // Parcel boundary (same drawn coords as property map)
+  const parcelRing = parcelLatLngs || getParcelLatLngs();
+  let parcelPoly = null;
+  if (parcelRing?.length >= 3) {
+    parcelPoly = L.polygon(parcelRing, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+    }).addTo(map);
+    parcelPoly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    boundsGroup.push(parcelPoly);
+    overlays['Your parcel'] = parcelPoly;
+  }
+
   const mndwi = (mapLayers || []).find((l) => l.id === 'mndwi' && l.url);
   if (mndwi?.url) {
     fetch(mndwi.url)
@@ -5065,46 +6213,79 @@ function initSmallWaterMap(elId, featureCollection, mapLayers) {
 
   const confirmed = L.layerGroup();
   const possible = L.layerGroup();
-  L.geoJSON(featureCollection, {
-    style: (f) => {
-      const conf = f.properties?.confidence || '';
-      const isPoss = f.properties?.class === 'possible' || /low/i.test(conf);
-      // Solid teal = confirmed/mapped; dashed amber = possible seeps
-      return {
-        color: isPoss ? '#c45c26' : '#0b6e4f',
-        weight: isPoss ? 2 : 2.5,
-        fillColor: isPoss ? '#e9c46a' : '#2a9d8f',
-        fillOpacity: isPoss ? 0.35 : 0.5,
-        dashArray: isPoss ? '6 4' : null,
-      };
-    },
-    onEachFeature: (f, lyr) => {
-      const p = f.properties || {};
-      const isPoss = p.class === 'possible' || /low/i.test(p.confidence || '');
-      const verify = isPoss
-        ? '<br/><em>Field verification recommended — not permanent water</em>'
-        : '<br/><span class="fine">Screening only — not regulatory delineation</span>';
-      lyr.bindPopup(
-        `<strong>${esc(p.type || 'water')}</strong><br/>` +
-          `Area: ${p.area_m2 != null ? esc(p.area_m2) + ' m²' : '—'}<br/>` +
-          `Source: ${esc(p.source || '—')}<br/>` +
-          `Confidence: <strong>${esc(p.confidence || '—')}</strong>` +
-          verify
-      );
-      if (isPoss) lyr.addTo(possible);
-      else lyr.addTo(confirmed);
-    },
-  });
+  if (featureCollection?.features?.length) {
+    L.geoJSON(featureCollection, {
+      style: (f) => {
+        const conf = f.properties?.confidence || '';
+        const isPoss = f.properties?.class === 'possible' || /low/i.test(conf);
+        // Solid teal = confirmed/mapped; dashed amber = possible seeps
+        return {
+          color: isPoss ? '#c45c26' : '#0b6e4f',
+          weight: isPoss ? 2 : 2.5,
+          fillColor: isPoss ? '#e9c46a' : '#2a9d8f',
+          fillOpacity: isPoss ? 0.35 : 0.5,
+          dashArray: isPoss ? '6 4' : null,
+        };
+      },
+      onEachFeature: (f, lyr) => {
+        const p = f.properties || {};
+        const isPoss = p.class === 'possible' || /low/i.test(p.confidence || '');
+        const verify = isPoss
+          ? '<br/><em>Field verification recommended — not permanent water</em>'
+          : '<br/><span class="fine">Screening only — not regulatory delineation</span>';
+        lyr.bindPopup(
+          `<strong>${esc(p.type || 'water')}</strong><br/>` +
+            `Area: ${p.area_m2 != null ? esc(p.area_m2) + ' m²' : '—'}<br/>` +
+            `Source: ${esc(p.source || '—')}<br/>` +
+            `Confidence: <strong>${esc(p.confidence || '—')}</strong>` +
+            verify
+        );
+        if (isPoss) lyr.addTo(possible);
+        else lyr.addTo(confirmed);
+      },
+    });
+  }
   confirmed.addTo(map);
   possible.addTo(map);
   overlays['Confirmed / mapped water'] = confirmed;
   overlays['Possible seeps (verify)'] = possible;
+  if (confirmed.getLayers().length) boundsGroup.push(confirmed);
+  if (possible.getLayers().length) boundsGroup.push(possible);
+
+  if (!mndwi?.url) {
+    L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+  }
+
+  if (parcelPoly) parcelPoly.bringToFront();
 
   try {
-    const all = L.featureGroup([...confirmed.getLayers(), ...possible.getLayers()]);
-    const b = all.getBounds();
-    if (b.isValid()) map.fitBounds(b, { padding: [16, 16] });
+    if (boundsGroup.length) {
+      const all = L.featureGroup(
+        boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x]))
+      );
+      const b = all.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [16, 16], maxZoom: 17 });
+    }
   } catch { /* ignore */ }
+}
+
+/** Parcel ring as Leaflet [lat,lng][] from report or live draw state. */
+function getParcelLatLngs() {
+  // Prefer the coordinates captured when the user drew the parcel — reused for all maps
+  const ring =
+    state.report?.geometry?.coordinates?.[0] ||
+    state.report?.site_map?.parcel?.coordinates?.[0] ||
+    (Array.isArray(state.paths) && state.paths.length >= 3 ? state.paths : null);
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const latlngs = ring
+    .filter((p) => Array.isArray(p) && p.length >= 2)
+    .map(([lng, lat]) => [Number(lat), Number(lng)])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  if (latlngs.length < 3) return null;
+  const a = latlngs[0];
+  const b = latlngs[latlngs.length - 1];
+  if (a[0] !== b[0] || a[1] !== b[1]) latlngs.push([...a]);
+  return latlngs;
 }
 
 function wetlandsSection(w) {
@@ -5121,14 +6302,17 @@ function wetlandsSection(w) {
   const conf = w.confidence || (onSite ? 'high' : '—');
   const mapId = 'wetlands-map-' + Math.random().toString(36).slice(2, 8);
   const fc = w.wetland_polygons;
-  if (fc?.features?.length) {
-    setTimeout(() => initWetlandsMap(mapId, fc, w.query_bbox), 120);
+  const parcel = getParcelLatLngs();
+  // Always show map when we have wetlands and/or the drawn parcel
+  if (fc?.features?.length || parcel) {
+    setTimeout(() => initWetlandsMap(mapId, fc, w.query_bbox, parcel), 120);
   }
   return `
     <section class="report-block wetlands-block">
       <h2>Wetlands (inventory)</h2>
       <p class="fine" style="margin-top:-0.35rem">
         Alberta Merged Wetland Inventory polygons for screening water, microclimate, and fauna levers.
+        Gold outline = <strong>your parcel</strong>. Teal fill = mapped wetlands.
         <strong>Not a formal Wetland Policy delineation</strong> — field assessment required before earthworks or Water Act decisions.
       </p>
       <div class="summary-grid">
@@ -5145,7 +6329,15 @@ function wetlandsSection(w) {
             </div>`
           : `<p class="fine" style="margin-top:0.65rem">No AMWI wetland polygon on the parcel. Pond candidates still depend on topography, soils, and catchment — not inventory absence alone.</p>`
       }
-      ${fc?.features?.length ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>` : ''}
+      ${
+        fc?.features?.length || parcel
+          ? `<div id="${mapId}" class="report-map minimap-embed" style="height:280px;margin-top:0.75rem"></div>
+        <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>AMWI wetland</span>
+        </div>`
+          : ''
+      }
       <p class="fine" style="margin-top:0.5rem">
         Confidence: <strong>${esc(conf)}</strong>
         · Source: ${esc(w.source || 'AMWI')}
@@ -5156,36 +6348,65 @@ function wetlandsSection(w) {
     </section>`;
 }
 
-function initWetlandsMap(elId, featureCollection, bbox) {
+function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
   el.innerHTML = '';
   const map = L.map(el, { zoomControl: true, attributionControl: true });
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Esri',
+    attribution: 'Esri · AMWI (OGL-A)',
     maxZoom: 18,
   }).addTo(map);
-  const layer = L.geoJSON(featureCollection, {
-    style: {
-      color: '#0b6e4f',
-      weight: 2,
-      fillColor: '#2a9d8f',
-      fillOpacity: 0.45,
-    },
-    onEachFeature: (f, lyr) => {
-      const p = f.properties || {};
-      lyr.bindPopup(
-        `<strong>${esc(p.type || 'wetland')}</strong><br/>` +
-          `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
-          `CWCS: ${esc(p.cwcs_class || '—')}<br/>` +
-          `<span class="fine">AMWI inventory · high confidence for screening</span>`
-      );
-    },
-  }).addTo(map);
+
+  const boundsGroup = [];
+
+  // Parcel boundary first (under wetlands for fill, but drawn on top after for outline clarity)
+  let parcelPoly = null;
+  const parcelRing = parcelLatLngs || getParcelLatLngs();
+  if (parcelRing?.length >= 3) {
+    parcelPoly = L.polygon(parcelRing, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+      dashArray: null,
+    }).addTo(map);
+    parcelPoly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    boundsGroup.push(parcelPoly);
+  }
+
+  const fc = featureCollection?.features?.length ? featureCollection : null;
+  if (fc) {
+    const layer = L.geoJSON(fc, {
+      style: {
+        color: '#0b6e4f',
+        weight: 2,
+        fillColor: '#2a9d8f',
+        fillOpacity: 0.45,
+      },
+      onEachFeature: (f, lyr) => {
+        const p = f.properties || {};
+        lyr.bindPopup(
+          `<strong>${esc(p.type || 'wetland')}</strong><br/>` +
+            `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
+            `CWCS: ${esc(p.cwcs_class || '—')}<br/>` +
+            `${p.on_parcel ? '<em>Intersects parcel</em><br/>' : ''}` +
+            `<span class="fine">AMWI inventory · high confidence for screening</span>`
+        );
+      },
+    }).addTo(map);
+    boundsGroup.push(layer);
+  }
+
+  // Bring parcel outline to front so it stays visible over wetland fills
+  if (parcelPoly) parcelPoly.bringToFront();
+
   try {
-    const b = layer.getBounds();
-    if (b.isValid()) map.fitBounds(b, { padding: [16, 16] });
-    else if (bbox) {
+    if (boundsGroup.length) {
+      const fg = L.featureGroup(boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x])));
+      const b = fg.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [20, 20], maxZoom: 17 });
+    } else if (bbox) {
       map.fitBounds(
         [
           [bbox.south, bbox.west],
@@ -5268,23 +6489,490 @@ function landSalesMinimap(lv, centre) {
   return `<div id="${id}" class="report-map minimap-embed" style="height:220px;margin-top:0.6rem"></div>`;
 }
 
-function servicePackagesSection(sp) {
-  if (!sp?.packages?.length) return '';
-  const flow = (sp.flow || [])
+/**
+ * Value-first conversion step: choose interventions → email for full report →
+ * itemized estimate → inquiry to info@expandingedge.ca
+ */
+function nextStepsSection(r, idSuffix = 'main') {
+  const menu = r?.action_menu;
+  const items = menu?.items || buildClientActionMenuFallback(r);
+  if (!items.length) return '';
+
+  // Initialize selection from defaults once per report
+  if (!Array.isArray(state.selectedInterventions)) {
+    state.selectedInterventions = items.filter((i) => i.default_selected).map((i) => i.id);
+  }
+  const selected = new Set(state.selectedInterventions);
+  const unlocked = !!state.reportUnlocked;
+  const rootId = `next-steps-${idSuffix}`;
+
+  const groupOrder = [
+    { id: 'planting_shelter', label: 'Planting & shelterbelts' },
+    { id: 'water', label: 'Water' },
+    { id: 'optional', label: 'Optional extras' },
+  ];
+  const byGroup = {};
+  for (const it of items) {
+    const g = it.group || 'other';
+    if (!byGroup[g]) byGroup[g] = [];
+    byGroup[g].push(it);
+  }
+
+  const groupsHtml = groupOrder
+    .map((g) => {
+      const list = byGroup[g.id] || [];
+      if (!list.length) return '';
+      const cards = list
+        .map((it) => {
+          const on = selected.has(it.id);
+          const price = it.price?.amount_cad != null ? fmtCad(it.price.amount_cad) : 'Quote on walk';
+          const plants =
+            it.plant_highlights?.length
+              ? `<p class="fine">Species fit: ${it.plant_highlights.map(esc).join(', ')}</p>`
+              : '';
+          return `
+          <label class="intervention-card${on ? ' is-selected' : ''}${it.optional ? ' is-optional' : ''}" data-intervention-id="${esc(it.id)}">
+            <input type="checkbox" class="intervention-check" data-intervention="${esc(it.id)}" ${on ? 'checked' : ''} />
+            <div class="intervention-card-body">
+              <div class="intervention-card-top">
+                <span class="mono intervention-cat">${esc(it.category || g.id)}</span>
+                ${it.optional ? '<span class="pkg-badge">Optional</span>' : ''}
+                <span class="intervention-price mono">${price}</span>
+              </div>
+              <strong class="intervention-label">${esc(it.label)}</strong>
+              <p class="fine">${esc(it.blurb || '')}</p>
+              <p class="fine intervention-why"><strong>Why here:</strong> ${esc(it.reason || '')}</p>
+              ${plants}
+            </div>
+          </label>`;
+        })
+        .join('');
+      return `
+        <div class="intervention-group">
+          <h3 class="intervention-group-title">${esc(g.label)}</h3>
+          <div class="intervention-list">${cards}</div>
+        </div>`;
+    })
+    .join('');
+
+  const flow = (r.service_packages?.flow || [
+    { step: 1, label: 'Your site insights', description: 'Free analysis' },
+    { step: 2, label: 'Choose interventions', description: 'Select what you want' },
+    { step: 3, label: 'Full report', description: 'Download with email' },
+    { step: 4, label: 'Estimate & inquire', description: 'Talk to Expanding Edge' },
+  ])
     .map(
       (s, i) => `
-      <div class="flow-step${i === 1 ? ' flow-step-active' : ''}">
-        <span class="mono flow-step-n">${esc(s.step)}</span>
-        <strong>${esc(s.label)}</strong>
-        <p class="fine">${esc(s.description)}</p>
-      </div>`
+    <div class="flow-step${i === 1 ? ' flow-step-active' : ''}">
+      <span class="mono flow-step-n">${esc(s.step || i + 1)}</span>
+      <strong>${esc(s.label)}</strong>
+      <p class="fine">${esc(s.description || '')}</p>
+    </div>`
     )
     .join('');
 
+  const notes = [];
+  if (menu?.well_on_site) notes.push('A well appears to be on or next to this parcel — well drilling is not offered by default.');
+  if (menu?.water_on_site) notes.push('Surface water is present — pond and swale packages are omitted.');
+  if (!menu?.well_on_site) notes.push('No well detected on the parcel — a groundwater well is offered.');
+  if (!menu?.water_on_site) notes.push('No surface water on the parcel — swales and pond storage are offered.');
+  notes.push('Outbuilding is available but off by default.');
+
+  return `
+    <section class="report-block next-steps-block" id="${rootId}" data-next-steps>
+      <span class="mono eyebrow">Next step · receive more value</span>
+      <h2>Build your plan</h2>
+      <p class="fine" style="margin-top:-0.25rem">
+        You’ve seen what the land can support. Now choose the interventions you want Expanding Edge to price and discuss.
+        Select or unselect freely — nothing is a commitment.
+      </p>
+      <div class="flow-steps">${flow}</div>
+      ${menu?.summary ? `<p class="fine" style="margin:0.65rem 0">${esc(menu.summary)}</p>` : ''}
+      ${notes.length ? `<ul class="fine next-steps-notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+
+      <div class="intervention-picker">
+        ${groupsHtml}
+      </div>
+
+      <!-- Step: email for full report -->
+      <div class="next-step-panel report-unlock-panel">
+        <h3>Get your full report</h3>
+        <p class="fine">
+          Enter your email to download the complete site analysis (map, water, soils, plantings, and your selections).
+          We’ll only use this to send your report and follow up if you inquire.
+        </p>
+        <div class="report-unlock-form">
+          <label class="sr-only" for="report-email-input-${esc(idSuffix)}">Email</label>
+          <input type="email" id="report-email-input-${esc(idSuffix)}" class="report-email-input" data-report-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" ${unlocked ? 'readonly' : ''} autocomplete="email" />
+          <button type="button" class="btn" data-unlock-report ${unlocked ? 'disabled' : ''}>
+            ${unlocked ? 'Report unlocked' : 'Unlock full report'}
+          </button>
+          <button type="button" class="btn btn-secondary" data-download-report ${unlocked ? '' : 'disabled'} title="${unlocked ? 'Download PDF' : 'Enter email first'}">
+            Download PDF
+          </button>
+        </div>
+        <p class="fine report-unlock-status" ${unlocked ? '' : 'hidden'}>
+          ${unlocked ? `Unlocked for ${esc(state.reportEmail)}. Download anytime.` : ''}
+        </p>
+      </div>
+
+      <!-- Step: live estimate from selection -->
+      <div class="next-step-panel estimate-panel">
+        <h3>Itemized planning estimate</h3>
+        <p class="fine">Updates as you select options. Planning-level only — not a firm quote.</p>
+        <div class="live-estimate" data-live-estimate>${renderLiveEstimateHtml(items, selected)}</div>
+      </div>
+
+      <!-- Step: inquiry -->
+      <div class="next-step-panel inquiry-panel">
+        <h3>Make an inquiry</h3>
+        <p class="fine">
+          Send your selected interventions and site report summary to
+          <strong>info@expandingedge.ca</strong>. We’ll follow up to schedule a site walk.
+        </p>
+        <div class="inquiry-form">
+          <label>
+            <span class="mono">Your name</span>
+            <input type="text" class="report-email-input" data-inquiry-name placeholder="Name" autocomplete="name" />
+          </label>
+          <label>
+            <span class="mono">Email</span>
+            <input type="email" class="report-email-input" data-inquiry-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" autocomplete="email" />
+          </label>
+          <label>
+            <span class="mono">Phone (optional)</span>
+            <input type="tel" class="report-email-input" data-inquiry-phone placeholder="(780) …" autocomplete="tel" />
+          </label>
+          <label class="inquiry-message-label">
+            <span class="mono">Message (optional)</span>
+            <textarea class="inquiry-message" data-inquiry-message rows="3" placeholder="Goals, timeline, access notes…"></textarea>
+          </label>
+          <button type="button" class="btn" data-send-inquiry>Send inquiry with my selections</button>
+          <p class="fine inquiry-status" data-inquiry-status hidden></p>
+        </div>
+      </div>
+    </section>`;
+}
+
+function buildClientActionMenuFallback(r) {
+  // Older cached reports without action_menu — minimal list from packages
+  const pkgs = r?.service_packages?.packages || [];
+  return pkgs
+    .filter((p) => p.id !== 'off_grid_garage' || true)
+    .slice(0, 10)
+    .map((p) => ({
+      id: p.id,
+      category: p.category,
+      label: p.label,
+      blurb: p.blurb,
+      reason: p.reason,
+      price: p.price,
+      default_selected: p.id !== 'off_grid_garage' && !!p.featured,
+      group:
+        p.category === 'water'
+          ? 'water'
+          : p.id === 'off_grid_garage' || p.category === 'energy'
+            ? 'optional'
+            : 'planting_shelter',
+      optional: p.id === 'off_grid_garage' || p.category === 'energy',
+    }));
+}
+
+function renderLiveEstimateHtml(items, selectedSet) {
+  const chosen = items.filter((i) => selectedSet.has(i.id));
+  if (!chosen.length) {
+    return `<p class="fine">Select at least one option above to see a planning estimate.</p>`;
+  }
+  let subtotal = 0;
+  let rangeLow = 0;
+  let rangeHigh = 0;
+  const blocks = chosen
+    .map((it) => {
+      const p = it.price || {};
+      const mid = p.amount_cad || 0;
+      subtotal += mid;
+      rangeLow += p.range_low_cad ?? mid;
+      rangeHigh += p.range_high_cad ?? mid;
+      const lines = (p.line_items || [])
+        .map(
+          (l) => `
+        <div class="quote-line">
+          <span>${esc(l.label)}</span>
+          <span class="mono">${fmtCad(l.cost_cad ?? l.cost)}</span>
+        </div>`
+        )
+        .join('');
+      return `
+      <div class="quote-item">
+        <div class="quote-item-head">
+          <span class="quote-item-name">${esc(it.label)}</span>
+          <span class="quote-item-size mono">${
+            it.size != null ? `${esc(it.size)} ${esc(it.unit || '')}` : 'package'
+          }</span>
+        </div>
+        <div class="quote-item-lines">
+          ${lines || `<div class="quote-line"><span>${esc(p.label || 'Planning estimate')}</span><span class="mono">${fmtCad(mid)}</span></div>`}
+          ${
+            p.materials_cost_cad
+              ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency${
+                  p.materials_pct != null ? ` (${Math.round(p.materials_pct * 100)}%)` : ''
+                }</span><span class="mono">${fmtCad(p.materials_cost_cad)}</span></div>`
+              : ''
+          }
+          ${
+            p.travel_cost_cad
+              ? `<div class="quote-line quote-line-sub"><span>Mobilization / demobilization + travel</span><span class="mono">${fmtCad(p.travel_cost_cad)}</span></div>`
+              : ''
+          }
+        </div>
+        <div class="quote-item-total">
+          <span>Subtotal</span>
+          <span class="mono">${fmtCad(mid)}</span>
+        </div>
+        <p class="fine quote-item-range">likely range ${fmtCad(p.range_low_cad ?? mid)} – ${fmtCad(p.range_high_cad ?? mid)}${
+          p.field_days ? ` · ≈ ${esc(p.field_days)} field day${p.field_days === 1 ? '' : 's'}` : ''
+        }</p>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="quote-items">${blocks}</div>
+    <div class="quote-total-card">
+      <span class="mono">Estimated total (${chosen.length} item${chosen.length === 1 ? '' : 's'})</span>
+      <div class="quote-total-value">${fmtCad(subtotal)}</div>
+      <p class="fine">likely range ${fmtCad(rangeLow)} – ${fmtCad(rangeHigh)}</p>
+    </div>
+    <p class="fine" style="margin-top:0.65rem">
+      Planning-level estimate only. Final scope, site conditions, and materials are confirmed on a site walk before quoting.
+    </p>`;
+}
+
+function bindNextStepsInteractions(r) {
+  const roots = document.querySelectorAll('[data-next-steps]');
+  if (!roots.length) return;
+  const menu = r?.action_menu;
+  const items = menu?.items || buildClientActionMenuFallback(r);
+
+  const refreshAllEstimates = () => {
+    const selected = new Set(state.selectedInterventions || []);
+    document.querySelectorAll('[data-next-steps]').forEach((root) => {
+      const host = root.querySelector('[data-live-estimate]');
+      if (host) host.innerHTML = renderLiveEstimateHtml(items, selected);
+      root.querySelectorAll('.intervention-card').forEach((card) => {
+        const id = card.getAttribute('data-intervention-id');
+        card.classList.toggle('is-selected', selected.has(id));
+        const cb = card.querySelector('input.intervention-check');
+        if (cb) cb.checked = selected.has(id);
+      });
+    });
+  };
+
+  roots.forEach((root) => {
+    if (root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+
+    root.querySelectorAll('input.intervention-check').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const id = cb.getAttribute('data-intervention');
+        if (!id) return;
+        const set = new Set(state.selectedInterventions || []);
+        if (cb.checked) set.add(id);
+        else set.delete(id);
+        state.selectedInterventions = [...set];
+        refreshAllEstimates();
+      });
+    });
+
+    root.querySelectorAll('.intervention-card').forEach((card) => {
+      card.addEventListener('click', (ev) => {
+        if (ev.target.closest('input, a, button')) return;
+        const cb = card.querySelector('input.intervention-check');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+
+    const unlockBtn = root.querySelector('[data-unlock-report]');
+    const downloadBtn = root.querySelector('[data-download-report]');
+    const emailInput = root.querySelector('[data-report-email]');
+    const unlockStatus = root.querySelector('.report-unlock-status');
+
+    unlockBtn?.addEventListener('click', async () => {
+      const email = String(emailInput?.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (unlockStatus) {
+          unlockStatus.hidden = false;
+          unlockStatus.textContent = 'Please enter a valid email address.';
+        }
+        return;
+      }
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = 'Unlocking…';
+      try {
+        const res = await fetch('/api/lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            site_name: r.site_name,
+            source: 'full_report_download',
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not unlock report');
+        state.reportEmail = email;
+        state.reportUnlocked = true;
+        document.querySelectorAll('[data-next-steps]').forEach((el) => {
+          el.querySelectorAll('[data-download-report]').forEach((b) => {
+            b.disabled = false;
+          });
+          el.querySelectorAll('[data-report-email]').forEach((inp) => {
+            inp.value = email;
+            inp.readOnly = true;
+          });
+          el.querySelectorAll('[data-unlock-report]').forEach((b) => {
+            b.disabled = true;
+            b.textContent = 'Report unlocked';
+          });
+          el.querySelectorAll('.report-unlock-status').forEach((s) => {
+            s.hidden = false;
+            s.textContent = `Unlocked for ${email}. You can download the PDF now.`;
+          });
+          el.querySelectorAll('[data-inquiry-email]').forEach((inp) => {
+            if (!inp.value) inp.value = email;
+          });
+        });
+      } catch (e) {
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Unlock full report';
+        if (unlockStatus) {
+          unlockStatus.hidden = false;
+          unlockStatus.textContent = e.message || 'Unlock failed';
+        }
+      }
+    });
+
+    downloadBtn?.addEventListener('click', () => {
+      if (!state.reportUnlocked) return;
+      if (typeof downloadFullPdf === 'function') downloadFullPdf();
+      else window.print();
+    });
+
+    root.querySelector('[data-send-inquiry]')?.addEventListener('click', async () => {
+      const status = root.querySelector('[data-inquiry-status]');
+      const email = String(
+        root.querySelector('[data-inquiry-email]')?.value || state.reportEmail || ''
+      ).trim();
+      const name = String(root.querySelector('[data-inquiry-name]')?.value || '').trim();
+      const phone = String(root.querySelector('[data-inquiry-phone]')?.value || '').trim();
+      const message = String(root.querySelector('[data-inquiry-message]')?.value || '').trim();
+      const selectedIds = new Set(state.selectedInterventions || []);
+      const selectedItems = items
+        .filter((i) => selectedIds.has(i.id))
+        .map((i) => ({
+          id: i.id,
+          label: i.label,
+          price_cad: i.price?.amount_cad ?? null,
+          category: i.category,
+        }));
+      if (!selectedItems.length) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Select at least one intervention above.';
+        }
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Enter a valid email so we can reply.';
+        }
+        return;
+      }
+      const subtotal = selectedItems.reduce((s, i) => s + (i.price_cad || 0), 0);
+      const btn = root.querySelector('[data-send-inquiry]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+      }
+      try {
+        const report_summary = {
+          site_name: r.site_name,
+          area_ha: r.geometry?.area_ha,
+          location: {
+            nearest_town: r.location?.nearest_town,
+            municipality: r.location?.municipality,
+            lat: r.location?.latitude,
+            lng: r.location?.longitude,
+          },
+          elevation_m: r.topology?.elevation_m,
+          hardiness: r.climate?.plant_hardiness_zone || r.hardiness?.hardiness_zone,
+          wetlands_on_site: r.wetlands?.has_wetland_on_site,
+          small_water: r.small_water?.summary,
+          well_depth_m: r.predicted_well_depth?.estimated_depth_m,
+          plant_highlights: (r.planting_plan?.recommended || [])
+            .slice(0, 8)
+            .map((p) => p.common_name)
+            .filter(Boolean),
+          selected: selectedItems,
+          estimate_subtotal_cad: subtotal,
+        };
+        const res = await fetch('/api/inquiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            name,
+            phone,
+            message,
+            selected_items: selectedItems,
+            estimate_subtotal_cad: subtotal,
+            site_name: r.site_name,
+            location: r.location?.nearest_town || r.location?.municipality,
+            area_ha: r.geometry?.area_ha,
+            report_summary,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Inquiry failed');
+        if (status) {
+          status.hidden = false;
+          status.textContent = data.message || 'Inquiry sent.';
+        }
+        // Only open a local mail draft if Resend did not deliver
+        if (!data.emailed && data.mailto) {
+          setTimeout(() => {
+            try {
+              window.location.href = data.mailto;
+            } catch { /* ignore */ }
+          }, 200);
+        }
+      } catch (e) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = e.message || 'Could not send inquiry';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Send inquiry with my selections';
+        }
+      }
+    });
+  });
+}
+
+/** @deprecated pillar cards — superseded by nextStepsSection harmonized list */
+function servicePackagesSection(sp) {
+  // Keep a slim version for pillar package slices (food/water tabs)
+  if (!sp?.packages?.length) return '';
   const pillars = PILLAR_ORDER.map((pid) => {
-    const list = sp.by_category?.[pid] || [];
+    const list = (sp.by_category?.[pid] || []).filter((p) => p.id !== 'off_grid_garage' || pid === 'shelter');
     if (!list.length) return '';
     const meta = PILLAR_META[pid] || { label: pid, client: '' };
+    // Garage not featured
     const cards = list
       .map((p) => {
         const price = p.price;
@@ -5296,26 +6984,17 @@ function servicePackagesSection(sp) {
                   : ''
               }</div>`
             : '<div class="pkg-price fine">Quote on site walk</div>';
-        const facts = p.site_facts
-          ? Object.entries(p.site_facts)
-              .filter(([, v]) => v != null && v !== '')
-              .slice(0, 4)
-              .map(([k, v]) => `<span class="plant-chip">${esc(k.replace(/_/g, ' '))}: <strong>${esc(v)}</strong></span>`)
-              .join('')
-          : '';
         return `
-          <article class="pkg-card${p.featured ? ' pkg-card-featured' : ''}" data-category="${esc(p.category)}">
+          <article class="pkg-card${p.id === 'off_grid_garage' ? '' : p.featured ? ' pkg-card-featured' : ''}" data-category="${esc(p.category)}">
             <div class="pkg-card-top">
               <span class="mono pkg-cat">${esc(p.category_label || meta.label)}</span>
-              ${p.featured ? '<span class="pkg-badge">Featured</span>' : ''}
+              ${p.id === 'off_grid_garage' ? '<span class="pkg-badge">Optional</span>' : ''}
             </div>
             <h3>${esc(p.label)}</h3>
             <p class="fine">${esc(p.blurb)}</p>
             ${priceLine}
             <p class="fine pkg-reason"><strong>Why here:</strong> ${esc(p.reason || '')}</p>
-            ${facts ? `<div class="plant-chips" style="margin-top:0.4rem">${facts}</div>` : ''}
-            ${p.claims_note ? `<p class="fine" style="margin-top:0.35rem;color:var(--caution)">${esc(p.claims_note)}</p>` : ''}
-            <a class="btn btn-quiet" style="margin-top:0.55rem;display:inline-block" href="${esc(p.href || 'https://www.expandingedge.ca/services-landing')}" target="_blank" rel="noopener">${esc(p.cta || 'Learn more')}</a>
+            <p class="fine" style="margin-top:0.45rem">Select this in <strong>Your plan</strong> to include it in your estimate and inquiry.</p>
           </article>`;
       })
       .join('');
@@ -5329,33 +7008,14 @@ function servicePackagesSection(sp) {
       </div>`;
   }).join('');
 
-  const totals = sp.totals;
   return `
     <section class="report-block service-packages-block">
-      <h2>Recommended services</h2>
+      <h2>Matching packages</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Site analysis feeds four pillars — <strong>Water</strong>, <strong>Food</strong>, <strong>Energy</strong>, and <strong>Shelter</strong>.
+        Context for this pillar. Use <strong>Your plan</strong> to select options, price them, and inquire.
         ${sp.summary_sentence ? esc(sp.summary_sentence) : ''}
       </p>
-
-      <div class="flow-steps">${flow}</div>
-
-      ${
-        totals?.planning_subtotal_cad
-          ? `<div class="well-range-card" style="margin:0.85rem 0">
-              <span class="mono">Planning total (all recommended packages)</span>
-              <div class="well-range-value">${fmtCad(totals.planning_subtotal_cad)}</div>
-              <p class="fine">${esc(totals.note || 'Mix and match pillars — not a firm quote.')}</p>
-            </div>`
-          : ''
-      }
-
       ${pillars}
-
-      <div class="flag" data-severity="info" style="margin-top:1rem">
-        <strong>How this works</strong>
-        <p>Draw the parcel → we score water (wells, swales, ponds), food (food forest + soil-carbon interventions), energy (solar + generator packages), and shelter (including the <strong>$250,000 off-grid garage</strong> package). A site walk confirms scope before any firm quote.</p>
-      </div>
     </section>`;
 }
 
@@ -5423,7 +7083,7 @@ function quoteSection(q, packages) {
                 )
                 .join('')}
               ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round((it.materialsPct || 0) * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
-              ${it.travelCost ? `<div class="quote-line quote-line-sub"><span>Mob/demob + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>` : ''}
+              ${it.travelCost ? `<div class="quote-line quote-line-sub"><span>Mobilization / demobilization + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>` : ''}
             </div>
             <div class="quote-item-total">
               <span>Subtotal</span>
@@ -5985,15 +7645,16 @@ function renderSectionPanes(r, ctx) {
   const sp = r.service_packages;
   const pkgCount = sp?.packages?.length || 0;
 
-  // Overview: summary + map + score
+  // Overview: value first — insights only, plan CTA at end
   const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  const menuCount = r.action_menu?.items?.length || pkgCount;
   b(`
     <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · map → services</span>
+      <span class="mono eyebrow">Expanding Edge · your site insights</span>
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <div class="score-row">
-        <span class="score">${pkgCount || allEls.length}</span>
-        <span class="score-of">${pkgCount ? 'service packages for this parcel' : 'placement recommendations'}</span>
+        <span class="score">${allEls.length || menuCount}</span>
+        <span class="score-of">site signals for this parcel</span>
       </div>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
@@ -6003,7 +7664,7 @@ function renderSectionPanes(r, ctx) {
         ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
         ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
-      ${sp?.summary_sentence ? `<p class="rec-summary">${esc(sp.summary_sentence)}</p>` : recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
+      ${recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
@@ -6014,18 +7675,28 @@ function renderSectionPanes(r, ctx) {
         <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
         <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
       </div>
-      ${mapEmbedSection()}
+      ${mapEmbedSection('overview')}
       ${flags.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
-      <p class="fine" style="margin-top:0.85rem">Next: open <strong>Services</strong> for Food · Water · Energy · Shelter packages, or jump a pillar tab.</p>
+      <div class="next-steps-cta panel" style="margin-top:1.1rem;padding:1rem 1.15rem">
+        <span class="mono eyebrow">When you’re ready</span>
+        <h2 style="font-size:1.2rem;margin:0.2rem 0 0.4rem">Build your plan</h2>
+        <p class="fine" style="margin:0 0 0.75rem">
+          Explore water, food, energy, and site data free. At the end, choose plantings, shelterbelts,
+          and water options — then download your full report and get an itemized estimate.
+        </p>
+        <button type="button" class="btn" data-open-your-plan>Choose interventions →</button>
+      </div>
     </div>
   `, $('report-overview'));
+  $('report-overview')?.querySelector('[data-open-your-plan]')?.addEventListener('click', () => switchReportPane('services'));
 
-  // Services: all packages
+  // Your plan: harmonized selectable interventions + email report + estimate + inquiry
   b(`
-    ${servicePackagesSection(sp)}
-    ${quoteSection(r.service_quote || a.service_quote, sp)}
-    ${servicesCtaSection(services)}
+    <div class="panel fade">
+      ${nextStepsSection(r, 'services')}
+    </div>
   `, $('report-services'));
+  setTimeout(() => bindNextStepsInteractions(r), 50);
 
   // Water pillar evidence + water packages
   b(`
@@ -6083,12 +7754,12 @@ function renderSectionPanes(r, ctx) {
     ${cellServiceSection(centre)}
   `, $('report-topo'));
 
-  // Placement details
+  // Technical placement notes (reference) — conversion lives in Your plan
   b(`
     <section class="report-block placement-block">
-      <h2>Placement details</h2>
+      <h2>Technical placement notes</h2>
       <p class="fine" style="margin-top:-0.3rem">
-        Technique-level if→then results that feed the service package engine.
+        Technique-level if→then detail. Choose what to pursue in <strong>Your plan</strong>.
       </p>
       ${siteDriversSection(siteDrivers)}
       ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
@@ -6100,36 +7771,9 @@ function renderSectionPanes(r, ctx) {
             : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'}
       </div>
     </section>
-
-    ${quoteSection(r.service_quote || a.service_quote, sp)}
-
-    ${servicesCtaSection(services)}
-
-    <!-- Sales funnel CTA -->
-    <div class="ee-services-cta" style="margin-top:1.5rem;border-color:var(--gold);background:linear-gradient(135deg, rgba(168,128,31,0.08), rgba(91,58,115,0.06))">
-      <span class="mono eyebrow">Ready to build this?</span>
-      <h3 style="font-size:1.3rem;margin:0.2rem 0 0.5rem;font-family:'Bricolage Grotesque',sans-serif;font-weight:800">Turn this report into action</h3>
-      <p class="fine" style="margin:0 0 1rem;max-width:60ch">
-        This analysis is a planning conversation starter — not engineered drawings. Book a site walk with Expanding Edge
-        to confirm conditions, finalize scope, and get a firm design proposal.
-      </p>
-      <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
-        <a class="btn" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener" style="font-size:1rem;padding:0.85rem 1.5rem">
-          Book a site design consult →
-        </a>
-        <a class="btn btn-secondary" href="tel:+17802363630" style="font-size:0.95rem;padding:0.75rem 1.2rem">
-          Call (780) 236-3630
-        </a>
-        <a class="btn btn-secondary" href="mailto:info@expandingedge.ca?subject=Site%20Design%20Inquiry" style="font-size:0.95rem;padding:0.75rem 1.2rem">
-          Email info@expandingedge.ca
-        </a>
-      </div>
-      <p class="fine" style="margin:0.75rem 0 0">
-        ${allEls.length} recommendations identified for this ${r.geometry?.area_ha != null ? `${r.geometry.area_ha} ha` : ''} parcel.
-        Estimated investment: ${r.service_quote?.subtotal ? fmtCad(r.service_quote.subtotal) : 'pending site walk'}.
-      </p>
-    </div>
-
+    <p class="fine" style="margin-top:1rem">
+      <button type="button" class="btn" data-open-your-plan-rules>Build your plan →</button>
+    </p>
     <div class="sources" style="margin-top:2rem">
       <span class="mono">Data provenance</span>
       <ul>
@@ -6137,6 +7781,7 @@ function renderSectionPanes(r, ctx) {
       </ul>
     </div>
   `, $('report-rules'));
+  $('report-rules')?.querySelector('[data-open-your-plan-rules]')?.addEventListener('click', () => switchReportPane('services'));
 
   // Fecundity: fecundity assessment
   b(fecunditySection(r.fecundity), $('report-fecundity'));

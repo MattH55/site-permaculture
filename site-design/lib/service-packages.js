@@ -433,30 +433,41 @@ export function recommendServicePackages(ctx = {}) {
   }
 
   // ── Shelter ──
-  // Always surface the fixed off-grid garage offer for rural parcels (≥0.2 ha or no size)
+  // Off-grid garage is available for rural parcels but never auto-featured / never default-selected
   if (footprint == null || footprint >= 0.2) {
     packages.push(
       packageRec('off_grid_garage', {
-        priority: 3,
+        priority: 8,
         confidence: 'high',
         reason:
-          'Fixed-price off-grid garage package for rural Alberta sites — shell ready for solar, well gear, and cold-climate use.',
+          'Optional fixed-price off-grid garage package — shell ready for solar, well gear, and cold-climate use. Not included by default.',
         price: fixedPrice(PACKAGE_CATALOG.off_grid_garage),
-        featured: true,
+        featured: false,
+        default_selected: false,
+        optional: true,
       })
     );
   }
 
-  if (elementTypes.has('windbreak') || elementTypes.has('shelterbelt_zone')) {
+  // Shelterbelt: offer when windbreak fires OR as a default rural microclimate option
+  if (
+    elementTypes.has('windbreak') ||
+    elementTypes.has('shelterbelt_zone') ||
+    footprint == null ||
+    footprint >= 0.4
+  ) {
     const sbQuote = quoteItems.find((i) => i.service === 'shelterbelt');
     packages.push(
       packageRec('shelterbelt_package', {
-        priority: 3,
-        confidence: 'moderate-high',
-        reason: 'Prevailing wind / chinook exposure supports multi-row shelter upwind of living zones.',
+        priority: elementTypes.has('windbreak') || elementTypes.has('shelterbelt_zone') ? 2 : 3,
+        confidence: elementTypes.has('windbreak') ? 'moderate-high' : 'moderate',
+        reason: elementTypes.has('windbreak') || elementTypes.has('shelterbelt_zone')
+          ? 'Prevailing wind / chinook exposure supports multi-row shelter upwind of living zones.'
+          : 'Most Alberta rural parcels benefit from a windward shelterbelt for microclimate and snow control.',
         price: fromRateQuote(sbQuote),
         size: sbQuote?.size,
         unit: sbQuote?.unit,
+        default_selected: true,
       })
     );
   }
@@ -485,10 +496,10 @@ export function recommendServicePackages(ctx = {}) {
       note: 'Sum of recommended package planning estimates — not a firm quote. Mix and match pillars.',
     },
     flow: [
-      { step: 1, id: 'site', label: 'Site analysis', description: 'Map, topo, wells, solar, fecundity' },
-      { step: 2, id: 'packages', label: 'Service packages', description: 'Food · Water · Energy · Shelter' },
-      { step: 3, id: 'quote', label: 'Planning estimate', description: 'Rough investment range by package' },
-      { step: 4, id: 'book', label: 'Site walk', description: 'Confirm scope before firm quote' },
+      { step: 1, id: 'value', label: 'Your site insights', description: 'Map, water, soil, climate — free analysis' },
+      { step: 2, id: 'choose', label: 'Choose interventions', description: 'Select planting, shelter, water options' },
+      { step: 3, id: 'report', label: 'Full report', description: 'Download with your email' },
+      { step: 4, id: 'estimate', label: 'Estimate & inquire', description: 'Itemized planning costs → talk to EE' },
     ],
     propertyLabel: ctx.propertyLabel || null,
     generatedAt: new Date().toISOString(),
@@ -529,6 +540,13 @@ function fromRateQuote(item) {
     range_low_cad: item.rangeLow,
     range_high_cad: item.rangeHigh,
     field_days: item.fieldDays,
+    line_items: (item.lineItems || []).map((l) => ({
+      label: l.label,
+      cost_cad: l.cost,
+    })),
+    travel_cost_cad: item.travelCost ?? null,
+    materials_cost_cad: item.materialsCost ?? null,
+    materials_pct: item.materialsPct ?? null,
   };
 }
 

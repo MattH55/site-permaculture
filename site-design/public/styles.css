@@ -572,6 +572,31 @@ h3 { font-size: 1.08rem; }
 .beta-banner strong { color: var(--ink); }
 .plant-planner-panel .lede { max-width: 62ch; }
 
+.plant-yield-grid {
+  gap: 0.5rem;
+}
+.plant-yield-grid .stat {
+  border-left: 3px solid var(--ok);
+  padding-left: 0.55rem;
+}
+.plant-yield-grid .stat .k {
+  display: block;
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+.plant-yield-grid .stat strong {
+  font-size: 1.05rem;
+  display: block;
+}
+.plantings-table .econ-yield,
+.plantings-table .econ-rev,
+.econ-table .econ-yield,
+.econ-table .econ-rev {
+  white-space: nowrap;
+}
+
 .plant-goals-bar .goal-chips {
   display: flex;
   flex-wrap: wrap;
@@ -975,6 +1000,141 @@ h3 { font-size: 1.08rem; }
 }
 .solar-tier-detail { padding: 0 1rem 1rem; }
 
+/* Build your plan — intervention picker */
+.next-steps-block .next-steps-notes {
+  margin: 0.4rem 0 0.85rem;
+  padding-left: 1.15rem;
+  color: var(--ink-soft);
+}
+.intervention-group { margin: 1rem 0 1.25rem; }
+.intervention-group-title {
+  font-size: 1.05rem;
+  margin: 0 0 0.55rem;
+}
+.intervention-list {
+  display: grid;
+  gap: 0.55rem;
+}
+.intervention-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  padding: 0.75rem 0.9rem;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+}
+.intervention-card:hover {
+  border-color: var(--berry-lo);
+  background: rgba(91, 58, 115, 0.03);
+}
+.intervention-card.is-selected {
+  border-color: var(--berry);
+  box-shadow: 0 0 0 1px rgba(91, 58, 115, 0.25);
+  background: rgba(91, 58, 115, 0.05);
+}
+.intervention-card.is-optional {
+  border-style: dashed;
+}
+.intervention-card input.intervention-check {
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.2rem;
+  accent-color: var(--berry);
+  cursor: pointer;
+}
+.intervention-card-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.65rem;
+  margin-bottom: 0.2rem;
+}
+.intervention-cat {
+  color: var(--ink-soft);
+}
+.intervention-price {
+  margin-left: auto;
+  font-weight: 600;
+  color: var(--ink);
+}
+.intervention-label {
+  display: block;
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-size: 1.05rem;
+  margin: 0.1rem 0 0.25rem;
+}
+.intervention-why { margin: 0.25rem 0 0; }
+.next-step-panel {
+  margin-top: 1.35rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--paper);
+}
+.next-step-panel h3 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+}
+.report-unlock-form,
+.inquiry-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+  margin-top: 0.65rem;
+}
+.inquiry-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1 1 10rem;
+}
+.inquiry-form .inquiry-message-label {
+  flex: 1 1 100%;
+}
+.report-email-input,
+.inquiry-message {
+  font: inherit;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  color: var(--ink);
+  min-width: 12rem;
+}
+.inquiry-message {
+  width: 100%;
+  resize: vertical;
+  min-height: 4.5rem;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+.tech-notes-details {
+  margin-top: 1.25rem;
+}
+.tech-notes-details > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.tech-notes-details > summary::-webkit-details-marker { display: none; }
+.next-steps-cta {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  background: linear-gradient(135deg, rgba(168,128,31,0.08), rgba(91,58,115,0.05));
+}
+
 .report-map {
   width: 100%;
   height: 360px;
@@ -983,8 +1143,40 @@ h3 { font-size: 1.08rem; }
   margin-top: 0.6rem;
   background: var(--ground);
 }
+.report-map-unified {
+  height: 420px;
+  z-index: 0;
+}
+.report-map-unified .leaflet-control-layers {
+  font-family: 'Source Serif 4', Georgia, serif;
+  font-size: 0.85rem;
+}
+.unified-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 0.9rem;
+  align-items: center;
+}
+.unified-map-legend .legend-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 10px;
+  border: 2px solid;
+  vertical-align: middle;
+  margin-right: 4px;
+  box-sizing: border-box;
+}
+.unified-map-status {
+  color: var(--ink-soft);
+}
+.contour-tip {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.7rem !important;
+  padding: 2px 6px !important;
+}
 @media (max-width: 640px) {
   .report-map { height: 260px; }
+  .report-map-unified { height: 320px; }
 }
 .rec-service-links {
   display: flex;
@@ -1580,6 +1772,19 @@ h3 { font-size: 1.08rem; }
 }
 .plant-chip strong { color: var(--berry); margin-right: 0.35rem; }
 
+.plant-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0.65rem 0 0.4rem;
+}
+.plant-list-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+}
 .plant-list {
   display: grid;
   gap: 0.65rem;
@@ -1589,6 +1794,73 @@ h3 { font-size: 1.08rem; }
   border-radius: var(--radius);
   background: #fff;
   padding: 0.85rem 1rem;
+}
+.plant-card.plant-card-collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+.plant-card .plant-details {
+  margin: 0;
+}
+.plant-card .plant-card-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 0.85rem;
+  padding: 0.75rem 1rem;
+  user-select: none;
+}
+.plant-card .plant-card-summary::-webkit-details-marker {
+  display: none;
+}
+.plant-card .plant-card-summary::marker {
+  content: '';
+}
+.plant-card .plant-summary-main {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+.plant-card .plant-summary-metrics {
+  margin: 0.3rem 0 0;
+  color: var(--ink-soft);
+}
+.plant-card .plant-expand-hint {
+  flex: 0 0 auto;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--berry);
+  border: 1px solid rgba(91, 58, 115, 0.35);
+  border-radius: var(--radius);
+  padding: 0.28rem 0.5rem;
+  margin-top: 0.15rem;
+  white-space: nowrap;
+}
+.plant-card .plant-expand-hint::before {
+  content: '▸ ';
+}
+.plant-card details[open] > .plant-card-summary .plant-expand-hint::before {
+  content: '▾ ';
+}
+.plant-card details[open] > .plant-card-summary {
+  border-bottom: 1px dashed var(--line);
+  background: rgba(91, 58, 115, 0.04);
+}
+.plant-card .plant-card-body {
+  padding: 0.65rem 1rem 0.9rem;
+  display: grid;
+  gap: 0.35rem;
+}
+.plant-card .plant-card-summary:hover {
+  background: rgba(168, 128, 31, 0.06);
+}
+.plant-card .plant-card-summary:focus-visible {
+  outline: 2px solid var(--berry);
+  outline-offset: -2px;
 }
 .plant-card[data-suit="excellent"],
 .plant-card[data-suit="good"] {

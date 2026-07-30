@@ -235,31 +235,46 @@ export function plantingPlanInterventionValue(plantingPlan, baselineScores = {},
     }))
     .sort((a, b) => b.delta - a.delta);
 
-  const speciesLines = plants.slice(0, 12).map((p) => ({
-    id: p.id,
-    common_name: p.common_name,
-    scientific_name: p.scientific_name,
-    score: p.score,
-    suitability: p.suitability,
-    primary_value: p.primary_value,
-    functions: buildFunctions(p),
-    quantity: p.economics?.suggested_quantity ?? null,
-    establishment_cost_cad: p.economics?.establishment_cost_cad?.total ?? null,
-    gross_revenue_mid_cad: p.economics?.gross_revenue_cad?.mid ?? null,
-    payback_years: p.economics?.payback_years ?? null,
-    npv_mid_cad: p.economics?.npv_cad?.mid ?? null,
-    improves_levers: uniqueLevers([
-      ...(p.lever_benefits || []),
-      VALUE_TO_LEVER[p.primary_value],
-    ]).map((L) => LEVER_LABELS[L] || L),
-    confidence: {
-      hardiness: 'high',
-      soil_moisture: p.limits?.some((l) => /texture|drainage|dry|wet/i.test(l))
-        ? 'medium'
-        : 'medium-high',
-      yield_price: p.economics?.gross_revenue_cad ? 'medium' : 'low',
-    },
-  }));
+  const speciesLines = plants.slice(0, 12).map((p) => {
+    const e = p.economics || {};
+    const y = e.yield_on_parcel_kg;
+    const g = e.gross_revenue_cad;
+    return {
+      id: p.id,
+      common_name: p.common_name,
+      scientific_name: p.scientific_name,
+      score: p.score,
+      suitability: p.suitability,
+      primary_value: p.primary_value,
+      functions: buildFunctions(p),
+      quantity: e.suggested_quantity ?? null,
+      unit: e.unit || 'kg',
+      /** Physical product yield on patch at maturity (kg/yr) */
+      product_yield_kg: y
+        ? { low: y.low_kg, mid: y.mid_kg, high: y.high_kg, unit: e.unit || 'kg' }
+        : null,
+      /** Cash yield = gross revenue on patch at maturity (CAD/yr) */
+      cash_yield_cad: g
+        ? { low: g.low, mid: g.mid, high: g.high, opex_mid: e.annual_opex_cad_est ?? null }
+        : null,
+      establishment_cost_cad: e.establishment_cost_cad?.total ?? null,
+      gross_revenue_mid_cad: g?.mid ?? null,
+      product_yield_mid_kg: y?.mid_kg ?? null,
+      payback_years: e.payback_years ?? null,
+      npv_mid_cad: e.npv_cad?.mid ?? null,
+      improves_levers: uniqueLevers([
+        ...(p.lever_benefits || []),
+        VALUE_TO_LEVER[p.primary_value],
+      ]).map((L) => LEVER_LABELS[L] || L),
+      confidence: {
+        hardiness: 'high',
+        soil_moisture: p.limits?.some((l) => /texture|drainage|dry|wet/i.test(l))
+          ? 'medium'
+          : 'medium-high',
+        yield_price: g ? 'medium' : 'low',
+      },
+    };
+  });
 
   return {
     type: 'planting_plan',
@@ -308,17 +323,30 @@ export function plantingPlanInterventionValue(plantingPlan, baselineScores = {},
 export function plantingReportTable(plantingPlan, interventionValue = null) {
   const species =
     interventionValue?.species ||
-    (plantingPlan?.recommended || []).map((p) => ({
-      common_name: p.common_name,
-      scientific_name: p.scientific_name,
-      score: p.score,
-      functions: buildFunctions(p),
-      quantity: p.economics?.suggested_quantity,
-      establishment_cost_cad: p.economics?.establishment_cost_cad?.total,
-      gross_revenue_mid_cad: p.economics?.gross_revenue_cad?.mid,
-      payback_years: p.economics?.payback_years,
-      improves_levers: (p.lever_benefits || []).map((L) => LEVER_LABELS[L] || L),
-    }));
+    (plantingPlan?.recommended || []).map((p) => {
+      const e = p.economics || {};
+      const y = e.yield_on_parcel_kg;
+      const g = e.gross_revenue_cad;
+      return {
+        common_name: p.common_name,
+        scientific_name: p.scientific_name,
+        score: p.score,
+        functions: buildFunctions(p),
+        quantity: e.suggested_quantity,
+        unit: e.unit || 'kg',
+        product_yield_kg: y
+          ? { low: y.low_kg, mid: y.mid_kg, high: y.high_kg, unit: e.unit || 'kg' }
+          : null,
+        cash_yield_cad: g
+          ? { low: g.low, mid: g.mid, high: g.high, opex_mid: e.annual_opex_cad_est ?? null }
+          : null,
+        product_yield_mid_kg: y?.mid_kg ?? null,
+        establishment_cost_cad: e.establishment_cost_cad?.total,
+        gross_revenue_mid_cad: g?.mid,
+        payback_years: e.payback_years,
+        improves_levers: (p.lever_benefits || []).map((L) => LEVER_LABELS[L] || L),
+      };
+    });
 
   return {
     title: 'Recommended Plantings',

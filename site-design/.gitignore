@@ -1,7 +1,10 @@
 .env
 .env.local
+.env.*
+!.env.example
 node_modules/
 leads.jsonl
+data/leads/
 .DS_Store
 data/crops/pfaf/data.sqlite
 data/crops/pfaf/*.sqlite
