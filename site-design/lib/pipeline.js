@@ -305,6 +305,23 @@ export async function generateSiteReport(input = {}) {
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
     assessAccess(centre, nearestCityDist).then((access) => {
+      // Fallback: if Overpass found no road but Sturgeon County parcel has an address,
+      // extract the road name from the parcel address
+      if (access?.nearest_road?.available === false && sturgeonCounty?.parcel?.full_address) {
+        const addr = sturgeonCounty.parcel.full_address;
+        const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
+        const roadName = roadMatch ? roadMatch[1].trim() : null;
+        if (roadName) {
+          access.nearest_road = {
+            name: roadName,
+            type: 'road',
+            distance_m: null,
+            available: true,
+            source: 'Sturgeon County parcel address',
+          };
+          access.methodology += ' + Sturgeon County parcel address fallback';
+        }
+      }
       record.access = access;
     }).catch(() => {});
 

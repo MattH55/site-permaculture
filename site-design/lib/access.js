@@ -60,25 +60,31 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 
 export async function findNearestRoad(centre) {
   const { latitude, longitude } = centre;
-  // Search 10km radius — rural Alberta parcels are often far from named roads
-  const query = `[out:json][timeout:20];way(around:10000,${latitude},${longitude})[highway];out tags center 5;`;
+  // Search 25km radius — rural Alberta parcels are often very far from named roads
+  const query = `[out:json][timeout:30];way(around:25000,${latitude},${longitude})[highway];out tags center 10;`;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 15_000);
+    const t = setTimeout(() => ctrl.abort(), 25_000);
     const res = await fetch('https://overpass-api.de/api/interpreter', { method: 'POST', signal: ctrl.signal, headers: { 'Content-Type': 'text/plain' }, body: query });
     clearTimeout(t);
     if (!res.ok) throw new Error(`Overpass ${res.status}`);
     const data = await res.json();
-    if (!data.elements?.length) return { name: null, type: null, distance_m: null, available: false };
+    if (!data.elements?.length) return { name: null, type: null, distance_m: null, available: false, note: 'No road found within 25 km search radius.' };
     let best = null, bestDist = Infinity;
     for (const el of data.elements) {
       if (!el.tags?.highway) continue;
+      // Prefer named roads; deprioritize service/track unless no other option
+      const isNamed = !!(el.tags?.name || el.tags?.ref);
+      const isMinor = el.tags?.highway === 'service' || el.tags?.highway === 'track' || el.tags?.highway === 'path';
       const d = el.center ? haversineKm(latitude, longitude, el.center.lat, el.center.lon) * 1000 : 300;
-      if (d < bestDist) { bestDist = d; best = el; }
+      // Heavily penalize unnamed minor roads to prefer real roads
+      const adjustedDist = isMinor && !isNamed ? d * 3 : d;
+      if (adjustedDist < bestDist) { bestDist = adjustedDist; best = { el, actualDist: d }; }
     }
-    if (!best) return { name: null, type: null, distance_m: null, available: false };
-    return { name: best.tags?.name || best.tags?.ref || null, type: best.tags?.highway || null, distance_m: Math.round(bestDist), available: true };
-  } catch (e) { console.warn('Road query failed:', e.message); return { name: null, type: null, distance_m: null, available: false }; }
+    if (!best) return { name: null, type: null, distance_m: null, available: false, note: 'No road found within 25 km.' };
+    const b = best.el;
+    return { name: b.tags?.name || b.tags?.ref || null, type: b.tags?.highway || null, distance_m: Math.round(best.actualDist), available: true };
+  } catch (e) { console.warn('Road query failed:', e.message); return { name: null, type: null, distance_m: null, available: false, error: e.message }; }
 }
 
 export async function findNearestSupermarket(centre) {
