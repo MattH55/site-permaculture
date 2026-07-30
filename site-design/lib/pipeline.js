@@ -332,7 +332,7 @@ export async function generateSiteReport(input = {}) {
     regionalSoilTexture: soils.texture || null,
     ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
     landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
-    wildlifeObservations: wildlife?.recent_sightings?.map((s) => s.species || s.common_name || '') || [],
+    wildlifeObservations: wildlife?.sighting_species || [],
     windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
     frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
   }, { propertyLabel: siteInput.site_name });

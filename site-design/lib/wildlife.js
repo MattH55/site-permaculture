@@ -35,6 +35,7 @@ export async function assessWildlife(bbox, centre) {
           source: 'iNaturalist (research-grade, last 5 years)',
         }
       : { count: 0, last_seen: null, source: 'iNaturalist unavailable — heuristic fallback' },
+    sighting_species: inat?.observations?.map((o) => o.taxon).filter(Boolean) || [],
     methodology_note:
       whiteTailedDeer.assessment +
       ' Deer are present almost everywhere in rural Alberta — this is a relative pressure indicator, not a presence/absence test.',
