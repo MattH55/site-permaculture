@@ -158,6 +158,13 @@ export const ELEMENT_VALUE_MAP = {
     season_hint: 'Mulch paths; compost at keyhole centre',
     related_services: ['kitchen_garden_design'],
   },
+  groundwater_well: {
+    primary_value: 'water_storage',
+    secondary_values: ['water_harvest', 'compliance_safety'],
+    effort: 'high',
+    season_hint: 'Drill after frost leaves the ground; budget for pump, pressure tank, and water test',
+    related_services: ['water_earthworks_consult', 'full_site_design'],
+  },
 };
 
 /**
@@ -221,6 +228,7 @@ function techniqueLabel(type) {
     food_forest_guild: 'Food forest guild',
     herb_spiral: 'Herb spiral',
     keyhole_bed: 'Keyhole bed',
+    groundwater_well: 'Groundwater well',
   };
   return labels[type] || type;
 }
@@ -288,6 +296,17 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
         : 'Stack herbal diversity in a compact Zone 1 spiral near daily use.';
     case 'keyhole_bed':
       return 'Maximise food yield and easy harvest access on a tight footprint.';
+    case 'groundwater_well': {
+      const depth = num(site.predicted_well_depth?.estimated_depth_m);
+      const swl = num(site.predicted_well_depth?.estimated_static_water_level_m);
+      if (depth != null && swl != null) {
+        return `Secure reliable water with a well completed near ${fmtNum(depth)} m (water table ~${fmtNum(swl)} m), sized from local hydrogeology.`;
+      }
+      if (depth != null) {
+        return `Secure reliable water with a well completed near ${fmtNum(depth)} m, sized from nearby pump tests and aquifer signals.`;
+      }
+      return 'Secure reliable groundwater where surface water is distant or unreliable.';
+    }
     default: {
       const label = VALUE_TAXONOMY[primaryValue]?.label || 'site benefit';
       return `Deliver ${label.toLowerCase()} suited to this parcel’s measured conditions.`;
@@ -349,6 +368,7 @@ export function recommendationPriority(element) {
   if (primary === 'compliance_safety') return 1;
   if (element.element_type === 'swale' && conf === 'needs_site_visit') return 1;
   if (primary === 'erosion_control') return 2;
+  if (element.element_type === 'groundwater_well') return 3;
   if (primary === 'water_harvest' || primary === 'water_storage') return 3;
   if (primary === 'wind_protection' || primary === 'snow_management') return 4;
   if (primary === 'soil_building' || primary === 'nitrogen_fixing') return 5;

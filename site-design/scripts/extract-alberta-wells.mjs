@@ -225,16 +225,27 @@ for row in cur.fetchall():
 
 conn.close()
 
-# Build output — compact array for radix-sorted neighbour lookup
+# AWWI stores depths, elevations, SWL, screens, and lithology in feet.
+# Convert to metres so lib/well-depth.js can treat values as SI without heuristics.
+FT_M = 0.3048
+def m(v, nd=1):
+    if v is None: return None
+    try:
+        return round(float(v) * FT_M, nd)
+    except: return None
+
+# Build output — compact array for neighbour lookup (all depths in metres)
 output = []
 for wid, w in wells.items():
     if w['lat'] is None or w['lng'] is None or not w.get('depth_m'): continue
+    dp_m = m(w['depth_m'])
+    if not dp_m or dp_m <= 0: continue
     obj = {
         'i': wid,
         'la': round(w['lat'], 5),
         'lo': round(w['lng'], 5),
-        'dp': w['depth_m'],
-        'el': w.get('elev'),
+        'dp': dp_m,
+        'el': m(w.get('elev')) if w.get('elev') else None,
         'yd': w.get('yield'),
         'rr': w.get('rec_rate'),
         'ls': w.get('lsd')[:30] if w.get('lsd') else None,
@@ -245,14 +256,27 @@ for wid, w in wells.items():
         'wt': w.get('work_type'),
         'ar': w.get('artesian'),
     }
-    if w.get('pump_test'): obj['pt'] = w['pump_test']
+    if w.get('pump_test'):
+        pt = w['pump_test']
+        obj['pt'] = {
+            'date': pt.get('date'),
+            'swl_m': m(pt.get('swl_m'), 2),
+            'end_wl_m': m(pt.get('end_wl_m'), 2),
+            'drawdown_m': m(pt.get('drawdown_m'), 2),
+            'rate': pt.get('rate'),
+            'rate_type': pt.get('rate_type'),
+        }
     if w.get('chemistry'): obj['ch'] = w['chemistry']
-    if w.get('lith_summary'): obj['lx'] = w['lith_summary']
+    if w.get('lith_summary'):
+        lx = dict(w['lith_summary'])
+        if lx.get('wet_at_m'):
+            lx['wet_at_m'] = [m(d) for d in lx['wet_at_m'] if d is not None]
+        obj['lx'] = lx
     if w.get('geophys'): obj['gp'] = w['geophys'][:8]
     if w.get('screens'):
         sc = sorted([s for s in w['screens'] if s['f'] is not None], key=lambda x: x['f'])
         if sc:
-            obj['sc'] = {'t': sc[0]['f'], 'b': sc[-1]['t'], 'n': len(sc)}
+            obj['sc'] = {'t': m(sc[0]['f']), 'b': m(sc[-1]['t']), 'n': len(sc)}
     if w.get('boreholes'):
         dias = sorted(set(b['dia'] for b in w['boreholes'] if b['dia']), reverse=True)[:3]
         if dias: obj['bh'] = dias

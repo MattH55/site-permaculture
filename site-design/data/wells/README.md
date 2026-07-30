@@ -43,6 +43,22 @@ The estimator loads, in order:
 
 Place a future grid sampler behind `lib/well-depth.js` → `bedrockElevationM(lat, lng)`.
 
+## Units
+
+AWWI bulk Access export stores **depths, elevations, SWL, screens, and lithology in feet**.
+`scripts/extract-alberta-wells.mjs` converts to **metres** on extract. `lib/well-depth.js`
+also detects residual feet-scale medians and converts on load as a safety net.
+
+## Prediction method (subsurface hydrology)
+
+Do **not** report the min–max of total drilled depths as the site estimate. Prefer:
+
+1. Screen-bottom intervals (completion depth)
+2. Water-bearing lithology tops + completion allowance
+3. Static water level (pump tests) + typical productive interval
+4. Wet Areas Mapping depth-to-water as shallow covariate when SWL is sparse
+5. AGS bedrock / drift-thickness proxy as a soft bound
+
 ## Confidence tiers
 
 | nearby_well_count | confidence |

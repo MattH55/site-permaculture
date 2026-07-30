@@ -74,6 +74,12 @@ const ELEMENT_META = {
     zone: 1,
     summary: 'Intensive Zone 1 bed with centre access path for efficient daily harvest.',
   },
+  groundwater_well: {
+    label: 'Groundwater well',
+    zone: 5,
+    summary:
+      'Domestic / stock water supply drilled to a hydrostratigraphic completion target from nearby well control.',
+  },
 };
 
 /**
@@ -369,6 +375,45 @@ export function applyRules(site = {}) {
     );
   }
 
+  // Rule 13 — groundwater well from subsurface hydrology (not surface-water distance alone)
+  const well = site.predicted_well_depth;
+  const waterTable = num(hydro.water_table_depth_m) ?? num(well?.estimated_static_water_level_m);
+  const wellDepth = num(well?.estimated_depth_m);
+  const surfaceWaterM = num(hydro.distance_to_nearest_watercourse_m);
+  const needsGroundwater =
+    wellDepth != null &&
+    (surfaceWaterM == null || surfaceWaterM > 250 || hydro.flood_risk_zone === true);
+  if (needsGroundwater) {
+    const swlNote =
+      waterTable != null ? ` Static water level ~${waterTable} m bgs.` : '';
+    const unitNote = well?.target_hydrostratigraphic_unit
+      ? ` Target unit: ${well.target_hydrostratigraphic_unit}.`
+      : '';
+    const basis = (well?.hydrology_basis || []).slice(0, 3).join('; ');
+    const conf =
+      well?.confidence === 'well_control_dense'
+        ? 'rule_based_high'
+        : well?.confidence === 'well_control_sparse'
+          ? 'rule_based_moderate'
+          : 'needs_site_visit';
+    elements.push(
+      element(
+        'groundwater_well',
+        {
+          condition_basis: `predicted_well_depth ${wellDepth} m (hydrology)${
+            surfaceWaterM != null ? ` · nearest surface water ${surfaceWaterM} m` : ''
+          }`,
+          placement_notes: `Recommend a licensed water-well drill to ~${wellDepth} m completion (confidence band ${well?.estimated_depth_range_m?.low_m ?? '—'}–${well?.estimated_depth_range_m?.high_m ?? '—'} m), based on nearby pump tests, screen intervals, and water-bearing lithology — not the raw min–max of total drilled depths.${swlNote}${unitNote}${
+            basis ? ` Basis: ${basis}.` : ''
+          } Confirm yield and chemistry with a local driller before construction.`,
+          confidence: conf,
+          zone: 5,
+        },
+        siteCtx
+      )
+    );
+  }
+
   // De-duplicate element_type keeping highest-priority / first
   const seen = new Set();
   const design_elements = [];
@@ -471,9 +516,27 @@ function buildSiteDrivers(site = {}) {
           : null,
       drives: 'hügelkultur / raised beds on shallow or poor CLI soils',
     },
+    {
+      field: 'predicted_well_depth / water_table',
+      value: site.predicted_well_depth
+        ? {
+            estimated_depth_m: site.predicted_well_depth.estimated_depth_m ?? null,
+            static_water_level_m:
+              site.predicted_well_depth.estimated_static_water_level_m ??
+              hydro.water_table_depth_m ??
+              null,
+            confidence: site.predicted_well_depth.confidence ?? null,
+          }
+        : hydro.water_table_depth_m != null
+          ? { water_table_depth_m: hydro.water_table_depth_m }
+          : null,
+      drives: 'groundwater well recommendation (hydrology-based completion depth)',
+    },
   ];
 
   // Which element families this parcel can activate (property-dependent gates)
+  const wellDepth = num(site.predicted_well_depth?.estimated_depth_m);
+  const surfaceWaterM = num(hydro.distance_to_nearest_watercourse_m);
   const gates = {
     earthworks_allowed: !(hydro.wetland_class != null && hydro.wetland_class !== ''),
     swale_eligible:
@@ -490,6 +553,9 @@ function buildSiteDrivers(site = {}) {
     ),
     food_forest_eligible: READY_SUCCESSION.has(veg.successional_stage),
     intensive_zone1_eligible: footprint != null && footprint < 0.1,
+    groundwater_well_eligible:
+      wellDepth != null &&
+      (surfaceWaterM == null || surfaceWaterM > 250 || hydro.flood_risk_zone === true),
   };
 
   return {

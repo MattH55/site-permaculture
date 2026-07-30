@@ -9,6 +9,7 @@ data/crops/pfaf/*.sqlite
 data/crops/vendor-listings.json
 data/solar/municip_MJ.csv
 data/spatial-cache/**/*.json
+data/cache/satellite/
 data/land-value/_xlsx/
 data/land-value/*.xlsx
 data/land-value/*.zip
@@ -16,4 +17,3 @@ data/land-value/*.pdf
 
 scripts/_sample-*.ts
 scripts/_probe-*.mjs
-

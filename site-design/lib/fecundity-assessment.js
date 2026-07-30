@@ -51,6 +51,19 @@ const CATEGORIES = {
           return d.hasPondOrWetland ? 85 : 40;
         },
       },
+      {
+        // Supplementary satellite moisture proxy (Sentinel-1 / NDMI) — 0–1 relative
+        key: 'satelliteMoistureProxy',
+        fields: ['soilMoistureProxy'],
+        score(d) {
+          const v = d.soilMoistureProxy;
+          if (v == null) return null;
+          if (v >= 0.65) return 80;
+          if (v >= 0.4) return 60;
+          if (v >= 0.2) return 40;
+          return 25;
+        },
+      },
     ],
   },
 
@@ -190,6 +203,23 @@ const CATEGORIES = {
           return table[d.successionalStage] ?? null;
         },
       },
+      {
+        // Sentinel-2 NDVI / NDRE vigor (property-scale, medium-high confidence)
+        key: 'satelliteVigor',
+        fields: ['vegetationVigor', 'ndviMedian'],
+        score(d) {
+          if (d.ndviMedian != null) {
+            const n = d.ndviMedian;
+            if (n >= 0.6) return 90;
+            if (n >= 0.45) return 75;
+            if (n >= 0.3) return 55;
+            if (n >= 0.15) return 35;
+            return 15;
+          }
+          const table = { high: 88, moderate: 65, low: 40, very_low: 18 };
+          return table[d.vegetationVigor] ?? null;
+        },
+      },
     ],
   },
 
@@ -235,6 +265,19 @@ const CATEGORIES = {
           if (d.frostPoolingRisk == null) return null;
           const table = { low: 85, moderate: 55, high: 25 };
           return table[d.frostPoolingRisk] ?? null;
+        },
+      },
+      {
+        // Multi-year Landsat NDVI trend as vigor / microclimate stress screen
+        key: 'vegetationTrend',
+        fields: ['ndviTrendSlope'],
+        score(d) {
+          const s = d.ndviTrendSlope;
+          if (s == null) return null;
+          if (s >= 0.01) return 85;
+          if (s >= 0) return 70;
+          if (s >= -0.01) return 50;
+          return 30;
         },
       },
     ],

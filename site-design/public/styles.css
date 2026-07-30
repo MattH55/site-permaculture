@@ -1307,6 +1307,18 @@ h3 { font-size: 1.08rem; }
   display: block;
   margin-bottom: 0.4rem;
 }
+.well-range-card .well-range-value {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-size: 2.1rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  line-height: 1.15;
+}
+.well-range-card .well-range-sep {
+  color: var(--ink-soft);
+  font-weight: 400;
+}
 .well-range-value {
   font-family: 'Bricolage Grotesque', sans-serif;
   font-weight: 800;

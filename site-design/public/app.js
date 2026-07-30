@@ -3387,13 +3387,14 @@ function initWellsMinimap(elId, wells, centre) {
 
   wells.forEach((w) => {
     all.push([w.lat, w.lng]);
-    const depth = w.depth_m || 0;
-    const t = Math.min(1, depth / 300);
+    const depth = w.completion_depth_m || w.depth_m || 0;
+    const t = Math.min(1, depth / 80);
     const fill = `hsl(24, ${40 + t * 30}%, ${60 - t * 35}%)`;
+    const swlTip = w.static_water_level_m != null ? ` · SWL ${w.static_water_level_m}m` : '';
     L.circleMarker([w.lat, w.lng], {
       radius: 6, fillColor: fill, fillOpacity: 0.85,
       color: '#fff', weight: 1.5,
-    }).addTo(map).bindTooltip(`${w.depth_m}m · ${w.distance_km}km`);
+    }).addTo(map).bindTooltip(`completion ${depth}m${swlTip} · ${w.distance_km}km`);
   });
 
   map.fitBounds(all, { padding: [10, 10] });
@@ -3439,16 +3440,18 @@ function initCrimeMinimap(elId, crimes, centre) {
 
 function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
   if (!wells?.length) return '';
-  const depths = wells.map((w) => w.depth_m).filter((d) => d > 0);
+  // Prefer aquifer completion depths (hydrology) over total drilled
+  const depths = wells
+    .map((w) => w.completion_depth_m ?? w.depth_m)
+    .filter((d) => d > 0);
   if (!depths.length) return '';
 
   const W = 320, H = 130, padX = 24, padY = 22;
   const usableW = W - padX * 2, usableH = H - padY * 2;
-  const min = Math.min(...depths, low || 0);
-  const max = Math.max(...depths, high || 200);
-  const span = max - min || 1;
+  const min = Math.min(...depths, low != null ? low : Infinity, predictedDepth != null ? predictedDepth : Infinity);
+  const max = Math.max(...depths, high != null ? high : 0, predictedDepth != null ? predictedDepth : 0);
+  const span = (max - min) || 1;
 
-  // Histogram bins
   const bins = 14;
   const binW = span / bins;
   const counts = new Array(bins).fill(0);
@@ -3463,28 +3466,36 @@ function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
     const h = Math.max(2, (c / maxC) * usableH);
     const y = padY + usableH - h;
     const fill = i < bins / 3 ? 'var(--h2)' : i < bins * 2 / 3 ? 'var(--h4)' : 'var(--h6)';
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / bins - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" opacity="0.7" rx="1"><title>${c} wells · ~${Math.round(min + i * binW)}–${Math.round(min + (i + 1) * binW)}m</title></rect>`;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / bins - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" opacity="0.7" rx="1"><title>${c} wells · ~${Math.round(min + i * binW)}–${Math.round(min + (i + 1) * binW)}m completion</title></rect>`;
   }).join('');
 
-  // Predicted range overlay
   let rangeOverlay = '';
   if (low != null && high != null) {
     const lx = padX + ((low - min) / span) * usableW;
     const hx = padX + ((high - min) / span) * usableW;
     rangeOverlay = `
       <rect x="${lx.toFixed(1)}" y="${padY}" width="${Math.max(3, (hx - lx)).toFixed(1)}" height="${usableH.toFixed(1)}" fill="rgba(145, 78, 44, 0.18)" stroke="#a8801f" stroke-width="1.5" stroke-dasharray="4 2" rx="2">
-        <title>Predicted range: ${low}–${high}m</title>
-      </rect>
-      <text x="${((lx + hx) / 2).toFixed(1)}" y="${(padY - 4).toFixed(1)}" class="svg-label" text-anchor="middle" fill="#a8801f">${low}–${high}m</text>`;
+        <title>Hydrology confidence band: ${low}–${high}m</title>
+      </rect>`;
+  }
+  let predLine = '';
+  if (predictedDepth != null) {
+    const px = padX + ((predictedDepth - min) / span) * usableW;
+    predLine = `
+      <line x1="${px.toFixed(1)}" y1="${padY}" x2="${px.toFixed(1)}" y2="${(padY + usableH).toFixed(1)}" stroke="#a8801f" stroke-width="2">
+        <title>Recommended completion: ${predictedDepth}m</title>
+      </line>
+      <text x="${px.toFixed(1)}" y="${(padY - 4).toFixed(1)}" class="svg-label" text-anchor="middle" fill="#a8801f">${predictedDepth}m</text>`;
   }
 
   return `
     <div class="well-chart-wrap">
-      <span class="mono topo-label">Nearby well depth distribution (${depths.length} wells)</span>
-      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Well depth distribution histogram">
+      <span class="mono topo-label">Aquifer completion depths (${depths.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Aquifer completion depth histogram">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
         ${bars}
         ${rangeOverlay}
+        ${predLine}
         <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(min)}m</text>
         <text x="${(padX + usableW - 12).toFixed(1)}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(max)}m</text>
       </svg>
@@ -3493,24 +3504,26 @@ function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
 
 function wellDistanceDepthSvg(wells, centre) {
   if (!wells?.length || !centre) return '';
-  const points = wells.filter((w) => w.distance_km != null && w.depth_m > 0);
+  const points = wells.filter((w) => w.distance_km != null && (w.completion_depth_m > 0 || w.depth_m > 0));
   if (!points.length) return '';
 
   const W = 320, H = 150, padX = 30, padY = 22;
   const usableW = W - padX * 2, usableH = H - padY * 2;
   const maxDist = Math.max(...points.map((p) => p.distance_km), 1);
-  const maxDepth = Math.max(...points.map((p) => p.depth_m), 50);
+  const maxDepth = Math.max(...points.map((p) => p.completion_depth_m || p.depth_m), 50);
 
   const dots = points.map((p) => {
+    const depth = p.completion_depth_m || p.depth_m;
     const x = padX + (p.distance_km / maxDist) * usableW;
-    const y = padY + usableH - (p.depth_m / maxDepth) * usableH;
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#5b3a73" opacity="0.7"><title>${p.depth_m}m · ${p.distance_km}km</title></circle>`;
+    const y = padY + usableH - (depth / maxDepth) * usableH;
+    const hasSwl = p.static_water_level_m != null;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${hasSwl ? '#2f6f4e' : '#5b3a73'}" opacity="0.75"><title>completion ${depth}m${hasSwl ? ` · SWL ${p.static_water_level_m}m` : ''} · ${p.distance_km}km</title></circle>`;
   }).join('');
 
   return `
     <div class="well-chart-wrap">
-      <span class="mono topo-label">Distance vs depth (${points.length} wells)</span>
-      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distance vs depth scatter plot">
+      <span class="mono topo-label">Distance vs completion (${points.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distance vs aquifer completion scatter">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
         ${dots}
         <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">0 km</text>
@@ -3528,32 +3541,50 @@ function wellDepthSection(w, centre) {
         <p class="fine">No estimate available for this site.</p>
       </section>`;
   }
-  // Use actual nearby well depths, not predicted range
-  const nearbyWells = w.nearby_wells || [];
-  const depths = nearbyWells.map((nw) => nw.depth_m).filter((d) => d > 0);
-  const shallowNw = depths.length ? Math.min(...depths) : null;
-  const deepNw = depths.length ? Math.max(...depths) : null;
-  depths.sort((a, b) => a - b);
-  const medianNw = depths.length ? depths[Math.floor(depths.length / 2)] : null;
-  const q1Nw = depths.length >= 4 ? depths[Math.floor(depths.length / 4)] : null;
-  const q3Nw = depths.length >= 4 ? depths[Math.floor(depths.length * 3 / 4)] : null;
+
+  const depth = w.estimated_depth_m;
+  const low = w.estimated_depth_range_m?.low_m;
+  const high = w.estimated_depth_range_m?.high_m;
   const swl = w.estimated_static_water_level_m;
+  const aquiferTop = w.estimated_aquifer_top_m;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
     well_control_sparse: 'Sparse nearby well control',
-    no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock model only',
+    no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock / WAM model only',
   }[w.confidence] || w.confidence;
 
-  const distChart = wellDepthDistributionSvg(w.nearby_wells, medianNw, shallowNw, deepNw);
+  const basis = (w.hydrology_basis || w._meta?.hydro_signals)
+    ? (w.hydrology_basis || []).slice(0, 4)
+    : [];
+  const basisLine = basis.length
+    ? basis.map((b) => esc(b)).join(' · ')
+    : 'Nearby pump tests, screen intervals, and water-bearing lithology (IDW)';
+
+  const distChart = wellDepthDistributionSvg(w.nearby_wells, depth, low, high);
   const scatterChart = wellDistanceDepthSvg(w.nearby_wells, centre);
 
-  // Enriched data cards
   const yieldSum = w.yield_summary;
   const pumpSum = w.pump_test_summary;
   const chemSum = w.chemistry_summary;
   const lithSum = w.lithology_summary;
 
   const enrichCards = [];
+  if (swl != null) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Static water level</span>
+        <strong>${fmt(swl, 'm')} bgs</strong>
+        <p class="fine">IDW from nearby pump tests${aquiferTop != null && aquiferTop !== swl ? ` · aquifer top ~${fmt(aquiferTop, 'm')}` : ''}</p>
+      </article>`);
+  }
+  if (w.target_hydrostratigraphic_unit) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Target unit</span>
+        <strong style="font-size:1rem">${esc(w.target_hydrostratigraphic_unit)}</strong>
+        <p class="fine">${esc(confLabel)}</p>
+      </article>`);
+  }
   if (yieldSum?.count) {
     enrichCards.push(`
       <article class="prox-card">
@@ -3586,6 +3617,14 @@ function wellDepthSection(w, centre) {
         <p class="fine">${esc(lithSum.top_materials.slice(0, 3).join(', '))}</p>
       </article>`);
   }
+  if (w.screen_control_count) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Screen control</span>
+        <strong>${w.screen_control_count} wells</strong>
+        <p class="fine">Screen-bottom intervals used for completion depth</p>
+      </article>`);
+  }
   if (w.geophysics_available) {
     enrichCards.push(`
       <article class="prox-card">
@@ -3598,27 +3637,29 @@ function wellDepthSection(w, centre) {
     <section class="report-block well-depth-block">
       <h2>Predicted well depth</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Interpolated from nearby drilled records (primary) with bedrock topography as a covariate —
-        not a topography-only guess. Always shown as a <strong>range</strong>.
+        Based on <strong>subsurface hydrology</strong> — static water level, screen intervals, and water-bearing
+        lithology from nearby AWWI records (with Wet Areas Mapping depth-to-water as a shallow covariate).
+        Not the min–max of total drilled depths.
       </p>
 
       <div class="well-range-card">
-        <span class="mono">Nearby well depths</span>
+        <span class="mono">Recommended aquifer completion</span>
         <div class="well-range-value">
-          ${fmt(shallowNw, 'm')} <span class="well-range-sep">–</span> ${fmt(deepNw, 'm')}
+          ${fmt(depth, 'm')}
         </div>
         <p class="fine">
-          Median ${fmt(medianNw, 'm')}${q1Nw != null && q3Nw != null ? ` · IQR ${fmt(q1Nw, 'm')}–${fmt(q3Nw, 'm')}` : ''}
-          · ${depths.length} nearby wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
-          ${swl != null ? ` · static water level ~${fmt(swl, 'm')}` : ''}
+          Confidence band ${fmt(low, 'm')}–${fmt(high, 'm')}
+          ${swl != null ? ` · static water level ~${fmt(swl, 'm')} bgs` : ''}
+          · ${esc(w.nearby_well_count ?? 0)} wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
         </p>
+        <p class="fine" style="margin-top:0.35rem">${basisLine}</p>
       </div>
 
       <div class="summary-grid">
-        <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
-        <div class="stat"><span class="k">Search radius</span><strong>${fmt(w.nearby_well_search_radius_km, 'km')}</strong></div>
-        <div class="stat"><span class="k">Median depth</span><strong>${fmt(medianNw, 'm')}</strong></div>
-        <div class="stat"><span class="k">Min / Max</span><strong>${fmt(shallowNw, 'm')} – ${fmt(deepNw, 'm')}</strong></div>
+        <div class="stat"><span class="k">Completion depth</span><strong>${fmt(depth, 'm')}</strong></div>
+        <div class="stat"><span class="k">Static water level</span><strong>${fmt(swl, 'm')}</strong></div>
+        <div class="stat"><span class="k">Nearby wells</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Confidence</span><strong>${esc(confLabel)}</strong></div>
       </div>
 
       ${wellsMinimap(w, centre)}
@@ -3634,7 +3675,7 @@ function wellDepthSection(w, centre) {
         <strong>Required — consult a licensed driller</strong>
         <p>${esc(
           w.disclaimer ||
-            'This is an estimate range only, not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
+            'Hydrology-based estimate only — not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
         )}</p>
       </div>
     </section>`;
@@ -4385,12 +4426,13 @@ function fecunditySection(fec) {
   const overall = fec.overallScore;
   const completeness = fec.dataCompleteness;
   const cats = fec.categories || [];
+  const sat = fec.satellite || null;
+  const reg = fec.regional_context?.soil_organic_carbon || sat?.regional_soc || null;
 
   // Radar-style SVG
   const W = 280, H = 280, cx = W / 2, cy = H / 2, maxR = 110;
   const n = cats.length;
   const catScores = cats.map((c) => c.score ?? 0);
-  const catLabels = cats.map((c) => c.label.split('—')[0].trim());
 
   const pts = catScores.map((v, i) => {
     const a = ((i / n) * 360 - 90) * Math.PI / 180;
@@ -4437,12 +4479,61 @@ function fecunditySection(fec) {
       </div>`;
   }).join('');
 
+  // Satellite index cards
+  const idxCard = (label, idx) => {
+    if (!idx || idx.median == null) return '';
+    return `
+      <article class="prox-card">
+        <span class="mono">${esc(label)}</span>
+        <strong>${esc(idx.median)}</strong>
+        <p class="fine">
+          p10–p90 ${fmt(idx.p10)}–${fmt(idx.p90)}
+          · ${esc(idx.resolution_m ?? 10)} m
+          · ${esc(idx.confidence || '—')}
+          ${idx.date ? ` · ${esc(idx.date)}` : ''}
+        </p>
+      </article>`;
+  };
+
+  const satBlock = sat?.available
+    ? `
+      <div class="summary-grid" style="margin-top:0.85rem">
+        <div class="stat"><span class="k">NDVI cover</span><strong>${sat.ndviCoverPct != null ? `${esc(sat.ndviCoverPct)}%` : '—'}</strong></div>
+        <div class="stat"><span class="k">S2 scenes</span><strong>${esc(sat.ndvi?.scenes_used ?? sat.scenes?.length ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Moisture proxy</span><strong>${sat.soil_moisture_proxy?.relative_index != null ? esc(sat.soil_moisture_proxy.relative_index) : '—'}</strong></div>
+        <div class="stat"><span class="k">NDVI trend</span><strong>${sat.vegetation_trend?.slope_per_year != null ? `${esc(sat.vegetation_trend.slope_per_year)}/yr` : '—'}</strong></div>
+      </div>
+      <div class="prox-grid" style="margin-top:0.75rem">
+        ${idxCard('NDVI (Sentinel-2)', sat.ndvi)}
+        ${idxCard('NDRE', sat.ndre)}
+        ${idxCard('SAVI', sat.savi)}
+        ${idxCard('NDMI', sat.ndmi)}
+      </div>
+      ${satelliteMapEmbed(sat)}
+    `
+    : '';
+
+  const socBanner = reg
+    ? `
+      <div class="flag" data-severity="caution" style="margin-top:0.85rem">
+        <strong>Regional SOC context only — ${esc(reg.confidence || 'low-moderate')} confidence</strong>
+        <p>
+          Mean ~${esc(reg.mean_g_kg)} g/kg
+          ${reg.min_g_kg != null && reg.max_g_kg != null ? ` (range ${esc(reg.min_g_kg)}–${esc(reg.max_g_kg)})` : ''}
+          · ${esc(reg.source || 'SoilGrids')} · ~${esc(reg.resolution_m || 250)} m resolution.
+          ${esc(reg.note || 'Not a property-scale measurement.')}
+          <strong>No numeric SOC claim without laboratory (or calibrated drone + lab) verification.</strong>
+        </p>
+      </div>`
+    : '';
+
   return `
     <section class="report-block">
       <h2>Land fecundity assessment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Seven levers that drive land productivity, scored from available site and regional data.
+        Seven levers that drive land productivity, scored from available site, satellite, and regional data.
         Every indicator is optional — missing data drops out rather than penalizing the score.
+        ${sat?.available ? 'Vegetative levers use <strong>Sentinel-2</strong> indices at ~10 m (property-scale screening).' : ''}
       </p>
 
       <div style="display:grid;grid-template-columns:280px 1fr;gap:1.2rem;align-items:start;margin-top:0.75rem">
@@ -4462,6 +4553,7 @@ function fecunditySection(fec) {
             <p class="fine">
               ${overall != null ? scoreBandLocal(overall).tone : 'Insufficient data for overall score.'}
               · Data completeness: <strong>${completeness}%</strong> of possible indicators
+              ${sat?.available ? ' · satellite vegetation present' : ''}
             </p>
           </div>
           ${fec.weakestCategories?.length ? `
@@ -4477,15 +4569,63 @@ function fecunditySection(fec) {
         </div>
       </div>
 
+      ${satBlock}
+      ${socBanner}
+
       <div class="elements" style="margin-top:1rem;display:grid;gap:0.65rem">
         ${catCards}
       </div>
 
       <div class="flag" data-severity="info" style="margin-top:1rem">
         <strong>Remote assessment — site walk recommended</strong>
-        <p>This fecundity score is inferred from topography, soil survey, canopy cover, land-cover class, and regional wildlife observations. A direct site walk with soil tests, penetrometer readings, and field observations will significantly improve accuracy. No measured indicators were collected for this remote report.</p>
+        <p>${esc(
+          fec.disclaimer ||
+            'Satellite vegetation indices improve vegetative levers but do not replace soil tests for carbon or biology. A site walk with lab tests remains the high-confidence path.'
+        )}</p>
+        ${fec.attribution ? `<p class="fine" style="margin-top:0.35rem">${esc(fec.attribution)}</p>` : ''}
       </div>
     </section>`;
+}
+
+/** Optional NDVI tile overlay from Planetary Computer tilejson (if available). */
+function satelliteMapEmbed(sat) {
+  const layer = (sat?.map_layers || []).find((l) => l.id === 'ndvi' && l.url);
+  if (!layer || !sat?.aoi?.bbox) return '';
+  const id = 'sat-ndvi-' + Math.random().toString(36).slice(2, 8);
+  const bbox = sat.aoi.bbox;
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el || typeof L === 'undefined') return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri', maxZoom: 18,
+    }).addTo(map);
+    // Fetch tilejson then add XYZ template
+    fetch(layer.url)
+      .then((r) => r.json())
+      .then((tj) => {
+        if (tj?.tiles?.[0]) {
+          L.tileLayer(tj.tiles[0], {
+            opacity: layer.opacity ?? 0.65,
+            maxZoom: 18,
+            attribution: esc(layer.source || 'Sentinel-2'),
+          }).addTo(map);
+        }
+      })
+      .catch(() => {});
+    const bounds = [
+      [bbox.south, bbox.west],
+      [bbox.north, bbox.east],
+    ];
+    try { map.fitBounds(bounds, { padding: [12, 12] }); } catch { /* ignore */ }
+  }, 120);
+  return `
+    <div style="margin-top:0.85rem">
+      <span class="mono topo-label">NDVI overlay · ${esc(layer.date || 'latest')} · ${esc(layer.confidence)} · ${esc(layer.resolution_m)} m</span>
+      <div id="${id}" class="report-map minimap-embed" style="height:260px;margin-top:0.35rem"></div>
+      <p class="fine">${esc(layer.legend_note || '')} · Source: ${esc(layer.source || '')}</p>
+    </div>`;
 }
 
 function scoreBandLocal(score) {

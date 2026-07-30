@@ -35,6 +35,7 @@ import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
+import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 import { querySoilSurvey } from './soil-survey.js';
 
@@ -111,17 +112,22 @@ export async function generateSiteReport(input = {}) {
     t
   );
 
-  // Step 6c — well depth prediction (AWWI nearby + bedrock covariate / IDW)
-  const predicted_well_depth = predictWellDepth(centre, {
-    elevation_m: t.elevation_m,
-    search_radius_km: 5,
-  });
-
-  // Wet Areas Mapping — depth-to-water + predicted streams
+  // Wet Areas Mapping first — feeds subsurface hydrology well model
   const [depthToWater, predictedStreams] = await Promise.all([
     queryDepthToWater(centre).catch(() => null),
     queryPredictedStreams(bbox).catch(() => ({ available: false, count: null })),
   ]);
+
+  // Step 6c — well depth from subsurface hydrology (SWL, screens, wet lithology, WAM DTW)
+  const predicted_well_depth = predictWellDepth(centre, {
+    elevation_m: t.elevation_m,
+    search_radius_km: 5,
+    depth_to_water_m:
+      depthToWater?.depth_m ??
+      depthToWater?.category?.representative_m ??
+      null,
+    depth_to_water_category: depthToWater?.category || null,
+  });
 
   // Contour lines reduced from the same sampled elevation grid — feeds the
   // rate engine's swale-meterage estimate (see lib/quote.js, lib/rate-engine.js).
@@ -215,7 +221,11 @@ export async function generateSiteReport(input = {}) {
       distance_to_nearest_watercourse_m: waterDist,
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
-      water_table_depth_m: null,
+      // Prefer pump-test SWL (subsurface); WAM DTW is near-surface context only
+      water_table_depth_m:
+        predicted_well_depth?.estimated_static_water_level_m ??
+        depthToWater?.depth_m ??
+        null,
       flood_risk_zone: floodRisk,
     },
     soil: {
@@ -357,20 +367,62 @@ export async function generateSiteReport(input = {}) {
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
   record._provincial_contours = provincialContours;
 
-  // Fecundity assessment — infer from available pipeline data
-  const fecundityReport = generateFecundityReport({
-    measured: {},  // no direct site measurements from remote report
-    topoData: { avgSlopePercent: t.slope_percent },
-    wetlandsPresent: !!wetlands.present,
-    regionalSoilTexture: soils.texture || null,
-    ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
-    landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
-    wildlifeObservations: wildlife?.sighting_species || [],
-    windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
-    frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
-    footprintHa: siteInput.footprint_ha,
-    annualPrecipMm: climate.annual_precipitation_mm || null,
-  }, { propertyLabel: siteInput.site_name });
+  // Satellite vegetation indices (Sentinel-2) + regional SOC context (SoilGrids)
+  // Tier 1 screening — never used for precise SOC claims.
+  const satellite = await fetchSatelliteIndices(
+    {
+      type: 'Polygon',
+      coordinates: [ring],
+    },
+    { buffer_m: 75 }
+  ).catch((e) => ({
+    available: false,
+    fallbacks: [`satellite fetch failed: ${e.message}`],
+    claims: [],
+  }));
+  const satPatch = toFecundityPatch(satellite);
+  record.satellite = satellite;
+
+  // Fecundity assessment — prefer real NDVI cover over coarse tree-cover estimate
+  const fecundityReport = generateFecundityReport(
+    {
+      measured: {}, // no direct site measurements from remote report
+      topoData: { avgSlopePercent: t.slope_percent },
+      wetlandsPresent: !!wetlands.present,
+      regionalSoilTexture: soils.texture || null,
+      // Satellite first; land-cover / tree-cover remain fallbacks
+      ndviCoverPct:
+        satPatch.ndviCoverPct ??
+        (treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined),
+      ndviMedian: satPatch.ndviMedian,
+      vegetationVigor: satPatch.vegetationVigor,
+      soilMoistureProxy: satPatch.soilMoistureProxy,
+      ndviTrendSlope: satPatch.ndviTrendSlope,
+      satellite: satPatch.satellite,
+      satelliteClaims: satPatch.satelliteClaims,
+      regionalSocContext: satPatch.regionalSocContext,
+      landCoverClass: wetlands.present
+        ? 'shrubland'
+        : layers.alberta?.land_cover || null,
+      wildlifeObservations: wildlife?.sighting_species || [],
+      windExposureHint:
+        layers.elevation?.tree_density_hint ||
+        (treeCover?.tree_cover_pct > 40
+          ? 'sheltered'
+          : treeCover?.tree_cover_pct > 15
+            ? 'partial'
+            : 'open'),
+      frostPoolingHint:
+        t.landform_position === 'depression'
+          ? 'high'
+          : t.landform_position === 'valley_floor'
+            ? 'moderate'
+            : 'low',
+      footprintHa: siteInput.footprint_ha,
+      annualPrecipMm: climate.annual_precipitation_mm || null,
+    },
+    { propertyLabel: siteInput.site_name }
+  );
   record.fecundity = fecundityReport;
 
   record.planting_plan = planting_plan;
@@ -438,7 +490,7 @@ export async function generateSiteReport(input = {}) {
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v8-phase3',
+      pipeline: 'bbox-live-v10-satellite-fecundity',
       cache: 'miss',
       cache_key: key,
     },
@@ -464,10 +516,12 @@ function stripWellForSchema(w) {
     estimated_depth_m: w.estimated_depth_m,
     estimated_depth_range_m: w.estimated_depth_range_m,
     estimated_static_water_level_m: w.estimated_static_water_level_m,
+    estimated_aquifer_top_m: w.estimated_aquifer_top_m ?? null,
     target_hydrostratigraphic_unit: w.target_hydrostratigraphic_unit,
     nearby_well_count: w.nearby_well_count,
     nearby_well_search_radius_km: w.nearby_well_search_radius_km,
     confidence: w.confidence,
+    hydrology_basis: w.hydrology_basis || [],
     disclaimer_required: true,
   };
 }
@@ -568,7 +622,7 @@ function buildProvenance(
   if (well) {
     rows.push({
       field: 'predicted_well_depth',
-      source_name: `Well depth IDW (${well._meta?.well_data_source || 'wells'}) · AGS Map 610 bedrock proxy`,
+      source_name: `Well hydrology IDW (${well._meta?.method || 'idw'}; ${well._meta?.well_data_source || 'wells'}) · SWL/screens/lithology · AGS bedrock proxy`,
       source_date: new Date().toISOString().slice(0, 10),
       source_url: 'https://groundwater.alberta.ca/WaterWells/d/',
     });
