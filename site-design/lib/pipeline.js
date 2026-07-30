@@ -319,26 +319,53 @@ export async function generateSiteReport(input = {}) {
     }).catch(() => {});
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
-    assessAccess(centre, nearestCityDist).then((access) => {
-      // Fallback: if Overpass found no road but Sturgeon County parcel has an address,
-      // extract the road name from the parcel address
-      if (access?.nearest_road?.available === false && sturgeonCounty?.parcel?.full_address) {
-        const addr = sturgeonCounty.parcel.full_address;
-        const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
-        const roadName = roadMatch ? roadMatch[1].trim() : null;
-        if (roadName) {
-          access.nearest_road = {
+
+    // Await road access so the report does not ship with empty "Loading..." roads
+    let access = await assessAccess(centre, nearestCityDist).catch((e) => ({
+      available: true,
+      nearest_road: {
+        available: false,
+        error: e.message,
+        note: `Road lookup failed (${e.message})`,
+      },
+      trip_costs_to_city: nearestCityDist
+        ? undefined // filled below if needed
+        : [],
+      nearest_city_distance_km: nearestCityDist,
+      gas_price_cad_l: 1.45,
+      methodology: 'Access lookup failed',
+    }));
+    if (access && !access.trip_costs_to_city && nearestCityDist) {
+      const { tripCostsForDistance } = await import('./access.js');
+      access.trip_costs_to_city = tripCostsForDistance(nearestCityDist);
+    }
+    // Fallback: Sturgeon County parcel address → road name
+    if (
+      (!access?.nearest_road?.available || !access?.nearest_road?.named) &&
+      sturgeonCounty?.parcel?.full_address
+    ) {
+      const addr = sturgeonCounty.parcel.full_address;
+      const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
+      const roadName = roadMatch ? roadMatch[1].trim() : null;
+      if (roadName) {
+        access = {
+          ...access,
+          available: true,
+          nearest_road: {
             name: roadName,
-            type: 'road',
-            distance_m: null,
+            type: access?.nearest_road?.type || 'road',
+            distance_m: access?.nearest_road?.distance_m ?? null,
             available: true,
-            source: 'Sturgeon County parcel address',
-          };
-          access.methodology += ' + Sturgeon County parcel address fallback';
-        }
+            named: true,
+            source: access?.nearest_road?.available
+              ? `${access.nearest_road.source || 'OSM'} + Sturgeon County address`
+              : 'Sturgeon County parcel address',
+          },
+          methodology: (access.methodology || '') + ' + Sturgeon County parcel address fallback',
+        };
       }
-      record.access = access;
-    }).catch(() => {});
+    }
+    record.access = access;
 
     assessBiodiversity(centre).then((bio) => {
       record.biodiversity = bio;
@@ -347,13 +374,12 @@ export async function generateSiteReport(input = {}) {
     getWindRose(centre).then((wr) => {
       record.wind_rose = wr;
     }).catch(() => {});
-    record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);
     record.ats = latLngToAts(centre);
     record.parcel_address = {
       ats: record.ats,
       centroid: { lat: centre.latitude, lng: centre.longitude },
-      nearest_road: null,
+      nearest_road: access?.nearest_road || null,
       locality: proximity.nearest_settlement?.name || proximity.nearest_city?.name || null,
     };
 
