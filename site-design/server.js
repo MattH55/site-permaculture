@@ -9,6 +9,13 @@ import {
   buildEmbedRecommendations,
   getTaxonomyPayload,
 } from './lib/embed-api.js';
+import { planPlantings, getPlantGoalsPayload } from './lib/planting.js';
+import {
+  plantingPlanInterventionValue,
+  plantingReportTable,
+  enrichDesignElementsWithPlants,
+} from './lib/plant-interventions.js';
+import { groupRecommendationsByValue } from './lib/recommendation-values.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -121,6 +128,7 @@ app.post('/api/report', async (req, res) => {
       polygon: body.polygon,
       site_name: body.site_name,
       force: !!body.force,
+      plant_goals: body.plant_goals || body.goals,
     });
     report._meta = {
       ...report._meta,
@@ -130,6 +138,87 @@ app.post('/api/report', async (req, res) => {
   } catch (e) {
     console.error('report failed', e);
     res.status(400).json({ error: e.message || 'report failed' });
+  }
+});
+
+/**
+ * Re-run Plant Recommendation + Economics Engine with new goals/scenario.
+ * Body: {
+ *   site?: object,           // climate/soil/hydrology/terrain/vegetation/footprint
+ *   goals?: string[],        // max_food | max_nitrogen | lowest_cost | …
+ *   scenario?: string,       // market_garden | home_use | fodder
+ *   fecundity?, hardiness?, soil_survey?, satellite?, wetlands?, wind_rose?, tree_cover?,
+ *   profile?: object,        // optional prior site_condition_profile
+ *   limit?: number
+ * }
+ */
+app.post('/api/planting', (req, res) => {
+  try {
+    const body = req.body || {};
+    const site = body.site || body.site_input || {};
+    if (!site.climate && !site.footprint_ha && !body.profile) {
+      return res.status(400).json({
+        error: 'site (climate/soil/hydrology/footprint) or profile required',
+      });
+    }
+    const plan = planPlantings(site, {
+      limit: body.limit ?? 18,
+      goals: body.goals || body.plant_goals,
+      scenario: body.scenario || 'market_garden',
+      fecundity: body.fecundity,
+      hardiness: body.hardiness,
+      soil_survey: body.soil_survey,
+      satellite: body.satellite,
+      wetlands: body.wetlands,
+      wind_rose: body.wind_rose,
+      tree_cover: body.tree_cover,
+      profile: body.profile,
+      windExposureHint: body.windExposureHint,
+      frostPoolingHint: body.frostPoolingHint,
+      horizon_years: body.horizon_years || 10,
+    });
+
+    // Live economics + lever intervention overlay for the selected goals
+    const baselineScores = Object.fromEntries(
+      (body.fecundity?.categories || []).map((c) => [c.category, c.score])
+    );
+    const plantingIntervention = plantingPlanInterventionValue(plan, baselineScores, {
+      scenario: 'mid',
+      timeHorizonYears: body.horizon_years || 10,
+      footprintHa: site.footprint_ha,
+    });
+    const recommended_plantings = plantingReportTable(plan, plantingIntervention);
+
+    let design_elements = body.design_elements || null;
+    let recommendations = null;
+    if (Array.isArray(design_elements) && design_elements.length) {
+      design_elements = enrichDesignElementsWithPlants(
+        design_elements,
+        plan,
+        plan.site_condition_profile
+      );
+      recommendations = groupRecommendationsByValue(design_elements);
+    }
+
+    res.json({
+      planting_plan: plan,
+      planting_intervention_value: plantingIntervention,
+      recommended_plantings,
+      design_elements,
+      recommendations,
+      available_goals: getPlantGoalsPayload(),
+    });
+  } catch (e) {
+    console.error('planting replan failed', e);
+    res.status(400).json({ error: e.message || 'planting failed' });
+  }
+});
+
+app.get('/api/planting/goals', (_req, res) => {
+  try {
+    res.json(getPlantGoalsPayload());
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 

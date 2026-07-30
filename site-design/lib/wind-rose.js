@@ -1,172 +1,321 @@
 /**
- * Wind rose data from Alberta Climate Information Service (ACIS).
+ * Wind rose from NASA POWER (hourly WS10M + WD10M).
  *
- * Fetches station list + binned wind-direction frequency from
- *   https://acis.alberta.ca/acis/api/v1/weather/stations
- *   https://acis.alberta.ca/acis/api/v1/weather/wind/binned-frequency
+ * Primary source: NASA Langley Research Center POWER Project
+ *   https://power.larc.nasa.gov/
+ * Community RE, 10 m wind speed (m/s) and meteorological direction (°).
  *
- * Requires a browser-like session (ACIS blocks raw server calls).
- * We bootstrap a JSESSIONID by visiting the wind-rose page first.
+ * Builds a 16-direction × speed-bin frequency rose, primary/secondary
+ * prevailing directions, and shelterbelt orientation envelopes.
+ *
+ * ACIS is no longer required (browser/session gate often blocks server use).
  */
 
-import { haversineKm } from './proximity.js';
+const POWER_HOURLY =
+  'https://power.larc.nasa.gov/api/temporal/hourly/point';
+const UA = 'ExpandingEdgeAlberta/1.0 (site-design; research)';
+const FETCH_MS = 90_000;
 
-const ACIS_BASE = 'https://acis.alberta.ca/acis';
-const ACIS_PAGE = 'https://acis.alberta.ca/wind-rose.jsp';
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+const DIRS16 = [
+  'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
+  'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW',
+];
+
+/** Speed bins (m/s) — low → high for stacked rose legend. */
+const SPEED_BINS = [
+  { name: '0–2 m/s', min: 0, max: 2 },
+  { name: '2–4 m/s', min: 2, max: 4 },
+  { name: '4–6 m/s', min: 4, max: 6 },
+  { name: '6–8 m/s', min: 6, max: 8 },
+  { name: '8–10 m/s', min: 8, max: 10 },
+  { name: '≥10 m/s', min: 10, max: Infinity },
+];
 
 /**
- * Fetch with browser-like headers and follow redirects.
+ * Fetch NASA POWER hourly wind and build a wind rose for the site.
+ * @param {{ latitude: number, longitude: number }} centre
+ * @param {{ years?: number, endDate?: Date }} [opts]
  */
-async function acisFetch(url, cookie = '') {
+export async function getWindRose(centre, opts = {}) {
+  const lat = centre?.latitude;
+  const lng = centre?.longitude;
+  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { available: false, error: 'Invalid centre coordinates' };
+  }
+
+  try {
+    const years = Math.min(Math.max(opts.years ?? 2, 1), 5);
+    const end = opts.endDate ? new Date(opts.endDate) : new Date();
+    // Prefer complete years ending last full year if mid-year; otherwise rolling
+    const endYmd = toYmd(end);
+    const start = new Date(end);
+    start.setFullYear(start.getFullYear() - years);
+    const startYmd = toYmd(start);
+
+    const raw = await fetchPowerHourly(lat, lng, startYmd, endYmd);
+    if (!raw?.ok) {
+      return {
+        available: false,
+        error: raw?.error || 'NASA POWER wind request failed',
+        source: 'NASA POWER',
+        source_url: 'https://power.larc.nasa.gov/',
+      };
+    }
+
+    const rose = binWindRose(raw.ws, raw.wd);
+    if (!rose.n_obs) {
+      return {
+        available: false,
+        error: 'NASA POWER returned no valid wind observations',
+        source: 'NASA POWER',
+        source_url: 'https://power.larc.nasa.gov/',
+      };
+    }
+
+    const primary = rose.dir_rank[0] || null;
+    const secondary = rose.dir_rank[1] || null;
+    const shelterbelt = shelterbeltEnvelope(primary, secondary);
+
+    return {
+      available: true,
+      station_name: `NASA POWER grid (${lat.toFixed(3)}°, ${lng.toFixed(3)}°)`,
+      station_id: 'NASA-POWER-WS10M-WD10M',
+      distance_km: 0,
+      latitude: lat,
+      longitude: lng,
+      start_date: startYmd.slice(0, 4) + '-' + startYmd.slice(4, 6) + '-' + startYmd.slice(6, 8),
+      end_date: endYmd.slice(0, 4) + '-' + endYmd.slice(4, 6) + '-' + endYmd.slice(6, 8),
+      series: rose.series,
+      n_obs: rose.n_obs,
+      mean_speed_ms: rose.mean_speed_ms,
+      calm_pct: rose.calm_pct,
+      primary_direction: primary?.dir || null,
+      primary_frequency_pct: primary?.freq_pct ?? null,
+      primary_mean_speed_ms: primary?.mean_speed_ms ?? null,
+      secondary_direction: secondary?.dir || null,
+      secondary_frequency_pct: secondary?.freq_pct ?? null,
+      secondary_mean_speed_ms: secondary?.mean_speed_ms ?? null,
+      dir_frequencies: rose.dir_totals_pct,
+      shelterbelt,
+      source: 'NASA POWER (Langley Research Center) — hourly WS10M / WD10M @ 10 m',
+      source_url: 'https://power.larc.nasa.gov/',
+      methodology:
+        'Hourly 10 m wind speed and meteorological direction binned into 16 compass sectors and speed classes. ' +
+        'Frequencies are % of valid hours. Primary/secondary = top two sector frequencies. ' +
+        'Shelterbelt axes are perpendicular to those sectors.',
+      _meta: {
+        parameters: ['WS10M', 'WD10M'],
+        community: 'RE',
+        years_requested: years,
+        generated_at: new Date().toISOString(),
+      },
+    };
+  } catch (e) {
+    console.warn('Wind rose (NASA POWER) failed:', e.message);
+    return {
+      available: false,
+      error: e.message,
+      source: 'NASA POWER',
+      source_url: 'https://power.larc.nasa.gov/',
+    };
+  }
+}
+
+/**
+ * @param {number} lat
+ * @param {number} lng
+ * @param {string} startYmd YYYYMMDD
+ * @param {string} endYmd YYYYMMDD
+ */
+async function fetchPowerHourly(lat, lng, startYmd, endYmd) {
+  const params = new URLSearchParams({
+    parameters: 'WS10M,WD10M',
+    community: 'RE',
+    longitude: String(Number(lng.toFixed(4))),
+    latitude: String(Number(lat.toFixed(4))),
+    start: startYmd,
+    end: endYmd,
+    format: 'JSON',
+  });
+  const url = `${POWER_HOURLY}?${params}`;
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  const timer = setTimeout(() => ctrl.abort(), FETCH_MS);
   try {
     const res = await fetch(url, {
       signal: ctrl.signal,
-      headers: {
-        'User-Agent': UA,
-        'Accept': 'application/json, text/html, */*',
-        'Referer': ACIS_PAGE,
-        ...(cookie ? { 'Cookie': cookie } : {}),
-      },
-      redirect: 'follow',
+      headers: { Accept: 'application/json', 'User-Agent': UA },
     });
-    const setCookie = res.headers.get('set-cookie') || '';
-    const jsession = setCookie.match(/JSESSIONID=([^;]+)/)?.[1] || null;
-    const text = await res.text();
-    return { ok: res.ok, status: res.status, text, jsession };
+    if (!res.ok) {
+      return { ok: false, error: `NASA POWER HTTP ${res.status}` };
+    }
+    const data = await res.json();
+    const ws = data?.properties?.parameter?.WS10M || null;
+    const wd = data?.properties?.parameter?.WD10M || null;
+    if (!ws || !wd) {
+      return { ok: false, error: 'NASA POWER response missing WS10M/WD10M' };
+    }
+    return { ok: true, ws, wd };
   } finally {
     clearTimeout(timer);
   }
 }
 
 /**
- * Get an ACIS session cookie by visiting the wind-rose page.
+ * Bin hourly series into stacked rose series compatible with the report SVG.
+ * @param {Record<string, number>} wsMap
+ * @param {Record<string, number>} wdMap
  */
-async function getSession() {
-  const res = await acisFetch(ACIS_PAGE);
-  if (res.jsession) return `JSESSIONID=${res.jsession}`;
-  return '';
-}
+export function binWindRose(wsMap, wdMap) {
+  const nDirs = 16;
+  const nBins = SPEED_BINS.length;
+  // counts[speedBin][dir]
+  const counts = Array.from({ length: nBins }, () => new Array(nDirs).fill(0));
+  const dirSpeedSum = new Array(nDirs).fill(0);
+  const dirCount = new Array(nDirs).fill(0);
+  let n = 0;
+  let speedSum = 0;
+  let calm = 0;
 
-/**
- * Fetch the full station list from ACIS.
- */
-async function fetchStations(cookie) {
-  // Try the API; if it returns the "browser only" message, retry with session
-  let res = await acisFetch(`${ACIS_BASE}/api/v1/weather/stations`, cookie);
-  if (!res.ok || res.text.includes('web interface')) {
-    // Get fresh session
-    cookie = await getSession();
-    res = await acisFetch(`${ACIS_BASE}/api/v1/weather/stations`, cookie);
-  }
-  if (!res.ok || res.text.includes('web interface')) {
-    throw new Error('ACIS stations API unavailable');
-  }
-  return JSON.parse(res.text);
-}
+  const keys = Object.keys(wsMap);
+  for (const k of keys) {
+    const speed = Number(wsMap[k]);
+    const dir = Number(wdMap[k]);
+    // POWER fill values are often -999
+    if (!Number.isFinite(speed) || speed < 0 || speed > 80) continue;
+    if (!Number.isFinite(dir) || dir < 0 || dir > 360) continue;
 
-/**
- * Fetch wind binned-frequency for a station.
- * @param {string} cookie
- * @param {string|number} stationId
- * @param {string} element - e.g. 'wd_sd' (wind direction standard), 'wd_sr' (speed range)
- * @param {string} startISO
- * @param {string} endISO
- */
-async function fetchWindData(cookie, stationId, element, startISO, endISO) {
-  const params = new URLSearchParams({
-    stationId: String(stationId),
-    windDirCd: element,
-    interval: 'yearly',
-    startTimestamp: startISO,
-    endTimestamp: endISO,
-  });
-  const url = `${ACIS_BASE}/api/v1/weather/wind/binned-frequency?${params}`;
-  let res = await acisFetch(url, cookie);
-  if (!res.ok || res.text.includes('web interface')) {
-    cookie = await getSession();
-    res = await acisFetch(url, cookie);
-  }
-  if (!res.ok || res.text.includes('web interface')) {
-    return null;
-  }
-  try {
-    return JSON.parse(res.text);
-  } catch {
-    return null;
-  }
-}
+    n += 1;
+    speedSum += speed;
+    if (speed < 0.5) calm += 1;
 
-/**
- * Find the nearest ACIS station to a point that has wind data.
- * @param {{ latitude: number, longitude: number }} centre
- * @returns {Promise<object>}
- */
-export async function getWindRose(centre) {
-  try {
-    const cookie = await getSession();
-    const stations = await fetchStations(cookie);
+    const dBin = dirToBin(dir);
+    dirSpeedSum[dBin] += speed;
+    dirCount[dBin] += 1;
 
-    if (!Array.isArray(stations) || !stations.length) {
-      return { available: false, error: 'No ACIS stations returned' };
-    }
-
-    // Find nearest station with wind direction support
-    const candidates = stations
-      .filter((s) => s.latitude != null && s.longitude != null)
-      .map((s) => ({
-        ...s,
-        _dist: haversineKm(centre.latitude, centre.longitude, s.latitude, s.longitude),
-      }))
-      .sort((a, b) => a._dist - b._dist);
-
-    // Try up to 5 nearest stations
-    const now = new Date();
-    const fiveYearsAgo = new Date(now);
-    fiveYearsAgo.setFullYear(fiveYearsAgo.getFullYear() - 5);
-    const startISO = fiveYearsAgo.toISOString();
-    const endISO = now.toISOString();
-
-    for (const st of candidates.slice(0, 5)) {
-      // Check if station supports wind direction ('wd_sd')
-      const supported = st.supportedValues || {};
-      const yearly = supported.yearly || supported.monthly || [];
-      const hasWind = yearly.some((v) =>
-        ['wd_sd', 'wd_sr'].includes(v) || (typeof v === 'string' && v.startsWith('wd'))
-      );
-
-      if (!hasWind && !yearly.includes('wd_sd')) {
-        // Try anyway — metadata may be incomplete
-      }
-
-      const data = await fetchWindData(cookie, st.stationId, 'wd_sd', startISO, endISO);
-      if (data && Array.isArray(data) && data.length > 0) {
-        return {
-          available: true,
-          station_name: st.name,
-          station_id: st.stationId,
-          distance_km: Math.round(st._dist * 10) / 10,
-          latitude: st.latitude,
-          longitude: st.longitude,
-          start_date: startISO.slice(0, 10),
-          end_date: endISO.slice(0, 10),
-          series: data,
-          source: 'Alberta Climate Information Service (ACIS)',
-          source_url: 'https://acis.alberta.ca/wind-rose.jsp',
-        };
+    let sBin = nBins - 1;
+    for (let i = 0; i < nBins; i++) {
+      if (speed >= SPEED_BINS[i].min && speed < SPEED_BINS[i].max) {
+        sBin = i;
+        break;
       }
     }
+    counts[sBin][dBin] += 1;
+  }
 
+  if (!n) {
     return {
-      available: false,
-      error: 'No wind direction data at nearby ACIS stations',
-      nearest_station: candidates[0]?.name || null,
-      nearest_station_distance_km: candidates[0] ? Math.round(candidates[0]._dist * 10) / 10 : null,
+      n_obs: 0,
+      series: [],
+      dir_totals_pct: [],
+      dir_rank: [],
+      mean_speed_ms: null,
+      calm_pct: null,
     };
-  } catch (e) {
-    console.warn('Wind rose fetch failed:', e.message);
-    return { available: false, error: e.message };
   }
+
+  // Convert to % of all valid hours (stacked series for SVG)
+  const series = counts.map((row, i) => ({
+    name: SPEED_BINS[i].name,
+    data: row.map((c) => round1((c / n) * 100)),
+  }));
+
+  const dirTotals = new Array(nDirs).fill(0);
+  for (let s = 0; s < nBins; s++) {
+    for (let d = 0; d < nDirs; d++) dirTotals[d] += counts[s][d];
+  }
+  const dir_totals_pct = dirTotals.map((c, i) => ({
+    dir: DIRS16[i],
+    freq_pct: round1((c / n) * 100),
+    mean_speed_ms: dirCount[i] ? round2(dirSpeedSum[i] / dirCount[i]) : null,
+  }));
+
+  const dir_rank = [...dir_totals_pct]
+    .sort((a, b) => b.freq_pct - a.freq_pct)
+    .filter((d) => d.freq_pct > 0);
+
+  return {
+    n_obs: n,
+    series,
+    dir_totals_pct,
+    dir_rank,
+    mean_speed_ms: round2(speedSum / n),
+    calm_pct: round1((calm / n) * 100),
+  };
+}
+
+/** Meteorological direction ° → 16-bin index (0=N). */
+export function dirToBin(deg) {
+  // Centre bins on 0, 22.5, … — round(deg/22.5) mod 16
+  let d = ((Number(deg) % 360) + 360) % 360;
+  return Math.round(d / 22.5) % 16;
+}
+
+/**
+ * Shelterbelt orientation from primary (and optional secondary) wind sectors.
+ * Perpendicular to wind = plant axis.
+ */
+export function shelterbeltEnvelope(primary, secondary) {
+  if (!primary?.dir) {
+    return {
+      primary_axis: null,
+      secondary_axis: null,
+      note: 'Insufficient wind data for shelterbelt orientation',
+    };
+  }
+
+  const primaryAxis = perpendicularAxis(primary.dir);
+  const secondaryAxis =
+    secondary?.dir && secondary.freq_pct >= 8 ? perpendicularAxis(secondary.dir) : null;
+
+  const multi =
+    secondary?.freq_pct != null &&
+    primary.freq_pct > 0 &&
+    secondary.freq_pct / primary.freq_pct >= 0.65;
+
+  let note =
+    `Orient the main shelterbelt along ${primaryAxis.label} (perpendicular to ${primary.dir} winds, ` +
+    `${primary.freq_pct}% of hours). Protected zone extends ~5–10× belt height leeward.`;
+
+  if (secondaryAxis && multi) {
+    note +=
+      ` Secondary winds from ${secondary.dir} (${secondary.freq_pct}%) are significant — ` +
+      `consider a second belt along ${secondaryAxis.label}, or an L/U-shaped multi-row design.`;
+  } else if (secondaryAxis) {
+    note +=
+      ` Secondary sector ${secondary.dir} (${secondary.freq_pct}%) is moderate; a single well-designed multi-row belt may suffice, with optional return rows.`;
+  }
+
+  return {
+    primary_axis: primaryAxis.label,
+    primary_perpendicular_to: primary.dir,
+    secondary_axis: secondaryAxis?.label || null,
+    secondary_perpendicular_to: secondaryAxis ? secondary.dir : null,
+    multi_directional: !!multi,
+    note,
+  };
+}
+
+function perpendicularAxis(dirLabel) {
+  const idx = DIRS16.indexOf(dirLabel);
+  if (idx < 0) return { label: 'E–W', index: 4 };
+  // +90° = 4 bins of 22.5°
+  const a = (idx + 4) % 16;
+  const b = (idx + 12) % 16; // opposite end of same axis
+  // Prefer naming main 8-point when both ends are cardinal-ish
+  const label = `${DIRS16[a]}–${DIRS16[b]}`;
+  return { label, index: a };
+}
+
+function toYmd(d) {
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${day}`;
+}
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+function round2(n) {
+  return Math.round(n * 100) / 100;
 }

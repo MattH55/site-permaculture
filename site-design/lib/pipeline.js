@@ -16,6 +16,11 @@ import { generateContourLines } from './contours.js';
 import { predictWellDepth } from './well-depth.js';
 import { buildServiceQuote } from './quote.js';
 import { planPlantings } from './planting.js';
+import {
+  enrichDesignElementsWithPlants,
+  plantingPlanInterventionValue,
+  plantingReportTable,
+} from './plant-interventions.js';
 import { assessSolar } from './solar.js';
 import { fetchNearestEpsCrimes } from './crime.js';
 import { assessLandValue } from './land-value.js';
@@ -23,6 +28,7 @@ import { queryHardiness } from './hardiness.js';
 import { queryFloodHazard } from './flood.js';
 import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
+import { groupRecommendationsByValue } from './recommendation-values.js';
 import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
 import { checkWildlifeSensitivity, queryGbig, lookupWmu } from './wildlife-enrich.js';
@@ -36,6 +42,8 @@ import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
+import { fetchWetlands, toFecundityWetlandPatch } from './wetlands.js';
+import { fetchSmallWater, toFecunditySmallWaterPatch } from './small-water.js';
 import { recommendServicePackages } from './service-packages.js';
 import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 import { querySoilSurvey } from './soil-survey.js';
@@ -46,7 +54,7 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 const CACHE_MAX = 200;
 
 /**
- * @param {{ polygon: object, site_name?: string, force?: boolean }} input
+ * @param {{ polygon: object, site_name?: string, force?: boolean, plant_goals?: string[] }} input
  */
 export async function generateSiteReport(input = {}) {
   const ring = normalizePolygon(input.polygon);
@@ -186,9 +194,11 @@ export async function generateSiteReport(input = {}) {
     ? interpretLandUse(sturgeonCounty.land_use)
     : null;
 
-  // AGRASID/AGRASIS soil survey lookup
-  const soilSurvey = await querySoilSurvey(centre.latitude, centre.longitude)
-    .catch(() => ({ available: false, error: 'Soil survey lookup failed' }));
+  // AGRASID/AGRASIS soil survey + SoilGrids sample grid mapped across parcel
+  const soilSurvey = await querySoilSurvey(centre.latitude, centre.longitude, {
+    bbox,
+    samples: 9,
+  }).catch(() => ({ available: false, error: 'Soil survey lookup failed' }));
 
   // Prefer live NRCan hardiness + frost table over Alberta preset alone
   const hardinessZone =
@@ -277,9 +287,6 @@ export async function generateSiteReport(input = {}) {
       wildlife
     ),
   };
-
-  // Step 8-style join: EcoCrop / Growing Guide planting plan (after climate+soil assembled)
-  const planting_plan = planPlantings(siteInput, { limit: 18 });
 
   const record = buildSiteRecord(siteInput);
 
@@ -371,9 +378,7 @@ export async function generateSiteReport(input = {}) {
       record.biodiversity = bio;
     }).catch(() => {});
 
-    getWindRose(centre).then((wr) => {
-      record.wind_rose = wr;
-    }).catch(() => {});
+    // NASA POWER wind rose (awaited below with other late enrichments)
     record.demographics = demographicsHeuristic(centre);
     record.ats = latLngToAts(centre);
     record.parcel_address = {
@@ -392,28 +397,107 @@ export async function generateSiteReport(input = {}) {
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
   record._provincial_contours = provincialContours;
 
-  // Satellite vegetation indices (Sentinel-2) + regional SOC context (SoilGrids)
-  // Tier 1 screening — never used for precise SOC claims.
-  const satellite = await fetchSatelliteIndices(
+  // Satellite vegetation indices (Sentinel-2) + regional SOC (SoilGrids)
+  // + NASA POWER wind rose. Tier 1 screening — never precise SOC claims.
+  const [satellite, wetlandsDetail, windRose] = await Promise.all([
+    fetchSatelliteIndices(
+      {
+        type: 'Polygon',
+        coordinates: [ring],
+      },
+      { buffer_m: 75 }
+    ).catch((e) => ({
+      available: false,
+      fallbacks: [`satellite fetch failed: ${e.message}`],
+      claims: [],
+    })),
+    // AMWI polygons + area/type for fecundity (first-class wetlands layer)
+    fetchWetlands(bbox, {
+      buffer_m: 200,
+      centre,
+    }).catch((e) => ({
+      available: false,
+      has_wetland_on_site: !!wetlands.present,
+      wetland_types: wetlands.wetland_class ? [String(wetlands.wetland_class)] : [],
+      error: e.message,
+      claims: [],
+    })),
+    getWindRose(centre, { years: 2 }).catch((e) => ({
+      available: false,
+      error: e.message,
+      source: 'NASA POWER',
+    })),
+  ]);
+
+  // Small water: inventory + S2 NDWI/MNDWI + S1 + DEM TWI proxy
+  // Runs after wetlands so inventory can be reused; elev grid for TWI
+  const smallWater = await fetchSmallWater(
+    { type: 'Polygon', coordinates: [ring] },
     {
-      type: 'Polygon',
-      coordinates: [ring],
-    },
-    { buffer_m: 75 }
+      bufferMeters: 100,
+      minPixels: 2,
+      ndwiThreshold: 0.15,
+      mndwiThreshold: 0.1,
+      includeTWI: true,
+      wetlands: wetlandsDetail,
+      centre,
+      elevations: layers.elevation?.elevations,
+      elevRows: layers.elevation?.rows,
+      elevCols: layers.elevation?.cols,
+      elevBbox: bbox,
+    }
   ).catch((e) => ({
     available: false,
-    fallbacks: [`satellite fetch failed: ${e.message}`],
+    summary: { has_any_water: false },
+    open_water_features: [],
+    possible_small_water_or_seeps: [],
+    fallbacks: [`small water failed: ${e.message}`],
     claims: [],
   }));
+
   const satPatch = toFecundityPatch(satellite);
+  const wetPatch = toFecundityWetlandPatch(wetlandsDetail);
+  const swPatch = toFecunditySmallWaterPatch(smallWater);
   record.satellite = satellite;
+  record.wetlands = wetlandsDetail;
+  record.small_water = smallWater;
+  record.wind_rose = windRose;
+  // Prefer NASA primary wind direction for shelterbelt / climate summary
+  if (windRose?.available && windRose.primary_direction) {
+    record.climate = {
+      ...(record.climate || {}),
+      prevailing_wind_direction: windRose.primary_direction,
+      secondary_wind_direction: windRose.secondary_direction || null,
+      mean_wind_speed_ms: windRose.mean_speed_ms ?? null,
+      wind_source: windRose.source,
+    };
+  }
 
   // Fecundity assessment — prefer real NDVI cover over coarse tree-cover estimate
+  // Wetlands: AMWI inventory preferred over boolean presence alone
   const fecundityReport = generateFecundityReport(
     {
       measured: {}, // no direct site measurements from remote report
       topoData: { avgSlopePercent: t.slope_percent },
-      wetlandsPresent: !!wetlands.present,
+      wetlandsPresent:
+        wetPatch.wetlandsPresent != null
+          ? wetPatch.wetlandsPresent
+          : !!wetlands.present,
+      hasPondOrWetlandInventory: wetPatch.hasPondOrWetlandInventory,
+      wetlandHabitatPresent: wetPatch.wetlandHabitatPresent,
+      wetlandProximityBoost: wetPatch.wetlandProximityBoost,
+      wetlandTypes: wetPatch.wetlandTypes,
+      wetlandAreaHa: wetPatch.wetlandAreaHa,
+      wetlands: wetPatch.wetlands || wetlandsDetail,
+      // Small water / seeps (satellite + inventory stack) — never regulatory
+      hasPondOrDugout: swPatch.hasPondOrDugout,
+      hasSmallWaterOrSeep: swPatch.hasSmallWaterOrSeep,
+      smallWaterDensity: swPatch.smallWaterDensity,
+      smallWaterNearestM: swPatch.smallWaterNearestM,
+      smallWaterConfirmedAreaM2: swPatch.smallWaterConfirmedAreaM2,
+      smallWaterPossibleAreaM2: swPatch.smallWaterPossibleAreaM2,
+      satelliteOpenWater: swPatch.satelliteOpenWater,
+      smallWater: swPatch.smallWater || smallWater,
       regionalSoilTexture: soils.texture || null,
       // Satellite first; land-cover / tree-cover remain fallbacks
       ndviCoverPct:
@@ -450,6 +534,83 @@ export async function generateSiteReport(input = {}) {
   );
   record.fecundity = fecundityReport;
 
+  // Plant Recommendation + Economics Engine (after fecundity → Site Condition Profile)
+  // Separate beta offering in the UI — intelligence for the planting planner pane.
+  const planting_plan = planPlantings(siteInput, {
+    limit: 18,
+    scenario: 'market_garden',
+    goals: input.plant_goals || input.goals || undefined,
+    fecundity: fecundityReport,
+    hardiness,
+    soil_survey: soilSurvey,
+    satellite,
+    wetlands: wetlandsDetail,
+    small_water: smallWater,
+    wind_rose: windRose,
+    tree_cover: treeCover,
+    windExposureHint:
+      treeCover?.tree_cover_pct > 40
+        ? 'sheltered'
+        : treeCover?.tree_cover_pct > 15
+          ? 'partial'
+          : 'open',
+    frostPoolingHint:
+      t.landform_position === 'depression'
+        ? 'high'
+        : t.landform_position === 'valley_floor'
+          ? 'moderate'
+          : 'low',
+  });
+  record.planting_plan = planting_plan;
+  record.site_condition_profile = planting_plan.site_condition_profile || null;
+
+  // Species-specific placement notes (shelterbelt / food forest with named plants)
+  if (Array.isArray(record.design_elements) && planting_plan?.recommended?.length) {
+    record.design_elements = enrichDesignElementsWithPlants(
+      record.design_elements,
+      planting_plan,
+      planting_plan.site_condition_profile
+    );
+    const recs = groupRecommendationsByValue(record.design_elements);
+    record.recommendations = {
+      ...(record.recommendations || {}),
+      ...recs,
+    };
+    if (record._meta) {
+      record._meta.recommendations = record.recommendations;
+    }
+  }
+
+  // Planting plan as intervention — lever deltas + cash-flow for value-of-improvements
+  const baselineScores = Object.fromEntries(
+    (fecundityReport?.categories || []).map((c) => [c.category, c.score])
+  );
+  let plantingIntervention = null;
+  try {
+    plantingIntervention = plantingPlanInterventionValue(planting_plan, baselineScores, {
+      scenario: 'mid',
+      timeHorizonYears: 10,
+      footprintHa: siteInput.footprint_ha,
+    });
+  } catch (e) {
+    console.warn('planting intervention value failed', e.message);
+  }
+  record.planting_intervention_value = plantingIntervention;
+  record.recommended_plantings = plantingReportTable(planting_plan, plantingIntervention);
+  if (fecundityReport && plantingIntervention) {
+    fecundityReport.plantingInterventionValue = plantingIntervention;
+    // Merge plant cash into intervention value narrative when earthworks ROI also present
+    if (fecundityReport.interventionValue) {
+      fecundityReport.interventionValue.planting_plan_overlay = {
+        upfrontCost_cad: plantingIntervention.financialSummary?.upfrontCost_cad,
+        annualBenefit_cad: plantingIntervention.financialSummary?.annualBenefit_cad,
+        npv_cad: plantingIntervention.financialSummary?.npv_cad,
+        overall_lever_delta: plantingIntervention.scoreComparison?.deltas?.overall,
+        note: 'Separate planting-plan economics; not double-counted in earthworks ROI totals.',
+      };
+    }
+  }
+
   // High-level service packages: Food · Water · Energy · Shelter
   // fed by design_elements, wells, solar, fecundity, and field quotes
   const service_packages = recommendServicePackages({
@@ -466,7 +627,6 @@ export async function generateSiteReport(input = {}) {
   });
   record.service_packages = service_packages;
 
-  record.planting_plan = planting_plan;
   record.service_quote = service_quote;
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
@@ -482,6 +642,22 @@ export async function generateSiteReport(input = {}) {
       source_date: new Date().toISOString().slice(0, 10),
       source_url: null,
     });
+    if (wetlandsDetail?.source) {
+      record.data_provenance.push({
+        field: 'wetlands / fecundity water-fauna-microclimate',
+        source_name: wetlandsDetail.source,
+        source_date: new Date().toISOString().slice(0, 10),
+        source_url: wetlandsDetail.source_url || null,
+      });
+    }
+    if (smallWater?.metadata?.sources?.length) {
+      record.data_provenance.push({
+        field: 'small_water_detection',
+        source_name: smallWater.metadata.sources.join(' + '),
+        source_date: smallWater.metadata.processing_date || new Date().toISOString().slice(0, 10),
+        source_url: null,
+      });
+    }
   }
 
   const report = {
@@ -530,15 +706,20 @@ export async function generateSiteReport(input = {}) {
       land_use_interpretation: landUseInterpretation,
       soil_survey: soilSurvey,
       planting: {
+        engine: planting_plan.engine,
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
+        guilds: planting_plan.suggested_guilds?.length || 0,
+        plan_economics: planting_plan.plan_economics || null,
+        hardiness_zone: planting_plan.site_filters?.plant_hardiness_zone,
+        effective_zone: planting_plan.site_filters?.effective_hardiness_zone,
       },
       alberta: layers.alberta,
     },
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v11-service-packages',
+      pipeline: 'bbox-live-v13-small-water',
       cache: 'miss',
       cache_key: key,
     },

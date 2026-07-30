@@ -45,23 +45,119 @@ const CATEGORIES = {
       },
       {
         key: 'existingWaterFeatures',
-        fields: ['hasPondOrWetland'],
+        fields: [
+          'hasPondOrWetland',
+          'hasPondOrWetlandInventory',
+          'hasPondOrDugout',
+          'satelliteOpenWater',
+          'smallWaterNearestM',
+        ],
         score(d) {
+          // Prefer real detections (inventory / optical) over pure land-cover class
+          const dist = d.smallWaterNearestM;
+          const decay = distanceDecay(dist); // 1 on-site → 0 at ~300 m+
+
+          if (d.hasPondOrWetlandInventory === true) {
+            return Math.round(88 + 4 * decay); // 88–92
+          }
+          if (d.hasPondOrDugout === true || d.satelliteOpenWater === true) {
+            // Confirmed open water — strong positive, distance-weighted
+            return Math.round(70 + 18 * decay); // ~70–88
+          }
+          if (d.hasPondOrWetlandInventory === false && d.hasPondOrDugout === false) {
+            // Explicit none from inventory + optical: mild baseline
+            if (d.hasPondOrWetland === true) return 55; // land-cover only leftover
+            return 40;
+          }
+          // Land-cover fallback only when no optical/inventory answer
           if (d.hasPondOrWetland == null) return null;
-          return d.hasPondOrWetland ? 85 : 40;
+          return d.hasPondOrWetland ? 62 : 38; // lower confidence than detections
         },
       },
       {
         // Supplementary satellite moisture proxy (Sentinel-1 / NDMI) — 0–1 relative
         key: 'satelliteMoistureProxy',
-        fields: ['soilMoistureProxy'],
+        fields: ['soilMoistureProxy', 'smallWaterDensity'],
         score(d) {
           const v = d.soilMoistureProxy;
-          if (v == null) return null;
-          if (v >= 0.65) return 80;
-          if (v >= 0.4) return 60;
-          if (v >= 0.2) return 40;
-          return 25;
+          const dens = d.smallWaterDensity;
+          let base = null;
+          if (v != null) {
+            if (v >= 0.65) base = 80;
+            else if (v >= 0.4) base = 60;
+            else if (v >= 0.2) base = 40;
+            else base = 25;
+          }
+          // Small water density slightly boosts moisture context (capped)
+          if (dens != null && dens > 0.15) {
+            const boost = Math.round(Math.min(14, dens * 16));
+            base = base != null ? Math.min(88, base + boost) : 42 + boost;
+          }
+          return base;
+        },
+      },
+      {
+        // Confirmed vs possible small water — distance decay; never regulatory
+        key: 'smallWaterOrSeep',
+        fields: [
+          'hasSmallWaterOrSeep',
+          'smallWaterConfirmedAreaM2',
+          'smallWaterPossibleAreaM2',
+          'smallWaterNearestM',
+          'hasPondOrDugout',
+        ],
+        score(d) {
+          if (
+            d.hasSmallWaterOrSeep == null &&
+            d.hasPondOrDugout == null &&
+            d.smallWaterConfirmedAreaM2 == null &&
+            d.smallWaterPossibleAreaM2 == null
+          ) {
+            return null;
+          }
+          const confM2 = d.smallWaterConfirmedAreaM2 || 0;
+          const possM2 = d.smallWaterPossibleAreaM2 || 0;
+          const decay = distanceDecay(d.smallWaterNearestM);
+          const hasConf = d.hasPondOrDugout === true || confM2 > 0;
+          const hasPoss = d.hasSmallWaterOrSeep === true || possM2 > 0;
+
+          if (!hasConf && !hasPoss) return 36;
+
+          if (hasConf) {
+            // Stronger positive for confirmed water, distance-weighted
+            let base = confM2 >= 500 ? 84 : confM2 > 0 ? 76 : 74;
+            return Math.round(base * (0.75 + 0.25 * decay));
+          }
+          // Possible only — modest positive + implies field verification
+          let base = possM2 >= 200 ? 56 : possM2 > 0 ? 50 : 48;
+          return Math.round(base * (0.7 + 0.3 * decay));
+        },
+      },
+      {
+        // On-site or nearby wetland storage (inventory) + nearby small water
+        key: 'wetlandStorage',
+        fields: [
+          'wetlandAreaHa',
+          'wetlandProximityBoost',
+          'smallWaterConfirmedAreaM2',
+          'smallWaterNearestM',
+        ],
+        score(d) {
+          if (d.wetlandAreaHa != null && d.wetlandAreaHa > 0) {
+            if (d.wetlandAreaHa >= 2) return 92;
+            if (d.wetlandAreaHa >= 0.5) return 85;
+            return 75;
+          }
+          if (d.wetlandProximityBoost != null && d.wetlandProximityBoost > 0) {
+            return Math.round(45 + d.wetlandProximityBoost * 30);
+          }
+          // Confirmed open water as storage proxy (weaker than inventory)
+          const confM2 = d.smallWaterConfirmedAreaM2 || 0;
+          if (confM2 > 0) {
+            const decay = distanceDecay(d.smallWaterNearestM);
+            return Math.round((confM2 >= 500 ? 72 : 62) * (0.75 + 0.25 * decay));
+          }
+          return null;
         },
       },
     ],
@@ -220,6 +316,27 @@ const CATEGORIES = {
           return table[d.vegetationVigor] ?? null;
         },
       },
+      {
+        // Wetland plant communities add structural diversity
+        key: 'wetlandVegetationStructure',
+        fields: [
+          'hasPondOrWetlandInventory',
+          'wetlandTypes',
+          'hasPondOrDugout',
+          'hasSmallWaterOrSeep',
+        ],
+        score(d) {
+          if (d.hasPondOrWetlandInventory === true) {
+            const n = (d.wetlandTypes || []).length;
+            return n >= 2 ? 80 : 70;
+          }
+          // Confirmed open water / possible seeps — modest structure signal
+          if (d.hasPondOrDugout === true) return 62;
+          if (d.hasSmallWaterOrSeep === true) return 54;
+          if (d.hasPondOrWetlandInventory === false) return 45;
+          return null;
+        },
+      },
     ],
   },
 
@@ -241,6 +358,31 @@ const CATEGORIES = {
         score(d) {
           if (d.naturalPredatorPresence == null) return null;
           return d.naturalPredatorPresence ? 80 : 50;
+        },
+      },
+      {
+        // Wetland / open-water habitat for amphibians, waterfowl, invertebrates
+        key: 'wetlandHabitat',
+        fields: [
+          'wetlandHabitatPresent',
+          'hasPondOrWetlandInventory',
+          'hasPondOrDugout',
+          'hasSmallWaterOrSeep',
+          'smallWaterNearestM',
+        ],
+        score(d) {
+          if (d.hasPondOrWetlandInventory === true) return 88;
+          if (d.wetlandHabitatPresent === true) return 72;
+          // Small water raises habitat potential (medium confidence)
+          if (d.hasPondOrDugout === true) {
+            return Math.round(68 * (0.8 + 0.2 * distanceDecay(d.smallWaterNearestM)));
+          }
+          if (d.hasSmallWaterOrSeep === true) {
+            return Math.round(58 * (0.75 + 0.25 * distanceDecay(d.smallWaterNearestM)));
+          }
+          if (d.hasPondOrWetlandInventory === false && d.wetlandHabitatPresent === false)
+            return 45;
+          return null;
         },
       },
     ],
@@ -280,9 +422,43 @@ const CATEGORIES = {
           return 30;
         },
       },
+      {
+        // Open water / wet soils moderate humidity and frost swings (medium confidence for satellite)
+        key: 'wetlandMicroclimate',
+        fields: [
+          'hasPondOrWetlandInventory',
+          'wetlandAreaHa',
+          'hasPondOrDugout',
+          'hasSmallWaterOrSeep',
+          'smallWaterNearestM',
+        ],
+        score(d) {
+          if (d.hasPondOrWetlandInventory === true) {
+            const ha = d.wetlandAreaHa || 0.1;
+            return ha >= 1 ? 85 : 75;
+          }
+          const decay = distanceDecay(d.smallWaterNearestM);
+          if (d.hasPondOrDugout === true) {
+            return Math.round(70 * (0.75 + 0.25 * decay)); // medium confidence humidity boost
+          }
+          if (d.hasSmallWaterOrSeep === true) {
+            return Math.round(58 * (0.7 + 0.3 * decay)); // modest / low-medium
+          }
+          if (d.hasPondOrWetlandInventory === false) return 48;
+          return null;
+        },
+      },
     ],
   },
 };
+
+/** 1.0 on-site / 0 m → ~0 beyond 300 m. Used for water feature influence. */
+function distanceDecay(nearestM) {
+  if (nearestM == null) return 0.85; // unknown distance — slight discount
+  if (nearestM <= 0) return 1;
+  if (nearestM >= 300) return 0.15;
+  return Math.max(0.15, 1 - nearestM / 300);
+}
 
 function scoreCategory(categoryKey, siteData) {
   const cat = CATEGORIES[categoryKey];

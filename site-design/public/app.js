@@ -47,11 +47,23 @@ const CORE_LABELS = [
   { id: 'topo', label: 'Site data', color: 'var(--h2)' },
   { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
   { id: 'rules', label: 'Placement', color: 'var(--h7)' },
-  { id: 'plant', label: 'Planting', color: 'var(--h8)' },
   { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
+/** Side-rail add-ons — not part of the core site design package */
+const SIDE_OFFERINGS = [
+  {
+    id: 'plant',
+    label: 'Planting planner',
+    badge: 'Beta',
+    color: 'var(--h8)',
+    blurb: 'Crop list, economics, and vendors — separate beta preview',
+  },
+];
 const HORIZONS = CORE_LABELS.map((c) => c.color);
-const SECTION_IDS = CORE_LABELS.map((c) => c.id);
+const SECTION_IDS = [
+  ...CORE_LABELS.map((c) => c.id),
+  ...SIDE_OFFERINGS.map((s) => s.id),
+];
 
 /** EE service labels for card CTAs (mirrors lib/recommendation-values.js). */
 const EE_SERVICE_META = {
@@ -123,6 +135,10 @@ const state = {
   valueFilter: 'all',
   /** Phase 4: plant list value filter */
   plantValueFilter: 'all',
+  /** Planting planner goals (max food, max nitrogen, lowest cost, …) */
+  plantGoals: ['balanced'],
+  plantScenario: 'market_garden',
+  plantReplanning: false,
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -297,7 +313,7 @@ function switchReportPane(which) {
   }
 
   // Update sidebar step highlight + keep chip visible on mobile rail
-  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
+  document.querySelectorAll('#report-core .step-row, #report-side-offerings [data-pane]').forEach((sr) => {
     const on = sr.dataset.pane === which;
     sr.classList.toggle('is-active-pane', on);
     if (on && isMobileLayout()) {
@@ -305,7 +321,7 @@ function switchReportPane(which) {
     }
   });
 
-  // Update top tabs
+  // Update top tabs (planting is a separate beta offering)
   const tabSite = $('tab-site');
   const tabPlant = $('tab-plant');
   const isPlant = which === 'plant';
@@ -313,6 +329,7 @@ function switchReportPane(which) {
   tabPlant?.classList.toggle('is-active', isPlant);
   tabSite?.setAttribute('aria-selected', String(!isPlant));
   tabPlant?.setAttribute('aria-selected', String(isPlant));
+  document.body.classList.toggle('is-plant-pane', isPlant);
 
   // Initialize Leaflet maps for the newly visible pane (they need invalidateSize)
   setTimeout(() => {
@@ -1213,6 +1230,8 @@ function renderReport(r) {
       ${demographicsSection(r.demographics)}
       ${atsSection(r.ats, r.parcel_address)}
       ${windSection(r.climate, r, r.wind_rose)}
+      ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
+      ${smallWaterSection(r.small_water)}
       ${wetAreasSection(r.wet_areas_mapping)}
       ${biodiversitySection(r.biodiversity)}
       ${soilSurveySection(r.soil_survey || a.soil_survey)}
@@ -1233,6 +1252,8 @@ function renderReport(r) {
       }
 
       ${servicePackagesSection(r.service_packages)}
+
+      ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
 
       <section class="report-block placement-block">
         <h2>Placement details</h2>
@@ -1255,14 +1276,15 @@ function renderReport(r) {
 
       ${quoteSection(r.service_quote || a.service_quote, r.service_packages)}
 
-      <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
-        <span class="mono eyebrow">Next</span>
-        <h2 style="font-size:1.25rem;margin:0.2rem 0 0.4rem">Planting plan</h2>
+      <div class="plant-cta panel side-offer-cta-panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
+        <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
+        <h2 style="font-size:1.25rem;margin:0.2rem 0 0.4rem">Planting planner</h2>
         <p class="fine" style="margin:0 0 0.8rem">
-          Open the separate planting pane for Alberta-suited crops, economics, and vendor links
-          for seeds, saplings, and fertilizer.
+          A side tool — not part of the core site design package. Early preview of Alberta-suited
+          crops, gross economics, and vendor search links for seeds, saplings, and fertilizer.
+          Results are experimental; always verify hardiness and stock with suppliers.
         </p>
-        <button type="button" class="btn" id="btn-goto-plant">Open planting plan →</button>
+        <button type="button" class="btn btn-secondary" id="btn-goto-plant">Try planting planner (beta) →</button>
       </div>
 
       <div class="sources">
@@ -3092,6 +3114,16 @@ function recommendationCard(e) {
       </div>
       <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis || '')}</div>
       ${e.placement_notes ? `<p class="placement-how">${esc(e.placement_notes)}</p>` : ''}
+      ${
+        e.suggested_species?.length
+          ? `<p class="fine plant-species-line"><strong>Species:</strong> ${e.suggested_species.map(esc).join(' · ')}</p>`
+          : ''
+      }
+      ${
+        e.improves_levers?.length
+          ? `<p class="fine"><strong>Improves levers:</strong> ${e.improves_levers.map(esc).join(', ')}</p>`
+          : ''
+      }
       ${e.season_hint ? `<p class="season-hint"><span class="basis-label">Season</span> ${esc(e.season_hint)}</p>` : ''}
       ${serviceLinks ? `<div class="rec-service-links">${serviceLinks}</div>` : ''}
     </article>`;
@@ -3108,11 +3140,18 @@ function renderPlantingPane(plan) {
   if (!el) return;
   if (!plan?.recommended?.length) {
     el.innerHTML = `
-      <div class="panel fade">
-        <span class="mono eyebrow">Planting plan</span>
-        <h1>No suitable plantings</h1>
-        <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage.</p>
-        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+      <div class="panel fade plant-planner-panel">
+        <div class="beta-banner" role="status">
+          <span class="badge beta">Beta</span>
+          <p>
+            <strong>Separate offering — not part of the core site design package.</strong>
+            The planting planner is an early preview. Lists and prices may change; verify every species before you buy or plant.
+          </p>
+        </div>
+        <span class="mono eyebrow">Planting planner</span>
+        <h1>No suitable plantings yet</h1>
+        <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage, or stay with the core site design report.</p>
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Back to site design</button>
       </div>`;
     $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
     return;
@@ -3122,6 +3161,7 @@ function renderPlantingPane(plan) {
   if (state._plantPlan !== plan) {
     state.plantValueFilter = 'all';
     state._plantPlan = plan;
+    if (plan.goals?.length) state.plantGoals = [...plan.goals];
   }
 
   const areaHa = plan.site_filters?.footprint_ha;
@@ -3247,25 +3287,34 @@ function renderPlantingPane(plan) {
             e.value_add.multiplier
           )} processing step</span>`
         : '';
-    const econLine = e
-      ? e.gross_revenue_cad
-        ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
-            e.gross_revenue_cad.mid
-          )}/yr</strong> on parcel
-             (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)}
-             wholesale ladder · ${esc(e.unit || 'kg')}
-             ${e.establishment_years ? ` · ~${esc(e.establishment_years)} yr establish` : ''}
-             ${e.labour_intensity ? ` · labour ${esc(e.labour_intensity)}` : ''})
-             ${
-               e.market_channels?.length
-                 ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>`
-                 : ''
-             }
-             ${valueAdd}
-           </p>`
-        : e.non_cash_value
-          ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
-          : ''
+    const est = e?.establishment_cost_cad;
+    const econBits = [];
+    if (e?.gross_revenue_cad?.mid != null) {
+      econBits.push(
+        `<strong>Gross ~${fmtMoney(e.gross_revenue_cad.mid)}/yr</strong> at maturity (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)})`
+      );
+    }
+    if (est?.total != null) {
+      econBits.push(`Est. <strong>${fmtMoney(est.total)}</strong> (~${esc(est.quantity)} plants)`);
+    }
+    if (e?.payback_years != null) econBits.push(`~${esc(e.payback_years)} yr payback`);
+    if (e?.npv_cad?.mid != null) {
+      econBits.push(`NPV ${fmtMoney(e.npv_cad.mid)} / ${esc(e.npv_cad.horizon_years)}y @ ${Math.round((e.npv_cad.discount_rate || 0.05) * 100)}%`);
+    }
+    const econLine = econBits.length
+      ? `<p class="plant-econ">${econBits.join(' · ')}
+           ${e.establishment_years ? `<br><span class="fine">~${esc(e.establishment_years)} yr establish · labour ${esc(e.labour_intensity || '—')}</span>` : ''}
+           ${e.market_channels?.length ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>` : ''}
+           ${valueAdd}
+         </p>`
+      : e?.non_cash_value
+        ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+        : '';
+    const leverLine = p.lever_benefits?.length
+      ? `<p class="fine"><strong>Helps levers:</strong> ${p.lever_benefits.map(esc).join(', ')}</p>`
+      : '';
+    const fitLine = p.fit_summary
+      ? `<p class="fine plant-fit">${esc(p.fit_summary)}</p>`
       : '';
     const vlab = VALUE_LABELS[p.primary_value] || p.primary_value;
     const sec = (p.secondary_values || [])
@@ -3299,10 +3348,12 @@ function renderPlantingPane(plan) {
         }${
           p.alberta_in_range ? ' · USDA: Alberta in range' : ''
         }</div>
+        ${fitLine}
         ${plantSpecLine(p)}
+        ${leverLine}
         ${
           p.reasons?.length
-            ? `<p class="plant-ok">${p.reasons.map(esc).join(' · ')}</p>`
+            ? `<p class="plant-ok">${p.reasons.slice(0, 5).map(esc).join(' · ')}</p>`
             : ''
         }
         ${
@@ -3327,15 +3378,110 @@ function renderPlantingPane(plan) {
         .join('')
     : '';
 
+  const scp = plan.site_condition_profile;
+  const pe = plan.plan_economics;
+  const availableGoals = plan.available_goals || plan.goals_catalog || DEFAULT_PLANT_GOALS;
+  const activeGoals = state.plantGoals?.length ? state.plantGoals : plan.goals || ['balanced'];
+  const goalChips = availableGoals
+    .map((g) => {
+      const on = activeGoals.includes(g.id);
+      return `<button type="button" class="goal-chip${on ? ' is-active' : ''}" data-plant-goal="${esc(g.id)}" aria-pressed="${on ? 'true' : 'false'}" title="${esc(g.description || g.label)}">${esc(g.short || g.label)}</button>`;
+    })
+    .join('');
+  const goalsBar = `
+    <div class="plant-goals-bar" style="margin:0.85rem 0 0.5rem">
+      <span class="mono topo-label">Goals — what should this planting prioritize?</span>
+      <p class="fine" style="margin:0.25rem 0 0.45rem">
+        Ecological goals can stack (max food + windbreak). Economic modes
+        <strong>Lowest cost</strong>, <strong>Max revenue</strong>, and <strong>Fastest payback</strong> replace each other.
+        Active: <strong>${esc(plan.goals_label || activeGoals.join(' · '))}</strong>
+      </p>
+      <div class="goal-chips" role="group" aria-label="Planting goals">${goalChips}</div>
+      <div class="goal-scenario-row" style="display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;margin-top:0.55rem">
+        <span class="mono" style="font-size:0.72rem">Economics scenario</span>
+        <select id="plant-scenario" class="goal-scenario-select" aria-label="Economics scenario">
+          <option value="market_garden" ${state.plantScenario === 'market_garden' ? 'selected' : ''}>Market garden (wholesale)</option>
+          <option value="home_use" ${state.plantScenario === 'home_use' ? 'selected' : ''}>Home use (avoided retail)</option>
+          <option value="fodder" ${state.plantScenario === 'fodder' ? 'selected' : ''}>Fodder / forage</option>
+        </select>
+        <button type="button" class="btn btn-secondary" id="btn-replan-plants" ${state.plantReplanning ? 'disabled' : ''}>
+          ${state.plantReplanning ? 'Updating…' : 'Apply goals →'}
+        </button>
+      </div>
+      <p class="fine" id="plant-goals-status" style="margin:0.4rem 0 0" hidden></p>
+    </div>`;
+
+  const profileBlock = scp
+    ? `
+    <div class="well-range-card" style="border-left-color:var(--berry);margin:0.85rem 0">
+      <span class="mono">Site condition profile</span>
+      <div class="summary-grid" style="margin-top:0.5rem">
+        <div class="stat"><span class="k">Hardiness</span><strong>${esc(scp.hardiness?.zone || '—')}${scp.hardiness?.effective_zone && scp.hardiness.effective_zone !== scp.hardiness.zone ? ` → ${esc(scp.hardiness.effective_zone)}` : ''}</strong></div>
+        <div class="stat"><span class="k">FFD</span><strong>${esc(scp.hardiness?.frost_free_days ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Texture / drain</span><strong>${esc(scp.soil?.texture || '—')} / ${esc(scp.soil?.drainage || '—')}</strong></div>
+        <div class="stat"><span class="k">Water regime</span><strong>${esc(scp.water?.regime || '—')}</strong></div>
+        <div class="stat"><span class="k">Wind</span><strong>${esc(scp.microclimate?.wind_exposure || '—')}</strong></div>
+        <div class="stat"><span class="k">Succession</span><strong>${esc((scp.vegetation?.successional_stage || '—').replace(/_/g, ' '))}</strong></div>
+      </div>
+      ${scp.fecundity?.weakest?.length ? `
+        <p class="fine" style="margin:0.45rem 0 0">
+          <strong>Weak levers driving soft scores:</strong>
+          ${scp.fecundity.weakest.slice(0, 4).map((w) => `${esc(w.label || w.category)} (${esc(w.score)})`).join(', ')}
+        </p>` : ''}
+      ${scp.goals?.length ? `<p class="fine" style="margin:0.25rem 0 0"><strong>Goals:</strong> ${scp.goals.map(esc).join(', ')}</p>` : ''}
+    </div>`
+    : '';
+
+  const planEconBlock = pe
+    ? `
+    <div class="summary-grid" style="margin:0.75rem 0">
+      <div class="stat"><span class="k">Plan establishment</span><strong>${pe.establishment_total_cad != null ? fmtMoney(pe.establishment_total_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Annual gross (maturity)</span><strong>${pe.annual_gross_mid_at_maturity_cad != null ? fmtMoney(pe.annual_gross_mid_at_maturity_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Plan NPV (${esc(pe.horizon_years)}y)</span><strong>${pe.npv_sum_cad != null ? fmtMoney(pe.npv_sum_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Cash models</span><strong>${esc(pe.n_with_cash_model)} / ${esc(pe.n_plants)}</strong></div>
+    </div>
+    <p class="fine">${esc(pe.disclaimer || '')}</p>`
+    : '';
+
+  const guildBlock = (plan.suggested_guilds || []).length
+    ? `
+    <div style="margin:0.85rem 0 1rem">
+      <span class="mono topo-label">Suggested guilds / polycultures</span>
+      <div class="elements" style="margin-top:0.5rem;display:grid;gap:0.55rem">
+        ${plan.suggested_guilds.map((g) => `
+          <div class="el rec-card" style="padding:0.75rem 0.85rem;border-left-color:var(--ok)">
+            <strong>${esc(g.label)}</strong>
+            <p class="fine" style="margin:0.25rem 0">${esc(g.rationale)}</p>
+            <div class="plant-chips">${(g.members || []).map((m) =>
+              `<span class="plant-chip"><strong>${esc(m.common_name)}</strong> ${esc(m.score)}${m.suggested_quantity ? ` · ×${esc(m.suggested_quantity)}` : ''}</span>`
+            ).join('')}</div>
+          </div>`).join('')}
+      </div>
+    </div>`
+    : '';
+
   el.innerHTML = `
-    <div class="panel fade">
-      <span class="mono eyebrow">Planting plan · crop schema + suppliers</span>
-      <h1>What to plant</h1>
+    <div class="panel fade plant-planner-panel">
+      <div class="beta-banner" role="status">
+        <span class="badge beta">Beta</span>
+        <p>
+          <strong>Separate offering — not part of the core site design package.</strong>
+          Plant Recommendation + Economics Engine: Site Condition Profile → hardiness hard filter → soft scores against weak fecundity levers → establishment cost, payback, and simple NPV.
+          Treat every result as provisional; confirm hardiness, climate fit, and markets before ordering or planting.
+        </p>
+      </div>
+      <span class="mono eyebrow">Planting planner · matching engine + economics</span>
+      <h1>What to plant <span class="badge beta" style="vertical-align:middle;font-size:0.55em">Beta</span></h1>
       <p class="lede">
-        Same value tags as site design (food, N-fix, wind, soil…) plus EcoCrop suitability,
-        farmfit economics, and vendor links.
+        Ranked plants and guilds for this parcel — fit score, lever benefits, establishment cost,
+        gross return, payback, and NPV. Offered on the side while we refine the model.
       </p>
       <p class="fine">${esc(plan.phase_note || '')}</p>
+      ${goalsBar}
+      ${profileBlock}
+      ${planEconBlock}
+      ${plantingInterventionBlock(state.report?.planting_intervention_value)}
+      ${guildBlock}
       <div class="plant-chips">${layers}</div>
       ${valueFilterBar(plantCounts, state.plantValueFilter, allPlants.length).replace(
         'Filter by value',
@@ -3347,24 +3493,49 @@ function renderPlantingPane(plan) {
         '<p class="fine">No plants in this value filter — try All.</p>'
       }</div>
       <p class="fine" style="margin-top:1rem">
-        Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
+        Profile: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')}
+        ${plan.site_filters?.effective_hardiness_zone && plan.site_filters.effective_hardiness_zone !== plan.site_filters.plant_hardiness_zone
+          ? ` (effective ${esc(plan.site_filters.effective_hardiness_zone)})` : ''},
         ${esc(plan.site_filters?.frost_free_days ?? '—')} FFD,
         ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm,
         ${esc(plan.site_filters?.texture || '—')} /
         ${esc(plan.site_filters?.drainage_class || '—')},
-        ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha.
+        ${esc(plan.site_filters?.water_regime || '—')} regime,
+        ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha,
+        scenario ${esc(plan.site_filters?.scenario || 'market_garden')}.
         Schema:
         <a href="/schema/crop.schema.json" target="_blank" rel="noopener">crop.schema.json</a>.
         Vendor links are search starting points — verify stock and hardiness.
       </p>
       <div class="actions">
-        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Back to site design</button>
         <button type="button" class="btn-quiet" id="btn-plant-map">Map</button>
       </div>
     </div>`;
 
   $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
   $('btn-plant-map')?.addEventListener('click', showMap);
+
+  // Goal chips — exclusive economic/balanced, stack ecological
+  el.querySelectorAll('[data-plant-goal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-plant-goal');
+      if (!id) return;
+      state.plantGoals = togglePlantGoal(state.plantGoals || ['balanced'], id, availableGoals);
+      // Refresh chip active state only (apply on button)
+      el.querySelectorAll('[data-plant-goal]').forEach((b) => {
+        const on = state.plantGoals.includes(b.getAttribute('data-plant-goal'));
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    });
+  });
+  $('plant-scenario')?.addEventListener('change', (ev) => {
+    state.plantScenario = ev.target.value || 'market_garden';
+    // Live economics re-score when scenario changes
+    replanPlantings();
+  });
+  $('btn-replan-plants')?.addEventListener('click', () => replanPlantings());
 
   // Plant value filter (reuse chip UI; scope to planting pane)
   const plantBar = el.querySelector('.value-filter-bar');
@@ -3385,6 +3556,329 @@ function renderPlantingPane(plan) {
         : '<p class="fine">No plants in this value filter — try All.</p>';
     });
   });
+}
+
+/** Compact lever-delta + cash summary inside the beta planting pane */
+function plantingInterventionBlock(iv) {
+  if (!iv?.financialSummary && !iv?.improves_levers?.length) return '';
+  const fin = iv.financialSummary || {};
+  const dOverall = iv.scoreComparison?.deltas?.overall;
+  return `
+    <div class="well-range-card" style="border-left-color:var(--ok);margin:0.75rem 0">
+      <span class="mono">Value of this planting plan (intervention)</span>
+      <div class="summary-grid" style="margin-top:0.45rem">
+        <div class="stat"><span class="k">Upfront</span><strong>${fin.upfrontCost_cad != null ? fmtMoney(fin.upfrontCost_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">Annual gross</span><strong>${fin.annualBenefit_cad != null ? fmtMoney(fin.annualBenefit_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">NPV</span><strong>${fin.npv_cad != null ? fmtMoney(fin.npv_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">Lever Δ</span><strong>${dOverall != null ? `${dOverall > 0 ? '+' : ''}${esc(dOverall)}` : '—'}</strong></div>
+      </div>
+      ${
+        iv.improves_levers?.length
+          ? `<p class="fine" style="margin:0.4rem 0 0"><strong>Improves:</strong> ${iv.improves_levers
+              .slice(0, 5)
+              .map((L) => `${esc(L.label)} (+${esc(L.delta)})`)
+              .join(' · ')}</p>`
+          : ''
+      }
+      <p class="fine" style="margin:0.3rem 0 0">Carries both fecundity lever deltas and cash-flow projections — feeds value-of-improvements.</p>
+    </div>`;
+}
+
+/** Fallback goal list if plan payload omits available_goals */
+const DEFAULT_PLANT_GOALS = [
+  { id: 'balanced', label: 'Balanced', short: 'Balanced', kind: 'balanced', exclusive: true, description: 'Multi-function fit' },
+  { id: 'max_food', label: 'Max food', short: 'Max food', kind: 'ecological', description: 'Prioritize edible crops' },
+  { id: 'max_nitrogen', label: 'Max nitrogen', short: 'Max N', kind: 'ecological', description: 'Nitrogen-fixers' },
+  { id: 'soil_building', label: 'Soil building', short: 'Soil', kind: 'ecological', description: 'Soil structure & cover' },
+  { id: 'windbreak', label: 'Windbreak', short: 'Wind', kind: 'ecological', description: 'Shelterbelt species' },
+  { id: 'wildlife', label: 'Wildlife', short: 'Wildlife', kind: 'ecological', description: 'Habitat & natives' },
+  { id: 'pollinator', label: 'Pollinators', short: 'Pollinate', kind: 'ecological', description: 'Pollinator plants' },
+  { id: 'medicinal', label: 'Medicinal / herbal', short: 'Herbal', kind: 'ecological', description: 'Medicinal herbs' },
+  { id: 'wetland_buffer', label: 'Wetland buffer', short: 'Wetland', kind: 'ecological', description: 'Wetland-edge species' },
+  { id: 'fodder', label: 'Fodder / forage', short: 'Fodder', kind: 'ecological', description: 'Livestock forage' },
+  { id: 'lowest_cost', label: 'Lowest cost', short: 'Low cost', kind: 'economic', exclusive: true, description: 'Best fit per dollar' },
+  { id: 'max_revenue', label: 'Max revenue', short: 'Max $', kind: 'economic', exclusive: true, description: 'Highest gross revenue' },
+  { id: 'fastest_payback', label: 'Fastest payback', short: 'Payback', kind: 'economic', exclusive: true, description: 'Shortest payback years' },
+];
+
+function togglePlantGoal(current, id, catalog = DEFAULT_PLANT_GOALS) {
+  const byId = Object.fromEntries(catalog.map((g) => [g.id, g]));
+  const def = byId[id];
+  if (!def) return current;
+
+  // Exclusive balanced / economic: select alone
+  if (def.exclusive || def.kind === 'economic' || def.kind === 'balanced') {
+    return [id];
+  }
+
+  // Ecological: remove exclusive modes, toggle this id
+  let next = current.filter((g) => {
+    const d = byId[g];
+    return d && d.kind === 'ecological';
+  });
+  if (next.includes(id)) next = next.filter((g) => g !== id);
+  else next = [...next, id];
+  if (!next.length) next = ['balanced'];
+  return next;
+}
+
+/**
+ * Re-run planting engine with selected goals using site context from last report.
+ */
+async function replanPlantings() {
+  const r = state.report;
+  if (!r) return;
+  const status = $('plant-goals-status');
+  const btn = $('btn-replan-plants');
+  state.plantReplanning = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+  }
+  if (status) {
+    status.hidden = false;
+    status.textContent = 'Re-ranking plants for your goals…';
+  }
+
+  const site = {
+    footprint_ha: r.geometry?.area_ha || r.footprint_ha || r.site_condition_profile?.footprint_ha,
+    climate: r.climate || {
+      plant_hardiness_zone: r.hardiness?.hardiness_zone || r.planting_plan?.site_filters?.plant_hardiness_zone,
+      frost_free_days: r.hardiness?.frost_free_days_estimate || r.planting_plan?.site_filters?.frost_free_days,
+      chinook_exposure: r.climate?.chinook_exposure,
+      prevailing_wind_direction: r.climate?.prevailing_wind_direction || r.wind_rose?.primary_direction,
+    },
+    soil: r.soil || {
+      texture: r.soil_survey?.characteristics?.texture_class || r.planting_plan?.site_filters?.texture,
+      drainage_class: r.soil_survey?.characteristics?.drainage || r.planting_plan?.site_filters?.drainage_class,
+      ph: r.soil_survey?.sample_summary?.mean_ph,
+    },
+    hydrology: r.hydrology || {
+      annual_precipitation_mm: r.planting_plan?.site_filters?.annual_precipitation_mm,
+      wetland_class: r.wetlands?.has_wetland_on_site ? 'wetland' : null,
+    },
+    terrain: r.terrain || {},
+    existing_vegetation: r.existing_vegetation || {
+      successional_stage: r.planting_plan?.site_filters?.successional_stage,
+    },
+  };
+
+  try {
+    const res = await fetch('/api/planting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site,
+        goals: state.plantGoals || ['balanced'],
+        scenario: state.plantScenario || 'market_garden',
+        fecundity: r.fecundity,
+        hardiness: r.hardiness,
+        soil_survey: r.soil_survey,
+        satellite: r.satellite,
+        wetlands: r.wetlands,
+        wind_rose: r.wind_rose,
+        tree_cover: r.tree_cover,
+        profile: r.site_condition_profile || r.planting_plan?.site_condition_profile,
+        design_elements: r.design_elements,
+        limit: 18,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Replan failed (${res.status})`);
+    const plan = data.planting_plan;
+    if (!plan) throw new Error('No planting plan returned');
+    state.report = {
+      ...r,
+      planting_plan: plan,
+      site_condition_profile: plan.site_condition_profile || r.site_condition_profile,
+      planting_intervention_value: data.planting_intervention_value || r.planting_intervention_value,
+      recommended_plantings: data.recommended_plantings || r.recommended_plantings,
+      design_elements: data.design_elements || r.design_elements,
+      recommendations: data.recommendations || r.recommendations,
+    };
+    if (state.report.fecundity && data.planting_intervention_value) {
+      state.report.fecundity = {
+        ...state.report.fecundity,
+        plantingInterventionValue: data.planting_intervention_value,
+      };
+    }
+    state.plantGoals = plan.goals || state.plantGoals;
+    state._plantPlan = null;
+    renderPlantingPane(plan);
+    if (status) {
+      status.hidden = false;
+      const pe = plan.plan_economics;
+      const iv = data.planting_intervention_value;
+      status.textContent =
+        `Live re-score: ${plan.goals_label || (plan.goals || []).join(' · ')}` +
+        (pe?.establishment_total_cad != null
+          ? ` · est. ${fmtMoney(pe.establishment_total_cad)} · NPV ${fmtMoney(pe.npv_sum_cad)}`
+          : '') +
+        (iv?.scoreComparison?.deltas?.overall != null
+          ? ` · lever Δ ${iv.scoreComparison.deltas.overall > 0 ? '+' : ''}${iv.scoreComparison.deltas.overall}`
+          : '');
+    }
+  } catch (e) {
+    console.error(e);
+    if (status) {
+      status.hidden = false;
+      status.textContent = e.message || 'Could not update planting goals';
+    }
+  } finally {
+    state.plantReplanning = false;
+  }
+}
+
+/**
+ * Full-report / PDF section: Recommended Plantings table + lever links + value summary.
+ * @param {object} table — recommended_plantings payload or planting_plan
+ * @param {object} intervention — planting_intervention_value
+ */
+function recommendedPlantingsSection(table, intervention) {
+  if (!table && !intervention) return '';
+  const rows =
+    table?.rows ||
+    table?.recommended?.map((p) => ({
+      common_name: p.common_name,
+      scientific_name: p.scientific_name,
+      score: p.score,
+      functions: p.primary_value ? [p.primary_value] : [],
+      quantity: p.economics?.suggested_quantity,
+      establishment_cost_cad: p.economics?.establishment_cost_cad?.total,
+      gross_revenue_mid_cad: p.economics?.gross_revenue_cad?.mid,
+      payback_years: p.economics?.payback_years,
+      improves_levers: p.lever_benefits || p.improves_levers || [],
+    })) ||
+    intervention?.species ||
+    [];
+  if (!rows.length) return '';
+
+  const fin = intervention?.financialSummary || table?.summary || table?.plan_economics;
+  const improves = intervention?.improves_levers || table?.intervention?.improves || [];
+  const guilds = table?.guilds || intervention?.guilds || [];
+  const goalsLabel = table?.goals_label || intervention?.goals_label || '';
+  const hardiness = table?.hardiness || table?.site_filters?.plant_hardiness_zone;
+  const eff = table?.effective_zone || table?.site_filters?.effective_hardiness_zone;
+
+  const body = rows
+    .slice(0, 14)
+    .map((r) => {
+      const fn = Array.isArray(r.functions) ? r.functions.join(', ') : r.functions || '—';
+      const levers = Array.isArray(r.improves_levers)
+        ? r.improves_levers.join('; ')
+        : r.improves_levers || '—';
+      return `<tr>
+        <td><strong>${esc(r.common_name || r.id || '—')}</strong>${
+          r.scientific_name ? `<br><span class="fine mono">${esc(r.scientific_name)}</span>` : ''
+        }${r.score != null ? `<br><span class="fine">Fit ${esc(r.score)}</span>` : ''}</td>
+        <td class="fine">${esc(fn)}</td>
+        <td>${r.quantity != null ? esc(r.quantity) : '—'}</td>
+        <td>${r.establishment_cost_cad != null ? fmtMoney(r.establishment_cost_cad) : '—'}</td>
+        <td>${r.gross_revenue_mid_cad != null ? fmtMoney(r.gross_revenue_mid_cad) : '—'}</td>
+        <td>${r.payback_years != null ? `~${esc(r.payback_years)} yr` : '—'}</td>
+        <td class="fine">${esc(levers)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const leverCards = improves.length
+    ? `<div class="summary-grid" style="margin-top:0.75rem">
+        ${improves
+          .slice(0, 6)
+          .map(
+            (L) => `
+          <div class="stat">
+            <span class="k">${esc(L.label || L.lever)}</span>
+            <strong>+${esc(L.delta)}</strong>
+            <span class="fine">${esc(L.plants_targeting || '')} plants</span>
+          </div>`
+          )
+          .join('')}
+      </div>`
+    : '';
+
+  const guildHtml = guilds.length
+    ? `<div style="margin-top:0.85rem">
+        <span class="mono topo-label">Suggested guilds</span>
+        <ul class="wildlife-recs" style="margin:0.4rem 0 0;padding-left:1.2rem;font-size:0.9rem;color:var(--ink-soft)">
+          ${guilds
+            .map(
+              (g) =>
+                `<li><strong>${esc(g.label)}</strong> — ${esc(g.rationale || '')}
+                ${(g.members || []).length ? ` <span class="fine">(${(g.members || []).map(esc).join(', ')})</span>` : ''}</li>`
+            )
+            .join('')}
+        </ul>
+      </div>`
+    : '';
+
+  const valueBlock =
+    fin && (fin.upfrontCost_cad != null || fin.establishment_total_cad != null)
+      ? `
+    <div class="summary-grid" style="margin-top:0.75rem">
+      <div class="stat"><span class="k">Establishment</span><strong>${fmtMoney(fin.upfrontCost_cad ?? fin.establishment_total_cad)}</strong></div>
+      <div class="stat"><span class="k">Annual gross (maturity)</span><strong>${
+        fin.annualBenefit_cad != null || fin.annual_gross_mid_at_maturity_cad != null
+          ? fmtMoney(fin.annualBenefit_cad ?? fin.annual_gross_mid_at_maturity_cad)
+          : '—'
+      }</strong></div>
+      <div class="stat"><span class="k">Plan NPV</span><strong>${
+        fin.npv_cad != null || fin.npv_sum_cad != null
+          ? fmtMoney(fin.npv_cad ?? fin.npv_sum_cad)
+          : '—'
+      }</strong></div>
+      <div class="stat"><span class="k">Payback</span><strong>${
+        fin.paybackYears != null ? `~${esc(fin.paybackYears)} yr` : '—'
+      }</strong></div>
+    </div>
+    ${
+      intervention?.scoreComparison?.deltas?.overall != null
+        ? `<p class="fine" style="margin-top:0.45rem">Estimated overall fecundity lever change from this planting plan: <strong>${
+            intervention.scoreComparison.deltas.overall > 0 ? '+' : ''
+          }${esc(intervention.scoreComparison.deltas.overall)}</strong> points (planning-level).</p>`
+        : ''
+    }`
+      : '';
+
+  return `
+    <section class="report-block recommended-plantings-section">
+      <h2>Recommended plantings</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Species ranked by site fit${goalsLabel ? ` · goals: <strong>${esc(goalsLabel)}</strong>` : ''}
+        ${hardiness ? ` · hardiness ${esc(hardiness)}${eff && eff !== hardiness ? ` (effective ${esc(eff)})` : ''}` : ''}.
+        Confidence: hardiness <strong>high</strong> · soil/moisture <strong>medium–high</strong> · yield &amp; price <strong>medium</strong> (ranges).
+        <span class="badge beta" style="margin-left:0.35rem">Beta</span>
+      </p>
+      ${valueBlock}
+      ${leverCards ? `<span class="mono topo-label" style="display:block;margin-top:0.75rem">Levers this plan is expected to improve</span>${leverCards}` : ''}
+      <div class="econ-table-wrap" style="margin-top:0.85rem">
+        <table class="econ-table plantings-table">
+          <thead>
+            <tr>
+              <th>Species</th>
+              <th>Function</th>
+              <th>Qty</th>
+              <th>Est. cost</th>
+              <th>Projected gross</th>
+              <th>Payback</th>
+              <th>Improves</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      ${guildHtml}
+      <p class="fine" style="margin-top:0.65rem">
+        Planning ranges only — not a business plan. Verify stock, hardiness cultivars, and markets before ordering.
+        Full interactive list (goals, live economics): <strong>Planting planner</strong> side offering.
+      </p>
+      ${(intervention?.disclaimers || []).length
+        ? `<ul class="fine" style="margin:0.4rem 0 0;padding-left:1.1rem">${intervention.disclaimers
+            .slice(0, 3)
+            .map((d) => `<li>${esc(d)}</li>`)
+            .join('')}</ul>`
+        : ''}
+    </section>`;
 }
 
 function supplierBlock(sup) {
@@ -3975,7 +4469,11 @@ function windRoseSvg(windRose) {
     const tx = cx + Math.cos(a) * (maxR + 14);
     const ty = cy + Math.sin(a) * (maxR + 14);
     const isMain = ['N','E','S','W'].includes(d);
-    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="${isMain ? '10px' : '7px'}" font-weight="${isMain ? 'bold' : 'normal'}" fill="var(--ink-soft)">${d}</text>`;
+    const isPrimary = windRose.primary_direction === d;
+    const isSecondary = windRose.secondary_direction === d;
+    const fill = isPrimary ? 'var(--berry)' : isSecondary ? '#2a6f97' : 'var(--ink-soft)';
+    const weight = isPrimary || isMain ? 'bold' : 'normal';
+    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="${isMain || isPrimary ? '10px' : '7px'}" font-weight="${weight}" fill="${fill}">${d}</text>`;
   }).join('');
 
   // Scale label
@@ -3987,10 +4485,14 @@ function windRoseSvg(windRose) {
     return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.72rem;margin-right:0.5rem"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></span>${esc(s.name || `Bin ${i+1}`)}</span>`;
   }).join('');
 
+  const locLabel = windRose.distance_km != null && windRose.distance_km > 0
+    ? `${esc(windRose.station_name)} (${esc(windRose.distance_km)} km away)`
+    : esc(windRose.station_name || 'NASA POWER');
+
   return `
     <div style="margin-top:0.85rem">
-      <span class="mono topo-label">Wind rose — ${esc(windRose.station_name)} (${esc(windRose.distance_km)} km away)</span>
-      <svg class="wind-butterfly" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind rose from ACIS">
+      <span class="mono topo-label">Wind rose — ${locLabel}</span>
+      <svg class="wind-butterfly" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind rose from NASA POWER">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="var(--line)" rx="8"/>
         ${ringsHtml}
         ${barsHtml}
@@ -4000,18 +4502,37 @@ function windRoseSvg(windRose) {
       </svg>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.2rem;margin-top:0.35rem">${legendItems}</div>
       <p class="fine" style="margin-top:0.35rem">
-        Source: <a href="${esc(windRose.source_url || 'https://acis.alberta.ca/wind-rose.jsp')}" target="_blank" rel="noopener">ACIS</a>
+        Source: <a href="${esc(windRose.source_url || 'https://power.larc.nasa.gov/')}" target="_blank" rel="noopener">${esc(windRose.source || 'NASA POWER')}</a>
         · ${esc(windRose.start_date)} to ${esc(windRose.end_date)}
-        · Station ${esc(windRose.station_id)}
+        ${windRose.n_obs ? ` · ${esc(windRose.n_obs.toLocaleString?.() || windRose.n_obs)} hourly obs` : ''}
+        ${windRose.mean_speed_ms != null ? ` · mean ${esc(windRose.mean_speed_ms)} m/s` : ''}
       </p>
     </div>`;
 }
 
+/** Map 16-point compass label to nearest of 8 for simple compass diagram. */
+function coarsenWindDir(dir) {
+  if (!dir) return 'NW';
+  const map = {
+    N: 'N', NNE: 'NE', NE: 'NE', ENE: 'E', E: 'E', ESE: 'SE', SE: 'SE', SSE: 'S',
+    S: 'S', SSW: 'SW', SW: 'SW', WSW: 'W', W: 'W', WNW: 'NW', NW: 'NW', NNW: 'N',
+  };
+  return map[String(dir).toUpperCase()] || 'NW';
+}
+
 function windSection(climate, r, windRose) {
-  const windDir = climate?.prevailing_wind_direction || r?.climate?.prevailing_wind_direction || 'NW';
+  const primary =
+    windRose?.primary_direction ||
+    climate?.prevailing_wind_direction ||
+    r?.climate?.prevailing_wind_direction ||
+    'NW';
+  const secondary = windRose?.secondary_direction || climate?.secondary_wind_direction || null;
+  const windDir = coarsenWindDir(primary);
+  const secDir = secondary ? coarsenWindDir(secondary) : null;
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const dirIdx = dirs.indexOf(windDir.toUpperCase());
+  const dirIdx = dirs.indexOf(windDir);
   const idx = dirIdx >= 0 ? dirIdx : 7;
+  const shelter = windRose?.shelterbelt || null;
 
   const w = 260, h = 260, cx = w / 2, cy = h / 2, cr = 110;
   const dirAngle = (idx / 8) * 360 - 90;
@@ -4026,6 +4547,17 @@ function windSection(climate, r, windRose) {
   const sbx2 = cx - Math.cos(sbRad) * cr * 0.6;
   const sby2 = cy - Math.sin(sbRad) * cr * 0.6;
 
+  let secArrow = '';
+  if (secDir && dirs.includes(secDir)) {
+    const sIdx = dirs.indexOf(secDir);
+    const sAngle = (sIdx / 8) * 360 - 90;
+    const sRad = (sAngle * Math.PI) / 180;
+    const sx = cx + Math.cos(sRad) * arrowLen * 0.55;
+    const sy = cy + Math.sin(sRad) * arrowLen * 0.55;
+    secArrow = `<line x1="${cx}" y1="${cy}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#7ec8e3" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+      <text x="${(cx + Math.cos(sRad) * cr * 0.68).toFixed(1)}" y="${(cy + Math.sin(sRad) * cr * 0.68).toFixed(1)}" class="svg-label" fill="#2a6f97" font-size="7px">2°</text>`;
+  }
+
   const compassSvg = `
     <svg class="wind-butterfly" viewBox="0 0 ${w} ${h}" role="img" aria-label="Wind direction and shelterbelt orientation">
       <rect x="0" y="0" width="${w}" height="${h}" fill="#fff" stroke="var(--line)" rx="8"/>
@@ -4035,8 +4567,11 @@ function windSection(climate, r, windRose) {
         const a = ((i / 8) * 360 - 90) * Math.PI / 180;
         const tx = cx + Math.cos(a) * (cr + 12);
         const ty = cy + Math.sin(a) * (cr + 12);
-        return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${d === windDir.toUpperCase() ? 'bold' : 'normal'}" fill="${d === windDir.toUpperCase() ? 'var(--berry)' : 'var(--ink-soft)'}">${esc(d)}</text>`;
+        const isP = d === windDir;
+        const isS = d === secDir;
+        return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${isP ? 'bold' : 'normal'}" fill="${isP ? 'var(--berry)' : isS ? '#2a6f97' : 'var(--ink-soft)'}">${esc(d)}</text>`;
       }).join('')}
+      ${secArrow}
       <line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#2a6f97" stroke-width="3" stroke-linecap="round"/>
       <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="#2a6f97"/>
       <line x1="${sbx1.toFixed(1)}" y1="${sby1.toFixed(1)}" x2="${sbx2.toFixed(1)}" y2="${sby2.toFixed(1)}" stroke="var(--ok)" stroke-width="3" stroke-dasharray="6 3" stroke-linecap="round"/>
@@ -4044,24 +4579,41 @@ function windSection(climate, r, windRose) {
     </svg>`;
 
   const roseHtml = windRoseSvg(windRose);
+  const primaryPct = windRose?.primary_frequency_pct != null ? ` (${windRose.primary_frequency_pct}%)` : '';
+  const secondaryPct = windRose?.secondary_frequency_pct != null ? ` (${windRose.secondary_frequency_pct}%)` : '';
+  const axisLabel = shelter?.primary_axis || `${dirs[(idx + 2) % 8]}–${dirs[(idx + 6) % 8]}`;
 
   return `
     <section class="report-block wind-section">
       <h2>Wind & shelterbelt</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Prevailing wind: <strong>${esc(windDir)}</strong>.
-        Blue arrow = dominant wind direction. Green dashed line = optimal shelterbelt orientation (perpendicular to wind).
+        Primary wind: <strong>${esc(primary)}</strong>${esc(primaryPct)}
+        ${secondary ? ` · Secondary: <strong>${esc(secondary)}</strong>${esc(secondaryPct)}` : ''}.
+        ${windRose?.available ? 'From <strong>NASA POWER</strong> hourly 10&nbsp;m wind.' : ''}
+        Blue arrow = primary · light arrow = secondary · green dashed = main shelterbelt axis.
       </p>
       <div class="split-2col">
         <div>${compassSvg}</div>
         <div>
           <div class="well-range-card" style="border-left-color:#2a6f97;margin-bottom:0.5rem">
-            <span class="mono">Shelterbelt placement</span>
+            <span class="mono">Shelterbelt envelope</span>
             <p class="fine" style="margin:0.3rem 0 0">
-              Orient the shelterbelt <strong>perpendicular</strong> to the prevailing wind (green line).
-              For <strong>${esc(windDir)}</strong> wind, plant the shelterbelt roughly
-              <strong>${esc(dirs[(idx + 2) % 8])}–${esc(dirs[(idx + 6) % 8])}</strong>.
+              ${shelter?.note
+                ? esc(shelter.note)
+                : `Orient the main belt along <strong>${esc(axisLabel)}</strong> (perpendicular to ${esc(primary)}).`}
             </p>
+            ${shelter?.secondary_axis ? `
+              <p class="fine" style="margin:0.35rem 0 0">
+                Secondary axis: <strong>${esc(shelter.secondary_axis)}</strong>
+                ${shelter.multi_directional ? ' · multi-directional site — consider L/U layout' : ''}
+              </p>
+            ` : ''}
+          </div>
+          <div class="summary-grid" style="margin-bottom:0.5rem">
+            <div class="stat"><span class="k">Primary</span><strong>${esc(primary)}${primaryPct ? esc(primaryPct) : ''}</strong></div>
+            <div class="stat"><span class="k">Secondary</span><strong>${secondary ? `${esc(secondary)}${secondaryPct ? esc(secondaryPct) : ''}` : '—'}</strong></div>
+            <div class="stat"><span class="k">Mean speed</span><strong>${windRose?.mean_speed_ms != null ? `${esc(windRose.mean_speed_ms)} m/s` : '—'}</strong></div>
+            <div class="stat"><span class="k">Belt axis</span><strong>${esc(axisLabel)}</strong></div>
           </div>
           <p class="fine">
             A shelterbelt reduces wind speed 50–80% for a downwind distance of 5–10× its height (H).
@@ -4075,6 +4627,9 @@ function windSection(climate, r, windRose) {
         </div>
       </div>
       ${roseHtml}
+      ${!windRose?.available && windRose?.error ? `
+        <p class="fine" style="margin-top:0.5rem;color:var(--caution)">Wind rose unavailable: ${esc(windRose.error)}</p>
+      ` : ''}
     </section>`;
 }
 
@@ -4214,11 +4769,100 @@ function soilSurveySection(ss) {
         </div>
       ` : ''}
 
+      ${soilSamplesMapBlock(ss)}
+
       <p class="fine" style="margin-top:0.6rem">
         Source: <a href="${esc(ss.source_url)}" target="_blank" rel="noopener">${esc(ss.source_url)}</a>
-        · Open Government Licence — Alberta
+        · ${ss.soil_samples?.length ? 'AGRASID/AGRASIS + SoilGrids sample grid · ' : ''}Open Government Licence — Alberta / ISRIC
       </p>
     </section>`;
+}
+
+/**
+ * Map soil sample points (SoilGrids) coloured by texture / SOC.
+ */
+function soilSamplesMapBlock(ss) {
+  const samples = ss?.soil_samples || [];
+  if (!samples.length) return '';
+  const sum = ss.sample_summary || {};
+  const id = 'soil-samples-' + Math.random().toString(36).slice(2, 8);
+
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el || typeof L === 'undefined') return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri', maxZoom: 18,
+    }).addTo(map);
+
+    const socVals = samples.map((s) => s.soc_g_kg).filter((v) => v != null);
+    const socMin = socVals.length ? Math.min(...socVals) : 0;
+    const socMax = socVals.length ? Math.max(...socVals) : 1;
+    const colorFor = (soc) => {
+      if (soc == null) return '#888';
+      const t = socMax > socMin ? (soc - socMin) / (socMax - socMin) : 0.5;
+      // brown (low C) → dark green (higher C)
+      const r = Math.round(139 + (34 - 139) * t);
+      const g = Math.round(90 + (120 - 90) * t);
+      const b = Math.round(43 + (40 - 43) * t);
+      return `rgb(${r},${g},${b})`;
+    };
+
+    const bounds = [];
+    samples.forEach((s) => {
+      if (s.lat == null || s.lng == null) return;
+      bounds.push([s.lat, s.lng]);
+      const color = colorFor(s.soc_g_kg);
+      const m = L.circleMarker([s.lat, s.lng], {
+        radius: 9,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: color,
+        fillOpacity: 0.9,
+      }).addTo(map);
+      m.bindPopup(
+        `<strong>${esc(s.role || s.id || 'sample')}</strong><br>` +
+        `Texture: ${esc(s.texture_class || '—')}<br>` +
+        `Clay/Sand/Silt: ${fmt(s.clay_pct)} / ${fmt(s.sand_pct)} / ${fmt(s.silt_pct)} %<br>` +
+        `pH: ${fmt(s.ph_h2o)} · SOC: ${fmt(s.soc_g_kg)} g/kg<br>` +
+        `<span class="fine">SoilGrids ~250 m · screening only</span>`
+      );
+    });
+    if (bounds.length) {
+      try { map.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 }); } catch { /* ignore */ }
+    }
+  }, 140);
+
+  const sampleRows = samples.slice(0, 12).map((s) => `
+    <tr>
+      <td class="mono">${esc(s.role || s.id)}</td>
+      <td>${esc(s.texture_class || '—')}</td>
+      <td>${fmt(s.clay_pct)}</td>
+      <td>${fmt(s.sand_pct)}</td>
+      <td>${fmt(s.ph_h2o)}</td>
+      <td>${fmt(s.soc_g_kg)}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="margin-top:1rem">
+      <span class="mono topo-label">Mapped soil samples — characteristics grid</span>
+      <p class="fine" style="margin:0.25rem 0 0.4rem">
+        ${esc(sum.n_samples || samples.length)} SoilGrids points across the parcel
+        ${sum.texture_class ? ` · modal texture <strong>${esc(sum.texture_class)}</strong>` : ''}
+        ${sum.mean_soc_g_kg != null ? ` · mean SOC ~${esc(sum.mean_soc_g_kg)} g/kg` : ''}
+        ${sum.mean_ph != null ? ` · mean pH ${esc(sum.mean_ph)}` : ''}.
+        Markers coloured by relative SOC (brown → green). <strong>Not lab values</strong> — regional model (~250&nbsp;m).
+      </p>
+      <div id="${id}" class="report-map minimap-embed" style="height:280px;margin-top:0.35rem"></div>
+      <div class="econ-table-wrap" style="margin-top:0.65rem">
+        <table class="econ-table">
+          <thead><tr><th>Point</th><th>Texture</th><th>Clay %</th><th>Sand %</th><th>pH</th><th>SOC g/kg</th></tr></thead>
+          <tbody>${sampleRows}</tbody>
+        </table>
+      </div>
+      ${ss.sample_note ? `<p class="fine" style="margin-top:0.4rem">${esc(ss.sample_note)}</p>` : ''}
+    </div>`;
 }
 
 function cellServiceSection(centre) {
@@ -4271,6 +4915,288 @@ function cellServiceSection(centre) {
         </p>
       </div>
     </section>`;
+}
+
+/**
+ * Small water / seeps detection (S2 NDWI-MNDWI + S1 + TWI + inventory).
+ * Strict confidence language — never regulatory wetlands.
+ */
+function smallWaterSection(sw) {
+  if (!sw || (!sw.available && !sw.summary?.has_any_water && !sw.open_water_features?.length && !sw.possible_small_water_or_seeps?.length)) {
+    return '';
+  }
+  const sum = sw.summary || {};
+  const open = sw.open_water_features || [];
+  const poss = sw.possible_small_water_or_seeps || [];
+  const mapId = 'small-water-map-' + Math.random().toString(36).slice(2, 8);
+  const fc = sw.feature_collection;
+  if (fc?.features?.length) {
+    setTimeout(() => initSmallWaterMap(mapId, fc, sw.map_layers), 130);
+  }
+
+  const openRows = open
+    .slice(0, 8)
+    .map(
+      (f) => `
+    <tr>
+      <td>${esc(f.type || 'open_water')}</td>
+      <td>${f.area_m2 != null ? `${esc(f.area_m2)} m²` : '—'}</td>
+      <td><strong>${esc(f.confidence || '—')}</strong></td>
+      <td class="fine">${esc(f.source || '—')}</td>
+    </tr>`
+    )
+    .join('');
+
+  const possRows = poss
+    .slice(0, 8)
+    .map(
+      (f) => `
+    <tr>
+      <td>${esc(f.type || 'possible')}</td>
+      <td>${f.area_m2 != null ? `${esc(f.area_m2)} m²` : '—'}</td>
+      <td><strong>${esc(f.confidence || 'low-medium')}</strong></td>
+      <td class="fine">${esc(f.note || f.source || 'Verify on site walk')}</td>
+    </tr>`
+    )
+    .join('');
+
+  const dr = sw.metadata?.date_range;
+  const dateLabel = dr?.start && dr?.end ? `${dr.start} → ${dr.end}` : '—';
+  const confirmedBanner =
+    open.length || sum.has_confirmed_water
+      ? `<div class="flag" data-severity="info" style="margin-top:0.75rem">
+          <strong>Confirmed water features detected</strong>
+          <p>Inventory and/or multi-pixel optical open-water signatures on/near the parcel.
+          Screening only — not a permanent-water guarantee or Alberta Wetland Policy delineation.</p>
+        </div>`
+      : '';
+  const possibleBanner =
+    poss.length || sum.has_possible_small_water
+      ? `<div class="flag" data-severity="caution" style="margin-top:0.75rem">
+          <strong>Possible small water sources or seeps detected (low-medium confidence)</strong>
+          <p>Site walk recommended to verify. May be seasonal pools, seeps, or false positives.
+          Never treat pixel detections as regulatory wetland boundaries.</p>
+        </div>`
+      : '';
+
+  return `
+    <section class="report-block small-water-block">
+      <h2>Small water sources</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Multi-source stack: Alberta wetland inventory + Sentinel-2 NDWI/MNDWI + Sentinel-1 wetness + optional DEM wetness.
+        Detects ponds, dugouts, wet depressions, and possible seeps beyond mapped wetlands.
+        <strong>Screening only — not permanent water and not a regulatory wetland delineation.</strong>
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Any water signal</span><strong>${sum.has_any_water ? 'Yes' : 'No'}</strong></div>
+        <div class="stat"><span class="k">Confirmed area</span><strong>${sum.total_confirmed_area_m2 != null ? `${esc(sum.total_confirmed_area_m2)} m²` : '—'}</strong></div>
+        <div class="stat"><span class="k">Possible seeps</span><strong>${sum.total_possible_area_m2 != null ? `${esc(sum.total_possible_area_m2)} m²` : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest</span><strong>${sum.nearest_water_distance_m != null ? (sum.nearest_water_distance_m === 0 ? 'on parcel' : `${esc(sum.nearest_water_distance_m)} m`) : '—'}</strong></div>
+        <div class="stat"><span class="k">Density score</span><strong>${sum.water_density_score != null ? esc(sum.water_density_score) : '—'}</strong></div>
+        <div class="stat"><span class="k">AOI MNDWI</span><strong>${sum.aoi_mndwi != null ? esc(sum.aoi_mndwi) : '—'}</strong></div>
+      </div>
+      ${confirmedBanner}
+      ${possibleBanner}
+      ${
+        openRows
+          ? `<div class="econ-table-wrap" style="margin-top:0.75rem">
+              <span class="mono topo-label">Confirmed / high–medium open water</span>
+              <table class="econ-table"><thead><tr><th>Type</th><th>Area</th><th>Confidence</th><th>Source</th></tr></thead>
+              <tbody>${openRows}</tbody></table>
+            </div>`
+          : ''
+      }
+      ${
+        possRows
+          ? `<div class="econ-table-wrap" style="margin-top:0.65rem">
+              <span class="mono topo-label">Possible small water or seeps</span>
+              <table class="econ-table"><thead><tr><th>Type</th><th>Area</th><th>Confidence</th><th>Note</th></tr></thead>
+              <tbody>${possRows}</tbody></table>
+            </div>`
+          : ''
+      }
+      ${fc?.features?.length ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>
+        <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>Confirmed / mapped</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(233,196,106,0.5);border:2px dashed #c45c26;vertical-align:middle;margin-right:4px"></span>Possible seeps (verify)</span>
+          <span class="fine">MNDWI heatmap optional (blue = wetter)</span>
+        </div>` : ''}
+      <p class="fine" style="margin-top:0.5rem">
+        Sources: ${esc((sw.metadata?.sources || []).join(' · ') || '—')}
+        · Date range: ${esc(dateLabel)}
+        · Buffer ${esc(sw.metadata?.aoi_buffer_m ?? 100)} m
+        · ${esc(sw.metadata?.resolution_m ?? 10)} m optical
+        ${(sw.metadata?.fallbacks || []).length ? ` · Fallbacks: ${esc(sw.metadata.fallbacks.join('; '))}` : ''}
+      </p>
+      <p class="fine"><strong>Attribution:</strong> Copernicus Sentinel (ESA) via Microsoft Planetary Computer; Alberta Merged Wetland Inventory (Open Government Licence — Alberta).</p>
+      ${sw.disclaimer ? `<p class="fine">${esc(sw.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+function initSmallWaterMap(elId, featureCollection, mapLayers) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · Copernicus Sentinel via Planetary Computer · AMWI (OGL-A)',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const overlays = {};
+  const mndwi = (mapLayers || []).find((l) => l.id === 'mndwi' && l.url);
+  if (mndwi?.url) {
+    fetch(mndwi.url)
+      .then((r) => r.json())
+      .then((tj) => {
+        if (tj?.tiles?.[0]) {
+          const heat = L.tileLayer(tj.tiles[0], {
+            opacity: mndwi.opacity ?? 0.45,
+            maxZoom: 18,
+            attribution: mndwi.source || 'Sentinel-2 MNDWI',
+          });
+          heat.addTo(map);
+          overlays['MNDWI wetness (screening)'] = heat;
+          L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+        }
+      })
+      .catch(() => {});
+  }
+
+  const confirmed = L.layerGroup();
+  const possible = L.layerGroup();
+  L.geoJSON(featureCollection, {
+    style: (f) => {
+      const conf = f.properties?.confidence || '';
+      const isPoss = f.properties?.class === 'possible' || /low/i.test(conf);
+      // Solid teal = confirmed/mapped; dashed amber = possible seeps
+      return {
+        color: isPoss ? '#c45c26' : '#0b6e4f',
+        weight: isPoss ? 2 : 2.5,
+        fillColor: isPoss ? '#e9c46a' : '#2a9d8f',
+        fillOpacity: isPoss ? 0.35 : 0.5,
+        dashArray: isPoss ? '6 4' : null,
+      };
+    },
+    onEachFeature: (f, lyr) => {
+      const p = f.properties || {};
+      const isPoss = p.class === 'possible' || /low/i.test(p.confidence || '');
+      const verify = isPoss
+        ? '<br/><em>Field verification recommended — not permanent water</em>'
+        : '<br/><span class="fine">Screening only — not regulatory delineation</span>';
+      lyr.bindPopup(
+        `<strong>${esc(p.type || 'water')}</strong><br/>` +
+          `Area: ${p.area_m2 != null ? esc(p.area_m2) + ' m²' : '—'}<br/>` +
+          `Source: ${esc(p.source || '—')}<br/>` +
+          `Confidence: <strong>${esc(p.confidence || '—')}</strong>` +
+          verify
+      );
+      if (isPoss) lyr.addTo(possible);
+      else lyr.addTo(confirmed);
+    },
+  });
+  confirmed.addTo(map);
+  possible.addTo(map);
+  overlays['Confirmed / mapped water'] = confirmed;
+  overlays['Possible seeps (verify)'] = possible;
+
+  try {
+    const all = L.featureGroup([...confirmed.getLayers(), ...possible.getLayers()]);
+    const b = all.getBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [16, 16] });
+  } catch { /* ignore */ }
+}
+
+function wetlandsSection(w) {
+  if (!w) return '';
+  const onSite = !!w.has_wetland_on_site;
+  const types = (w.wetland_types || []).join(', ') || '—';
+  const area = w.wetland_area_ha != null ? `${w.wetland_area_ha} ha` : '—';
+  const near =
+    w.nearest_wetland_distance_m != null
+      ? w.nearest_wetland_distance_m === 0
+        ? 'on parcel'
+        : `${w.nearest_wetland_distance_m} m`
+      : '—';
+  const conf = w.confidence || (onSite ? 'high' : '—');
+  const mapId = 'wetlands-map-' + Math.random().toString(36).slice(2, 8);
+  const fc = w.wetland_polygons;
+  if (fc?.features?.length) {
+    setTimeout(() => initWetlandsMap(mapId, fc, w.query_bbox), 120);
+  }
+  return `
+    <section class="report-block wetlands-block">
+      <h2>Wetlands (inventory)</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Alberta Merged Wetland Inventory polygons for screening water, microclimate, and fauna levers.
+        <strong>Not a formal Wetland Policy delineation</strong> — field assessment required before earthworks or Water Act decisions.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">On site</span><strong>${onSite ? 'Yes' : 'No'}</strong></div>
+        <div class="stat"><span class="k">Area (mapped)</span><strong>${esc(area)}</strong></div>
+        <div class="stat"><span class="k">Types</span><strong style="font-size:0.95rem">${esc(types)}</strong></div>
+        <div class="stat"><span class="k">Nearest</span><strong>${esc(near)}</strong></div>
+      </div>
+      ${
+        onSite
+          ? `<div class="flag" data-severity="caution" style="margin-top:0.75rem">
+              <strong>Protect / buffer existing wetland</strong>
+              <p>Mapped wetland intersects this parcel. Prefer enhancement with native wetland species over earthworks. Confirm Alberta Water Act / Wetland Policy requirements before any fill, drain, or excavation.</p>
+            </div>`
+          : `<p class="fine" style="margin-top:0.65rem">No AMWI wetland polygon on the parcel. Pond candidates still depend on topography, soils, and catchment — not inventory absence alone.</p>`
+      }
+      ${fc?.features?.length ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>` : ''}
+      <p class="fine" style="margin-top:0.5rem">
+        Confidence: <strong>${esc(conf)}</strong>
+        · Source: ${esc(w.source || 'AMWI')}
+        ${w.source_url ? ` · <a href="${esc(w.source_url)}" target="_blank" rel="noopener">layer</a>` : ''}
+        · Features: ${esc(w.feature_count ?? 0)}
+      </p>
+      ${w.disclaimer ? `<p class="fine">${esc(w.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+function initWetlandsMap(elId, featureCollection, bbox) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri',
+    maxZoom: 18,
+  }).addTo(map);
+  const layer = L.geoJSON(featureCollection, {
+    style: {
+      color: '#0b6e4f',
+      weight: 2,
+      fillColor: '#2a9d8f',
+      fillOpacity: 0.45,
+    },
+    onEachFeature: (f, lyr) => {
+      const p = f.properties || {};
+      lyr.bindPopup(
+        `<strong>${esc(p.type || 'wetland')}</strong><br/>` +
+          `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
+          `CWCS: ${esc(p.cwcs_class || '—')}<br/>` +
+          `<span class="fine">AMWI inventory · high confidence for screening</span>`
+      );
+    },
+  }).addTo(map);
+  try {
+    const b = layer.getBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [16, 16] });
+    else if (bbox) {
+      map.fitBounds(
+        [
+          [bbox.south, bbox.west],
+          [bbox.north, bbox.east],
+        ],
+        { padding: [16, 16] }
+      );
+    }
+  } catch {
+    /* ignore */
+  }
 }
 
 function wetAreasSection(wam) {
@@ -4844,6 +5770,24 @@ function fecunditySection(fec) {
       </div>`
     : '';
 
+  const wfs = fec.waterFeatureSummary;
+  const waterSummaryBanner = wfs?.lines?.length
+    ? `
+      <div class="flag" data-severity="${wfs.field_verification_recommended ? 'caution' : 'info'}" style="margin-top:0.85rem">
+        <strong>Water features (lever input)</strong>
+        <p>${wfs.lines.map((l) => esc(l)).join(' ')}</p>
+        ${
+          wfs.nearest_m != null || wfs.confirmed_area_m2 != null
+            ? `<p class="fine" style="margin-top:0.35rem">
+                ${wfs.nearest_m != null ? `Nearest: ${wfs.nearest_m === 0 ? 'on parcel' : wfs.nearest_m + ' m'}` : ''}
+                ${wfs.confirmed_area_m2 != null ? ` · Confirmed ~${esc(wfs.confirmed_area_m2)} m²` : ''}
+                ${wfs.possible_area_m2 != null && wfs.possible_area_m2 > 0 ? ` · Possible ~${esc(wfs.possible_area_m2)} m²` : ''}
+              </p>`
+            : ''
+        }
+      </div>`
+    : '';
+
   return `
     <section class="report-block">
       <h2>Land fecundity assessment</h2>
@@ -4888,6 +5832,7 @@ function fecunditySection(fec) {
 
       ${satBlock}
       ${socBanner}
+      ${waterSummaryBanner}
 
       <div class="elements" style="margin-top:1rem;display:grid;gap:0.65rem">
         ${catCards}
@@ -4904,44 +5849,112 @@ function fecunditySection(fec) {
     </section>`;
 }
 
-/** Optional NDVI tile overlay from Planetary Computer tilejson (if available). */
+/**
+ * Satellite supporting imagery: NDVI tile overlay + regional SOC sample points.
+ */
 function satelliteMapEmbed(sat) {
-  const layer = (sat?.map_layers || []).find((l) => l.id === 'ndvi' && l.url);
-  if (!layer || !sat?.aoi?.bbox) return '';
-  const id = 'sat-ndvi-' + Math.random().toString(36).slice(2, 8);
-  const bbox = sat.aoi.bbox;
+  const ndviLayer = (sat?.map_layers || []).find((l) => l.id === 'ndvi' && l.url);
+  const socLayer = (sat?.map_layers || []).find((l) => l.id === 'regional_soc');
+  const socPts =
+    socLayer?.sample_points ||
+    sat?.regional_soc?.sample_points ||
+    [];
+  const bbox = sat?.aoi?.bbox;
+  if (!bbox && !socPts.length) return '';
+  if (!ndviLayer && !socPts.length) return '';
+
+  const id = 'sat-veg-soc-' + Math.random().toString(36).slice(2, 8);
   setTimeout(() => {
     const el = document.getElementById(id);
     if (!el || typeof L === 'undefined') return;
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true });
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: 'Esri', maxZoom: 18,
     }).addTo(map);
-    // Fetch tilejson then add XYZ template
-    fetch(layer.url)
-      .then((r) => r.json())
-      .then((tj) => {
-        if (tj?.tiles?.[0]) {
-          L.tileLayer(tj.tiles[0], {
-            opacity: layer.opacity ?? 0.65,
-            maxZoom: 18,
-            attribution: esc(layer.source || 'Sentinel-2'),
-          }).addTo(map);
-        }
-      })
-      .catch(() => {});
-    const bounds = [
-      [bbox.south, bbox.west],
-      [bbox.north, bbox.east],
-    ];
-    try { map.fitBounds(bounds, { padding: [12, 12] }); } catch { /* ignore */ }
+
+    const overlays = {};
+
+    if (ndviLayer?.url) {
+      fetch(ndviLayer.url)
+        .then((r) => r.json())
+        .then((tj) => {
+          if (tj?.tiles?.[0]) {
+            const ndvi = L.tileLayer(tj.tiles[0], {
+              opacity: ndviLayer.opacity ?? 0.65,
+              maxZoom: 18,
+              attribution: ndviLayer.source || 'Sentinel-2',
+            }).addTo(map);
+            overlays['NDVI (Sentinel-2)'] = ndvi;
+            if (Object.keys(overlays).length) {
+              L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+            }
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (socPts.length) {
+      const vals = socPts.map((p) => p.soc_g_kg).filter((v) => v != null);
+      const lo = vals.length ? Math.min(...vals) : 0;
+      const hi = vals.length ? Math.max(...vals) : 1;
+      const grp = L.layerGroup();
+      socPts.forEach((p) => {
+        if (p.lat == null || p.lon == null) return;
+        const t = hi > lo && p.soc_g_kg != null ? (p.soc_g_kg - lo) / (hi - lo) : 0.5;
+        const r = Math.round(160 + (20 - 160) * t);
+        const g = Math.round(100 + (140 - 100) * t);
+        const b = Math.round(40 + (50 - 40) * t);
+        L.circleMarker([p.lat, p.lon], {
+          radius: 8,
+          color: '#fff',
+          weight: 1.5,
+          fillColor: `rgb(${r},${g},${b})`,
+          fillOpacity: 0.9,
+        })
+          .bindPopup(
+            `<strong>SOC sample</strong><br>${fmt(p.soc_g_kg)} g/kg<br>` +
+            `<span class="fine">SoilGrids ~250 m · regional context only</span>`
+          )
+          .addTo(grp);
+      });
+      grp.addTo(map);
+      overlays['SOC samples (context)'] = grp;
+      if (!ndviLayer?.url) {
+        L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+      }
+    }
+
+    if (bbox) {
+      try {
+        map.fitBounds(
+          [[bbox.south, bbox.west], [bbox.north, bbox.east]],
+          { padding: [12, 12] }
+        );
+      } catch { /* ignore */ }
+    } else if (socPts.length) {
+      try {
+        map.fitBounds(
+          socPts.filter((p) => p.lat != null).map((p) => [p.lat, p.lon]),
+          { padding: [24, 24], maxZoom: 14 }
+        );
+      } catch { /* ignore */ }
+    }
   }, 120);
+
+  const titleBits = [];
+  if (ndviLayer) titleBits.push(`NDVI · ${ndviLayer.date || 'latest'} · ${ndviLayer.resolution_m || 10} m`);
+  if (socPts.length) titleBits.push(`SOC samples (${socPts.length}) · ~250 m context`);
+
   return `
     <div style="margin-top:0.85rem">
-      <span class="mono topo-label">NDVI overlay · ${esc(layer.date || 'latest')} · ${esc(layer.confidence)} · ${esc(layer.resolution_m)} m</span>
-      <div id="${id}" class="report-map minimap-embed" style="height:260px;margin-top:0.35rem"></div>
-      <p class="fine">${esc(layer.legend_note || '')} · Source: ${esc(layer.source || '')}</p>
+      <span class="mono topo-label">Satellite vegetation &amp; soil carbon · ${esc(titleBits.join(' · ') || 'imagery')}</span>
+      <div id="${id}" class="report-map minimap-embed" style="height:280px;margin-top:0.35rem"></div>
+      <p class="fine">
+        ${ndviLayer ? esc(ndviLayer.legend_note || 'Green = higher vegetative vigor') + ' · ' : ''}
+        ${socPts.length ? 'SOC markers = SoilGrids model estimates (not lab). ' : ''}
+        Toggle layers top-right. NDVI: ${esc(ndviLayer?.source || 'Sentinel-2')} · SOC: SoilGrids / ISRIC.
+      </p>
     </div>`;
 }
 
@@ -5018,6 +6031,8 @@ function renderSectionPanes(r, ctx) {
   b(`
     ${pillarPackageSlice(sp, 'water')}
     ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
+    ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
+    ${smallWaterSection(r.small_water)}
     ${wetAreasSection(r.wet_areas_mapping)}
     ${provincialContoursMap(r._provincial_contours, centre)}
   `, $('report-water'));
@@ -5028,12 +6043,23 @@ function renderSectionPanes(r, ctx) {
     ${solarSection(solar)}
   `, $('report-energy'));
 
-  // Food pillar
+  // Food pillar — includes Recommended Plantings summary; full planner is beta side offering
   b(`
     ${pillarPackageSlice(sp, 'food')}
     ${soilSurveySection(r.soil_survey || a.soil_survey)}
     ${fecunditySection(r.fecundity)}
+    ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
+    <div class="plant-cta panel side-offer-cta-panel" style="margin-top:1.1rem;padding:0.95rem 1.1rem">
+      <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
+      <h2 style="font-size:1.15rem;margin:0.15rem 0 0.35rem">Planting planner</h2>
+      <p class="fine" style="margin:0 0 0.7rem">
+        Re-score goals (max food, max nitrogen, lowest cost…) and economics live — not part of the core
+        Food package. Open from the side rail for the full interactive list.
+      </p>
+      <button type="button" class="btn btn-secondary" data-open-plant-beta>Open planting planner (beta) →</button>
+    </div>
   `, $('report-food'));
+  $('report-food')?.querySelector('[data-open-plant-beta]')?.addEventListener('click', () => switchReportPane('plant'));
 
   // Shelter pillar
   b(`
@@ -5120,20 +6146,34 @@ function renderSectionPanes(r, ctx) {
 }
 
 function paintCore(done) {
-  $('report-core').innerHTML = CORE_LABELS.map(
-    (item, n) => `
+  const core = $('report-core');
+  if (core) {
+    core.innerHTML = CORE_LABELS.map(
+      (item) => `
     <div class="step-row" data-done="${done ? '1' : '0'}" data-pane="${item.id}"
          style="${done ? `background-color:${item.color}` : ''};cursor:pointer">
       <span>${esc(item.label)}</span>
     </div>`
-  ).join('');
-  // Make sidebar steps clickable to switch panes
-  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
-    sr.addEventListener('click', () => {
-      const pane = sr.dataset.pane;
-      if (pane) switchReportPane(pane);
+    ).join('');
+    core.querySelectorAll('.step-row').forEach((sr) => {
+      sr.addEventListener('click', () => {
+        const pane = sr.dataset.pane;
+        if (pane) switchReportPane(pane);
+      });
     });
-  });
+  }
+
+  // Side offerings (planting planner, etc.) — separate from site core
+  const side = $('report-side-offerings');
+  if (side) {
+    // Keep static card markup from HTML if present; refresh active state only.
+    // Re-bind open handler (idempotent via onclick replace).
+    const openBtn = $('btn-open-plant');
+    if (openBtn) {
+      openBtn.onclick = () => switchReportPane('plant');
+      openBtn.classList.toggle('is-active-pane', false);
+    }
+  }
 }
 
 function confBadge(c) {

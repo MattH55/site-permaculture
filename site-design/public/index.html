@@ -93,8 +93,9 @@
       <button type="button" class="report-tab is-active" role="tab" id="tab-site" aria-selected="true" aria-controls="pane-site">
         Site design
       </button>
-      <button type="button" class="report-tab" role="tab" id="tab-plant" aria-selected="false" aria-controls="pane-plant">
-        Planting plan
+      <button type="button" class="report-tab report-tab-side" role="tab" id="tab-plant" aria-selected="false" aria-controls="pane-plant">
+        Planting planner
+        <span class="badge beta" title="Separate beta offering — not part of the core site design package">Beta</span>
       </button>
       <button type="button" class="btn-quiet" id="btn-back-map-top">← Map</button>
     </div>
@@ -102,12 +103,24 @@
       <aside class="rail">
         <span class="mono rail-label">Site core</span>
         <div class="steps" id="report-core" role="navigation" aria-label="Report sections"></div>
+
+        <div class="rail-side-offerings" id="report-side-offerings" role="navigation" aria-label="Separate offerings">
+          <span class="mono rail-label rail-label-side">Separate offering</span>
+          <button type="button" class="side-offer-card" id="btn-open-plant" data-pane="plant" aria-controls="pane-plant">
+            <span class="side-offer-head">
+              <span class="side-offer-title">Planting planner</span>
+              <span class="badge beta">Beta</span>
+            </span>
+            <span class="side-offer-desc fine">
+              Alberta-suited crops, economics, and vendor links — a separate preview tool, not included in the core site design package.
+            </span>
+            <span class="side-offer-cta mono">Open beta →</span>
+          </button>
+        </div>
+
         <div class="rail-actions">
           <button type="button" class="btn btn-secondary" id="btn-back-map">
             ← Back to map
-          </button>
-          <button type="button" class="btn btn-secondary" id="btn-open-plant">
-            Planting plan →
           </button>
           <button type="button" class="btn" id="btn-pdf-all">
             ⬇ Download full PDF

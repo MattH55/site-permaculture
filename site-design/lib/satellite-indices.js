@@ -459,6 +459,25 @@ export async function fetchRegionalSOC(geometry, bbox, fallbacks = []) {
   const pool = surface.length ? surface : samples;
   const vals = pool.map((s) => s.g_kg);
 
+  // Collapse multi-depth hits to map markers (one point per lon/lat)
+  const byPoint = new Map();
+  for (const s of pool) {
+    const key = `${s.lon.toFixed(4)},${s.lat.toFixed(4)}`;
+    if (!byPoint.has(key)) {
+      byPoint.set(key, { lon: s.lon, lat: s.lat, depths: {}, g_kg_vals: [] });
+    }
+    const p = byPoint.get(key);
+    p.depths[s.depth] = s.g_kg;
+    p.g_kg_vals.push(s.g_kg);
+  }
+  const sample_points = [...byPoint.values()].map((p, i) => ({
+    id: `soc-${i + 1}`,
+    lon: p.lon,
+    lat: p.lat,
+    soc_g_kg: round1(avg(p.g_kg_vals)),
+    depths: p.depths,
+  }));
+
   return {
     mean_g_kg: round1(avg(vals)),
     min_g_kg: round1(Math.min(...vals)),
@@ -466,10 +485,11 @@ export async function fetchRegionalSOC(geometry, bbox, fallbacks = []) {
     std_g_kg: round1(stdev(vals)),
     n_samples: vals.length,
     depth_labels: [...new Set(pool.map((s) => s.depth))],
+    sample_points,
     source: 'SoilGrids 2.0 (ISRIC)',
     resolution_m: 250,
     confidence: CONFIDENCE.low_moderate,
-    note: 'Regional context only – not property-scale',
+    note: 'Regional context only – not property-scale. Mapped sample points are model estimates for screening.',
   };
 }
 
@@ -571,13 +591,16 @@ function buildMapLayerHints(s2, soc, bbox) {
     layers.push({
       id: 'regional_soc',
       label: 'Regional SOC (context only)',
-      type: 'context',
-      opacity: 0.25,
+      type: 'points',
+      opacity: 0.85,
       confidence: CONFIDENCE.low_moderate,
       resolution_m: 250,
       source: soc.source,
       mean_g_kg: soc.mean_g_kg,
-      legend_note: 'Low-opacity regional context — not property-scale SOC',
+      min_g_kg: soc.min_g_kg,
+      max_g_kg: soc.max_g_kg,
+      sample_points: soc.sample_points || [],
+      legend_note: 'SOC sample points (SoilGrids ~250 m) — regional model context only, not lab values',
       bbox,
     });
   }

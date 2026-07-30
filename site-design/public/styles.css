@@ -421,6 +421,18 @@ h3 { font-size: 1.08rem; }
   border-bottom-color: var(--berry);
   background: rgba(91, 58, 115, 0.06);
 }
+.report-tab-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: 0.25rem;
+  border-left: 1px dashed var(--line);
+  padding-left: 0.85rem;
+}
+.report-tab-side .badge.beta {
+  font-size: 0.62rem;
+  padding: 0.12rem 0.4rem;
+}
 .report-tabs .btn-quiet { margin-left: auto; }
 
 .report-wrap {
@@ -428,7 +440,7 @@ h3 { font-size: 1.08rem; }
   margin: 0 auto;
   padding: calc(var(--step) * 1.2) var(--step);
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 220px 1fr;
   gap: calc(var(--step) * 1.6);
   align-items: start;
 }
@@ -469,9 +481,141 @@ h3 { font-size: 1.08rem; }
   background: rgba(91, 58, 115, 0.06);
   border-color: rgba(91, 58, 115, 0.25);
 }
+.side-offer-cta-panel {
+  border-style: dashed;
+  border-width: 1.5px;
+}
+.side-offer-cta-panel .eyebrow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
 
 .rail { position: sticky; top: var(--step); }
 .rail-label { color: var(--ink-soft); margin-bottom: 0.9rem; display: block; }
+.rail-label-side {
+  margin-top: 1.15rem;
+  margin-bottom: 0.55rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+}
+.rail-side-offerings {
+  margin-top: 0.25rem;
+}
+.side-offer-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  width: 100%;
+  text-align: left;
+  padding: 0.75rem 0.8rem;
+  border: 1.5px dashed rgba(196, 92, 38, 0.45);
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, rgba(196, 92, 38, 0.08), rgba(91, 58, 115, 0.05));
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, outline 0.15s ease;
+}
+.side-offer-card:hover {
+  border-color: #c45c26;
+  box-shadow: 0 2px 10px rgba(22, 33, 27, 0.06);
+}
+.side-offer-card.is-active-pane {
+  outline: 2px solid var(--gold);
+  outline-offset: 1px;
+  border-style: solid;
+}
+.side-offer-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+}
+.side-offer-title {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--ink);
+}
+.side-offer-desc {
+  margin: 0;
+  line-height: 1.4;
+  color: var(--ink-soft);
+}
+.side-offer-cta {
+  color: #9a3f12;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  margin-top: 0.15rem;
+}
+
+.beta-banner {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.85rem 1rem;
+  margin: 0 0 1.1rem;
+  border: 1.5px dashed rgba(196, 92, 38, 0.5);
+  border-radius: var(--radius);
+  background: rgba(196, 92, 38, 0.08);
+}
+.beta-banner p {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.beta-banner strong { color: var(--ink); }
+.plant-planner-panel .lede { max-width: 62ch; }
+
+.plant-goals-bar .goal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.goal-chip {
+  font-family: 'Bricolage Grotesque', sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: #fff;
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.goal-chip:hover {
+  border-color: var(--berry);
+  color: var(--ink);
+}
+.goal-chip.is-active {
+  border-color: var(--berry);
+  background: rgba(91, 58, 115, 0.12);
+  color: var(--berry);
+}
+.goal-chip[data-plant-goal="lowest_cost"].is-active,
+.goal-chip[data-plant-goal="max_revenue"].is-active,
+.goal-chip[data-plant-goal="fastest_payback"].is-active {
+  border-color: #c45c26;
+  background: rgba(196, 92, 38, 0.12);
+  color: #9a3f12;
+}
+.goal-scenario-select {
+  font: inherit;
+  font-size: 0.88rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  max-width: 100%;
+}
+
 .rail-actions {
   display: flex;
   flex-direction: column;
@@ -958,6 +1102,20 @@ h3 { font-size: 1.08rem; }
 .badge.moderate { border-color: var(--caution); color: var(--caution); }
 .badge.visit { border-color: var(--danger); color: var(--danger); }
 .badge.effort { border-color: var(--line); color: var(--ink-soft); }
+.badge.beta {
+  border-color: #c45c26;
+  color: #9a3f12;
+  background: rgba(196, 92, 38, 0.12);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1.2;
+}
 .el .basis {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 0.7rem;
@@ -1767,6 +1925,18 @@ textarea {
   .rail-actions {
     display: none; /* use top Map tab actions on mobile */
   }
+  .rail-side-offerings {
+    margin-top: 0.45rem;
+  }
+  .side-offer-card {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.55rem;
+    padding: 0.55rem 0.7rem;
+  }
+  .side-offer-desc { display: none; }
+  .side-offer-cta { margin-top: 0; }
   .steps {
     display: flex;
     border-radius: var(--radius);

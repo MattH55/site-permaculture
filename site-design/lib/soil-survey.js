@@ -276,31 +276,59 @@ function deriveSoilCharacteristics(landSystem) {
   return chars;
 }
 
+const SOILGRIDS = 'https://rest.isric.org/soilgrids/v2.0/properties/query';
+const SG_TIMEOUT_MS = 18_000;
+
 /**
  * Full soil survey lookup at a point.
- * Combines AGRASIS LandSystems + AGRASID data.
+ * Combines AGRASIS LandSystems + AGRASID data + mapped SoilGrids sample grid.
  *
  * @param {number} lat
  * @param {number} lng
- * @returns {Promise<{available: boolean, land_system?: object, agrasid?: object, soil_zone_info?: object, soil_order_info?: object, characteristics?: object, error?: string}>}
+ * @param {{ bbox?: { west:number, south:number, east:number, north:number }, samples?: number }} [opts]
+ * @returns {Promise<object>}
  */
-async function querySoilSurvey(lat, lng) {
+async function querySoilSurvey(lat, lng, opts = {}) {
   try {
-    const [landSystem, agrasid] = await Promise.all([
+    const [landSystem, agrasid, samples] = await Promise.all([
       queryLandSystem(lat, lng).catch(() => null),
       queryAgrasidPolygon(lat, lng).catch(() => null),
+      fetchSoilSampleGrid(lat, lng, opts).catch(() => ({ samples: [], summary: null })),
     ]);
 
-    if (!landSystem && !agrasid) {
+    if (!landSystem && !agrasid && !(samples?.samples?.length)) {
       return {
         available: false,
-        error: 'No AGRASID/AGRASIS soil data at this location (may be outside agricultural zone).',
+        error: 'No AGRASID/AGRASIS or SoilGrids soil data at this location (may be outside agricultural zone).',
       };
     }
 
     const soilZoneInfo = interpretSoilZone(landSystem?.soil_zone);
     const soilOrderInfo = interpretSoilOrder(landSystem?.soil_order_primary);
     const characteristics = deriveSoilCharacteristics(landSystem);
+
+    // Merge SoilGrids sample summary into characteristics when survey text is thin
+    const sampleSummary = samples?.summary || null;
+    if (sampleSummary) {
+      if (!characteristics.texture_class && sampleSummary.texture_class) {
+        characteristics.texture_class = sampleSummary.texture_class;
+      }
+      if (sampleSummary.mean_ph != null) {
+        characteristics.ph_h2o_mean = sampleSummary.mean_ph;
+      }
+      if (sampleSummary.mean_clay_pct != null) {
+        characteristics.clay_pct_mean = sampleSummary.mean_clay_pct;
+      }
+      if (sampleSummary.mean_sand_pct != null) {
+        characteristics.sand_pct_mean = sampleSummary.mean_sand_pct;
+      }
+      if (sampleSummary.mean_silt_pct != null) {
+        characteristics.silt_pct_mean = sampleSummary.mean_silt_pct;
+      }
+      if (sampleSummary.mean_soc_g_kg != null) {
+        characteristics.soc_g_kg_regional_mean = sampleSummary.mean_soc_g_kg;
+      }
+    }
 
     return {
       available: true,
@@ -309,8 +337,18 @@ async function querySoilSurvey(lat, lng) {
       soil_zone_info: soilZoneInfo,
       soil_order_info: soilOrderInfo,
       characteristics,
-      source: 'Alberta Agriculture and Irrigation — AGRASID/AGRASIS',
-      source_url: 'https://www.alberta.ca/agrasid-agricultural-regions-of-alberta-soil-inventory-database',
+      /** Mapped sample points (SoilGrids ~250 m) for property map display */
+      soil_samples: samples?.samples || [],
+      sample_summary: sampleSummary,
+      sample_source: samples?.source || null,
+      sample_note:
+        'Soil sample markers use SoilGrids 2.0 (~250 m) at a property grid — regional model values, not lab tests. Use for screening and map orientation only.',
+      source: landSystem || agrasid
+        ? 'Alberta Agriculture and Irrigation — AGRASID/AGRASIS (+ SoilGrids sample grid)'
+        : 'SoilGrids 2.0 (ISRIC) sample grid — no AGRASID polygon at point',
+      source_url: landSystem || agrasid
+        ? 'https://www.alberta.ca/agrasid-agricultural-regions-of-alberta-soil-inventory-database'
+        : 'https://www.isric.org/explore/soilgrids',
     };
   } catch (err) {
     return {
@@ -320,6 +358,288 @@ async function querySoilSurvey(lat, lng) {
   }
 }
 
+/**
+ * Sample a small grid across the parcel (or around the centre) and query
+ * SoilGrids for clay / sand / silt / pH / SOC at each point.
+ *
+ * @param {number} lat
+ * @param {number} lng
+ * @param {{ bbox?: object, samples?: number }} opts
+ */
+async function fetchSoilSampleGrid(lat, lng, opts = {}) {
+  const n = Math.min(Math.max(opts.samples ?? 9, 1), 12);
+  const points = sampleGridPoints(lat, lng, opts.bbox, n);
+  const samples = [];
+
+  // Sequential with short concurrency to respect SoilGrids rate limits
+  const chunk = 3;
+  for (let i = 0; i < points.length; i += chunk) {
+    const batch = points.slice(i, i + chunk);
+    const results = await Promise.all(
+      batch.map((p) => querySoilGridsPoint(p.lat, p.lng).catch(() => null))
+    );
+    for (let j = 0; j < batch.length; j++) {
+      const props = results[j];
+      if (!props) continue;
+      samples.push({
+        id: `sg-${samples.length + 1}`,
+        lat: batch[j].lat,
+        lng: batch[j].lng,
+        role: batch[j].role,
+        ...props,
+      });
+    }
+  }
+
+  if (!samples.length) {
+    return { samples: [], summary: null, source: 'SoilGrids 2.0 (ISRIC)' };
+  }
+
+  const summary = summarizeSamples(samples);
+  return {
+    samples,
+    summary,
+    source: 'SoilGrids 2.0 (ISRIC) — clay/sand/silt/pH/SOC @ ~250 m',
+  };
+}
+
+/**
+ * Build sample locations: centre + corners / edge midpoints of bbox.
+ */
+function sampleGridPoints(lat, lng, bbox, n) {
+  if (!bbox || bbox.west == null) {
+    // ~180 m offsets around centre
+    const d = 0.0016;
+    const pts = [
+      { lat, lng, role: 'centre' },
+      { lat: lat + d, lng: lng - d, role: 'NW' },
+      { lat: lat + d, lng: lng + d, role: 'NE' },
+      { lat: lat - d, lng: lng - d, role: 'SW' },
+      { lat: lat - d, lng: lng + d, role: 'SE' },
+    ];
+    if (n > 5) {
+      pts.push(
+        { lat: lat + d, lng, role: 'N' },
+        { lat: lat - d, lng, role: 'S' },
+        { lat, lng: lng - d, role: 'W' },
+        { lat, lng: lng + d, role: 'E' }
+      );
+    }
+    return pts.slice(0, n);
+  }
+
+  const { west, south, east, north } = bbox;
+  const cx = (west + east) / 2;
+  const cy = (south + north) / 2;
+  // Shrink slightly so samples stay on-parcel
+  const mx = (east - west) * 0.2;
+  const my = (north - south) * 0.2;
+  const w = west + mx;
+  const e = east - mx;
+  const s = south + my;
+  const nn = north - my;
+  const pts = [
+    { lat: cy, lng: cx, role: 'centre' },
+    { lat: nn, lng: w, role: 'NW' },
+    { lat: nn, lng: e, role: 'NE' },
+    { lat: s, lng: w, role: 'SW' },
+    { lat: s, lng: e, role: 'SE' },
+    { lat: nn, lng: cx, role: 'N' },
+    { lat: s, lng: cx, role: 'S' },
+    { lat: cy, lng: w, role: 'W' },
+    { lat: cy, lng: e, role: 'E' },
+  ];
+  return pts.slice(0, n);
+}
+
+/**
+ * Single SoilGrids point query — surface 0–5 cm + 5–15 cm means.
+ */
+async function querySoilGridsPoint(lat, lng) {
+  const url =
+    `${SOILGRIDS}?lon=${lng.toFixed(5)}&lat=${lat.toFixed(5)}` +
+    `&property=soc&property=clay&property=sand&property=silt&property=phh2o` +
+    `&depth=0-5cm&depth=5-15cm&value=mean`;
+
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), SG_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const layers = data?.properties?.layers || [];
+    if (!layers.length) return null;
+
+    const pick = (name) => {
+      const layer = layers.find((l) => l.name === name);
+      if (!layer?.depths?.length) return null;
+      const dFactor = layer.unit_measure?.d_factor || 1;
+      const vals = layer.depths
+        .map((d) => d.values?.mean)
+        .filter((v) => v != null && Number.isFinite(v))
+        .map((v) => v / dFactor);
+      if (!vals.length) return null;
+      return vals.reduce((a, b) => a + b, 0) / vals.length;
+    };
+
+    // ISRIC: clay/sand/silt in g/kg (d_factor 10) → %; pH d_factor 10; soc g/kg d_factor 10
+    const clayRaw = pick('clay');
+    const sandRaw = pick('sand');
+    const siltRaw = pick('silt');
+    const phRaw = pick('phh2o');
+    const socRaw = pick('soc');
+
+    // When d_factor already applied in pick, values are in reported units
+    // clay/sand/silt: g/kg → % by /10 if still large
+    const toPct = (v) => {
+      if (v == null) return null;
+      // After /d_factor (10), ISRIC clay is still often ~20–50 (g/kg units scaled) — actually
+      // mean 218 with d_factor 10 → 21.8 which is % if we treat residual as g/kg of 0-1000.
+      // Convention: clay mean/10 = g/kg? Docs: unit g/kg, d_factor 10, so raw/10 = g/kg.
+      // g/kg / 10 = %  (e.g. 218 raw → 21.8 g/kg? Wait:
+      // From ISRIC: "values are provided in the unit of measurement with a conversion factor"
+      // clay unit g/kg, d_factor 10 → value 218 means 21.8 g/kg which is wrong for clay %.
+      // Actually: 218/10 = 21.8% when people treat it as percent... Clay content ~200-400 g/kg = 20-40%.
+      // So raw/d_factor = g/kg, and % = (raw/d_factor)/10.
+      return round1(v / 10);
+    };
+
+    // pick already divides by d_factor → g/kg for texture, pH*10 units, soc g/kg
+    // clay after /10 d_factor: if raw mean=218, pick returns 21.8 which IS already %
+    // Checking earlier probe: clay:218 without dividing — that's raw. With d_factor 10 → 21.8%
+    // phh2o:67 → 6.7. soc:537 → 53.7 g/kg.
+
+    const clay_pct = clayRaw != null ? round1(clayRaw) : null; // after d_factor already %
+    // Wait - pick divides by d_factor. clay raw 218 / 10 = 21.8 → clay %
+    // sand raw 368 / 10 = 36.8 → %
+    // ph 67 / 10 = 6.7
+    // soc 537 / 10 = 53.7 g/kg
+
+    // Actually re-read pick: d_factor from unit_measure, default 1.
+    // For clay, d_factor is 10, so clayRaw = 21.8 which we report as clay_pct.
+    // For consistency with satellite-indices SOC: raw / d_factor = g/kg for SOC.
+
+    const sand_pct = sandRaw != null ? round1(sandRaw) : null;
+    const silt_pct = siltRaw != null ? round1(siltRaw) : null;
+    // pH: raw 67 / 10 = 6.7 — pick already did /d_factor
+    const ph = phRaw != null ? round2(phRaw) : null;
+    // SOC: g/kg after /d_factor
+    const soc_g_kg = socRaw != null ? round1(socRaw) : null;
+
+    // If values look like they weren't scaled (clay > 100), scale down
+    const fixPct = (v) => {
+      if (v == null) return null;
+      if (v > 100) return round1(v / 10);
+      return v;
+    };
+    const fixPh = (v) => {
+      if (v == null) return null;
+      if (v > 14) return round2(v / 10);
+      return v;
+    };
+
+    const clay = fixPct(clay_pct);
+    const sand = fixPct(sand_pct);
+    const silt = fixPct(silt_pct);
+    const phh2o = fixPh(ph);
+    const soc = soc_g_kg != null && soc_g_kg > 200 ? round1(soc_g_kg / 10) : soc_g_kg;
+
+    if (clay == null && sand == null && soc == null && phh2o == null) return null;
+
+    const texture_class = textureFromFractions(sand, silt, clay);
+
+    return {
+      clay_pct: clay,
+      sand_pct: sand,
+      silt_pct: silt,
+      ph_h2o: phh2o,
+      soc_g_kg: soc,
+      texture_class,
+      depth: '0–15 cm (0–5 + 5–15 mean)',
+      resolution_m: 250,
+      confidence: 'low-moderate',
+    };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+function textureFromFractions(sand, silt, clay) {
+  if (sand == null || clay == null) return null;
+  const si = silt != null ? silt : Math.max(0, 100 - sand - clay);
+  // Simplified USDA triangle
+  if (clay >= 40) return sand >= 45 ? 'sandy clay' : si >= 40 ? 'silty clay' : 'clay';
+  if (clay >= 27 && clay < 40) {
+    if (sand <= 20) return 'silty clay loam';
+    if (sand >= 45) return 'sandy clay loam';
+    return 'clay loam';
+  }
+  if (clay >= 20 && clay < 27) {
+    if (si >= 50) return 'silt loam';
+    if (sand >= 52) return 'sandy clay loam';
+    return 'loam';
+  }
+  if (clay < 20) {
+    if (si >= 50 && clay >= 12) return 'silt loam';
+    if (si >= 80) return 'silt';
+    if (sand >= 70 && clay < 15) return sand >= 85 ? 'sand' : 'loamy sand';
+    if (sand >= 43) return 'sandy loam';
+    return 'loam';
+  }
+  return 'loam';
+}
+
+function summarizeSamples(samples) {
+  const avg = (key) => {
+    const vals = samples.map((s) => s[key]).filter((v) => v != null && Number.isFinite(v));
+    if (!vals.length) return null;
+    return round1(vals.reduce((a, b) => a + b, 0) / vals.length);
+  };
+  const textures = samples.map((s) => s.texture_class).filter(Boolean);
+  const texture_class = mode(textures);
+
+  return {
+    n_samples: samples.length,
+    mean_clay_pct: avg('clay_pct'),
+    mean_sand_pct: avg('sand_pct'),
+    mean_silt_pct: avg('silt_pct'),
+    mean_ph: avg('ph_h2o') != null ? round2(avg('ph_h2o')) : null,
+    mean_soc_g_kg: avg('soc_g_kg'),
+    min_soc_g_kg: minOf(samples, 'soc_g_kg'),
+    max_soc_g_kg: maxOf(samples, 'soc_g_kg'),
+    texture_class,
+    resolution_m: 250,
+    confidence: 'low-moderate',
+    note: 'Regional SoilGrids means across sample grid — not lab-verified property SOC',
+  };
+}
+
+function mode(arr) {
+  if (!arr.length) return null;
+  const m = new Map();
+  for (const x of arr) m.set(x, (m.get(x) || 0) + 1);
+  return [...m.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function minOf(arr, key) {
+  const vals = arr.map((s) => s[key]).filter((v) => v != null);
+  return vals.length ? round1(Math.min(...vals)) : null;
+}
+function maxOf(arr, key) {
+  const vals = arr.map((s) => s[key]).filter((v) => v != null);
+  return vals.length ? round1(Math.max(...vals)) : null;
+}
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
+}
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
 export {
   querySoilSurvey,
   queryLandSystem,
@@ -327,6 +647,9 @@ export {
   interpretSoilZone,
   interpretSoilOrder,
   deriveSoilCharacteristics,
+  fetchSoilSampleGrid,
+  querySoilGridsPoint,
   AGRASIS_URL,
   AGRASID_URL,
 };
+

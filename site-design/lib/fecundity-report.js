@@ -25,16 +25,103 @@ function inferIndicators(rawData = {}) {
     }
   };
 
-  // Water
+  // Water — AMWI inventory preferred over coarse land-cover wetland flags
   if (rawData.topoData?.avgSlopePercent != null)
     set('avgSlopePercent', rawData.topoData.avgSlopePercent, 'high — topography');
-  if (rawData.wetlandsPresent != null)
-    set('hasPondOrWetland', rawData.wetlandsPresent, 'high — wetlands layer');
+  if (rawData.hasPondOrWetlandInventory != null) {
+    set(
+      'hasPondOrWetlandInventory',
+      rawData.hasPondOrWetlandInventory,
+      'high — Alberta Merged Wetland Inventory'
+    );
+  }
+  // Prefer real detections (inventory / optical) over pure land-cover for hasPondOrWetland
+  if (rawData.hasPondOrWetlandInventory === true) {
+    set('hasPondOrWetland', true, 'high — Alberta Merged Wetland Inventory');
+  } else if (rawData.hasPondOrDugout === true || rawData.satelliteOpenWater === true) {
+    set(
+      'hasPondOrWetland',
+      true,
+      'medium-high — confirmed open water (inventory/optical screening, not regulatory wetland)'
+    );
+  } else if (rawData.hasSmallWaterOrSeep === true) {
+    set(
+      'hasPondOrWetland',
+      true,
+      'low-medium — possible small water/seep; field verification recommended'
+    );
+  } else if (rawData.hasPondOrWetlandInventory === false && rawData.hasPondOrDugout === false) {
+    set(
+      'hasPondOrWetland',
+      false,
+      'medium — no inventory or optical open water on AOI (land-cover may still flag moisture)'
+    );
+  } else if (rawData.wetlandsPresent != null) {
+    set('hasPondOrWetland', rawData.wetlandsPresent, 'moderate — wetlands layer / land-cover fallback');
+  }
+  if (rawData.wetlandAreaHa != null)
+    set('wetlandAreaHa', rawData.wetlandAreaHa, 'high — AMWI polygon area');
+  if (rawData.wetlandProximityBoost != null)
+    set(
+      'wetlandProximityBoost',
+      rawData.wetlandProximityBoost,
+      'high — AMWI proximity'
+    );
+  if (rawData.wetlandHabitatPresent != null)
+    set(
+      'wetlandHabitatPresent',
+      rawData.wetlandHabitatPresent,
+      'high — AMWI habitat screen'
+    );
+  if (rawData.wetlandTypes?.length)
+    set('wetlandTypes', rawData.wetlandTypes, 'high — AMWI CWCS class');
   if (rawData.soilMoistureProxy != null)
     set(
       'soilMoistureProxy',
       rawData.soilMoistureProxy,
       'low-moderate — Sentinel-1 / NDMI moisture proxy'
+    );
+  if (rawData.hasSmallWaterOrSeep != null)
+    set(
+      'hasSmallWaterOrSeep',
+      rawData.hasSmallWaterOrSeep,
+      'low-medium — S2 NDWI/MNDWI + optional S1/TWI (site walk recommended)'
+    );
+  if (rawData.hasPondOrDugout != null)
+    set(
+      'hasPondOrDugout',
+      rawData.hasPondOrDugout,
+      'medium — optical/inventory open water screening'
+    );
+  if (rawData.satelliteOpenWater != null)
+    set(
+      'satelliteOpenWater',
+      rawData.satelliteOpenWater,
+      'medium — Sentinel-2 water index'
+    );
+  if (rawData.smallWaterDensity != null)
+    set(
+      'smallWaterDensity',
+      rawData.smallWaterDensity,
+      'low-medium — water density score (screening)'
+    );
+  if (rawData.smallWaterConfirmedAreaM2 != null)
+    set(
+      'smallWaterConfirmedAreaM2',
+      rawData.smallWaterConfirmedAreaM2,
+      'medium — confirmed open-water area m²'
+    );
+  if (rawData.smallWaterPossibleAreaM2 != null)
+    set(
+      'smallWaterPossibleAreaM2',
+      rawData.smallWaterPossibleAreaM2,
+      'low-medium — possible seeps/depressions m²'
+    );
+  if (rawData.smallWaterNearestM != null)
+    set(
+      'smallWaterNearestM',
+      rawData.smallWaterNearestM,
+      'medium — nearest detected water distance (m)'
     );
 
   // Soil — texture only from survey; NEVER set organicMatterPct from satellite SOC
@@ -152,6 +239,11 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
 
   const hasSatellite =
     !!(rawData.satellite?.available || rawData.ndviMedian != null || rawData.ndviCoverPct != null);
+  const hasWetlands = !!(
+    rawData.wetlands?.available ||
+    rawData.hasPondOrWetlandInventory != null ||
+    rawData.wetlandsPresent
+  );
 
   const categories = Object.keys(CATEGORIES).map((key) => {
     const cfg = CATEGORIES[key];
@@ -163,7 +255,7 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       .filter((f) => provenance[f])
       .map((f) => `${f}: ${provenance[f]}`);
 
-    const recommendations =
+    let recommendations =
       score !== null && score < 70
         ? cfg.suggestedServices.map((id) => ({
             serviceId: id,
@@ -171,10 +263,42 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
           }))
         : [];
 
+    // Wetland-specific guidance on water / fauna levers
+    if (key === 'water' && rawData.hasPondOrWetlandInventory === true) {
+      recommendations = [
+        {
+          serviceId: 'wetland_protect',
+          rationale:
+            'Mapped wetland intersects the parcel — protect / buffer and confirm Water Act approvals before earthworks.',
+        },
+        ...recommendations.filter((r) => r.serviceId !== 'swale' && r.serviceId !== 'pond'),
+      ];
+    } else if (
+      key === 'water' &&
+      (rawData.hasSmallWaterOrSeep || rawData.smallWater?.summary?.has_possible_small_water) &&
+      !rawData.hasPondOrWetlandInventory
+    ) {
+      recommendations = [
+        {
+          serviceId: 'assessment',
+          rationale:
+            'Possible small water or seeps detected — field verification recommended before relying on water features in design.',
+        },
+        ...recommendations,
+      ];
+    }
+
     let narrative =
       score !== null
         ? band.tone
         : 'No measured or inferable data — recommend a targeted site assessment.';
+
+    if (key === 'water') {
+      narrative = waterLeverNarrative(rawData, narrative);
+    }
+    if (key === 'microclimate' || key === 'faunaIntegration') {
+      narrative = microclimateFaunaWaterNote(rawData, key, narrative);
+    }
 
     // Enforce carbon-safe language on soil structure / nutrient narratives
     if (key === 'soilStructure' || key === 'nutrientCycling' || key === 'soilBiology') {
@@ -213,10 +337,12 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
     // Value estimation is best-effort — don't break the fecundity report
   }
 
-  // CLAIMS envelope — SOC never numeric from satellite alone
-  const claims = Array.isArray(rawData.satelliteClaims)
-    ? rawData.satelliteClaims
-    : [];
+  // CLAIMS envelope — SOC never numeric from satellite alone; wetlands not regulatory
+  const claims = [
+    ...(Array.isArray(rawData.satelliteClaims) ? rawData.satelliteClaims : []),
+    ...(Array.isArray(rawData.wetlands?.claims) ? rawData.wetlands.claims : []),
+    ...(Array.isArray(rawData.smallWater?.claims) ? rawData.smallWater.claims : []),
+  ];
 
   const regionalContext =
     rawData.regionalSocContext ||
@@ -224,9 +350,31 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
     claims.find((c) => c.field === 'soil_organic_carbon')?.regional_context ||
     null;
 
-  const disclaimer = hasSatellite
-    ? 'Satellite vegetation indices (Sentinel-2) improve vegetative and water screening at property scale, but do not replace soil tests for carbon or biology. Regional SOC layers are context only (low–moderate confidence). A site walk with lab tests remains the high-confidence path.'
-    : 'This fecundity score is inferred from topography, soil survey, canopy cover, land-cover class, and regional wildlife observations. A direct site walk with soil tests, penetrometer readings, and field observations will significantly improve accuracy. No measured indicators were collected for this remote report.';
+  const bits = [];
+  if (hasSatellite) {
+    bits.push(
+      'Satellite vegetation indices improve vegetative and water screening but do not replace soil tests for carbon or biology'
+    );
+  }
+  if (hasWetlands) {
+    bits.push(
+      'Wetland inventory polygons improve water, microclimate, and fauna inferences for screening only — not a formal Alberta Wetland Policy delineation'
+    );
+  }
+  if (rawData.smallWater?.summary?.has_possible_small_water || rawData.hasSmallWaterOrSeep) {
+    bits.push(
+      'Small water / seep detections are screening only — site walk recommended; not permanent water or regulatory wetlands'
+    );
+  }
+  bits.push('A site walk remains the high-confidence path for design and regulatory decisions');
+  const disclaimer =
+    bits.join('. ') +
+    (hasSatellite || hasWetlands
+      ? '.'
+      : ' This fecundity score is inferred from topography, soil survey, canopy cover, land-cover class, and regional wildlife observations.');
+
+  // Explicit water-feature summary for UI / planting
+  const waterFeatureSummary = buildWaterFeatureSummary(rawData);
 
   return {
     propertyLabel: opts.propertyLabel || null,
@@ -234,9 +382,12 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
     dataCompleteness: assessment.dataCompleteness,
     weakestCategories: assessment.weakestCategories,
     suggestedServices: assessment.suggestedServices,
+    waterFeatureSummary,
     categories,
     interventionValue,
     satellite: rawData.satellite || null,
+    wetlands: rawData.wetlands || null,
+    smallWater: rawData.smallWater || null,
     claims,
     regional_context: regionalContext
       ? {
@@ -250,5 +401,102 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       ? rawData.satellite?.attribution || satelliteAttribution()
       : null,
     generatedAt: new Date().toISOString(),
+  };
+}
+
+/**
+ * Water lever narrative: confirmed vs possible small water + inventory.
+ */
+function waterLeverNarrative(rawData, base) {
+  const parts = [];
+  const sw = rawData.smallWater?.summary || {};
+  const w = rawData.wetlands;
+
+  if (w?.has_wetland_on_site) {
+    parts.push(
+      `Confirmed water features detected: mapped wetland on site (${(w.wetland_types || []).join(', ') || 'classed'}${
+        w.wetland_area_ha != null ? ` · ~${w.wetland_area_ha} ha` : ''
+      }). Inventory screening only — not a formal delineation.`
+    );
+  } else if (rawData.hasPondOrDugout || sw.has_confirmed_water) {
+    const area = sw.total_confirmed_area_m2;
+    const near = sw.nearest_water_distance_m;
+    parts.push(
+      `Confirmed water features detected${area != null ? ` (~${area} m² open-water signature)` : ''}${
+        near != null && near > 0 ? ` · nearest ~${near} m` : near === 0 ? ' on/near parcel' : ''
+      }. Screening from inventory and/or Sentinel-2 — not a permanent-water guarantee.`
+    );
+  }
+
+  if (sw.has_possible_small_water || (rawData.hasSmallWaterOrSeep && !rawData.hasPondOrDugout && !w?.has_wetland_on_site)) {
+    parts.push(
+      'Possible small water sources or seeps detected (low-medium confidence) — site walk recommended to verify.'
+    );
+  }
+
+  if (!parts.length && w?.nearest_wetland_distance_m != null && !w.has_wetland_on_site) {
+    parts.push(`No AMWI wetland on the parcel; nearest mapped wetland ~${w.nearest_wetland_distance_m} m.`);
+  }
+
+  if (!parts.length) return base;
+  return `${parts.join(' ')} ${base}`;
+}
+
+function microclimateFaunaWaterNote(rawData, key, base) {
+  const sw = rawData.smallWater?.summary || {};
+  if (rawData.hasPondOrDugout || sw.has_confirmed_water || rawData.hasPondOrWetlandInventory) {
+    const note =
+      key === 'microclimate'
+        ? ' Nearby open water can raise local humidity and moderate temperature swings (medium confidence).'
+        : ' Open water or wetland edge increases habitat potential for amphibians, invertebrates, and waterfowl (medium confidence).';
+    return base + note;
+  }
+  if (rawData.hasSmallWaterOrSeep || sw.has_possible_small_water) {
+    const note =
+      key === 'microclimate'
+        ? ' Possible seeps/wet depressions may slightly raise local moisture (low-medium confidence — verify on site).'
+        : ' Possible small water may support edge habitat if confirmed (low-medium confidence — field verification recommended).';
+    return base + note;
+  }
+  return base;
+}
+
+function buildWaterFeatureSummary(rawData) {
+  const sw = rawData.smallWater?.summary || {};
+  const confirmed =
+    !!rawData.hasPondOrWetlandInventory ||
+    !!rawData.hasPondOrDugout ||
+    !!sw.has_confirmed_water ||
+    !!rawData.wetlands?.has_wetland_on_site;
+  const possible =
+    !!sw.has_possible_small_water ||
+    (!!rawData.hasSmallWaterOrSeep && !confirmed);
+
+  const lines = [];
+  if (confirmed) {
+    lines.push(
+      'Confirmed water features detected (inventory and/or optical open-water screening). Not a regulatory wetland delineation or permanent-water guarantee.'
+    );
+  }
+  if (possible) {
+    lines.push(
+      'Possible small water sources or seeps detected (low-medium confidence) — site walk recommended to verify.'
+    );
+  }
+  if (!confirmed && !possible) {
+    lines.push(
+      'No confirmed open water or small-water detections on the AOI. Water lever may still use precipitation, slope, and moisture proxies.'
+    );
+  }
+
+  return {
+    has_confirmed: confirmed,
+    has_possible: possible,
+    nearest_m: sw.nearest_water_distance_m ?? rawData.smallWaterNearestM ?? null,
+    confirmed_area_m2: sw.total_confirmed_area_m2 ?? rawData.smallWaterConfirmedAreaM2 ?? null,
+    possible_area_m2: sw.total_possible_area_m2 ?? rawData.smallWaterPossibleAreaM2 ?? null,
+    density_score: sw.water_density_score ?? rawData.smallWaterDensity ?? null,
+    lines,
+    field_verification_recommended: possible || (!confirmed && !!rawData.hasSmallWaterOrSeep),
   };
 }
