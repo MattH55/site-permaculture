@@ -335,6 +335,8 @@ export async function generateSiteReport(input = {}) {
     wildlifeObservations: wildlife?.sighting_species || [],
     windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
     frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
+    footprintHa: siteInput.footprint_ha,
+    annualPrecipMm: climate.annual_precipitation_mm || null,
   }, { propertyLabel: siteInput.site_name });
   record.fecundity = fecundityReport;
 

@@ -2,8 +2,10 @@
  * Expanding Edge — Fecundity Report Generator
  * Infers missing indicators from pipeline data, runs assessment,
  * produces a client-facing report with provenance tags.
+ * Optionally runs intervention value estimation on top of baseline scores.
  */
 import { assessFecundity, CATEGORIES } from './fecundity-assessment.js';
+import { generateInterventionValueReport } from './intervention-value.js';
 
 function inferIndicators(rawData = {}) {
   const measured = rawData.measured || {};
@@ -95,6 +97,26 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
     };
   });
 
+  // Intervention value estimation — runs on top of baseline scores
+  const siteContext = {
+    footprintHa: rawData.footprintHa || opts.footprintHa || null,
+    slopePercent: rawData.topoData?.avgSlopePercent ?? opts.slopePercent ?? null,
+    annualPrecipMm: rawData.annualPrecipMm || opts.annualPrecipMm || null,
+    soilTexture: rawData.regionalSoilTexture || opts.soilTexture || null,
+  };
+
+  let interventionValue = null;
+  try {
+    interventionValue = generateInterventionValueReport({
+      baselineScores: assessment.categoryScores,
+      siteContext,
+      scenario: opts.scenario || 'mid',
+      timeHorizonYears: opts.timeHorizonYears || 10,
+    });
+  } catch {
+    // Value estimation is best-effort — don't break the fecundity report
+  }
+
   return {
     propertyLabel: opts.propertyLabel || null,
     overallScore: assessment.overallScore,
@@ -102,6 +124,7 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
     weakestCategories: assessment.weakestCategories,
     suggestedServices: assessment.suggestedServices,
     categories,
+    interventionValue,
     generatedAt: new Date().toISOString(),
   };
 }
