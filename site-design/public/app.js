@@ -3581,6 +3581,22 @@ function wellDepthSection(w, centre) {
   const high = w.estimated_depth_range_m?.high_m;
   const swl = w.estimated_static_water_level_m;
   const aquiferTop = w.estimated_aquifer_top_m;
+  // Mid-value drill cost: ≈ 92×D_ft + 4600 CAD (+15% formula), min ~$11,500
+  const depthFt = depth != null ? Math.round(depth * 3.28084 * 10) / 10 : null;
+  const wellCostMid =
+    depthFt != null ? Math.max(11500, Math.round(92 * depthFt + 4600)) : null;
+  const wellCostLow =
+    low != null
+      ? Math.max(11500, Math.round(92 * (low * 3.28084) + 4600))
+      : wellCostMid != null
+        ? Math.round(wellCostMid * 0.88)
+        : null;
+  const wellCostHigh =
+    high != null
+      ? Math.max(11500, Math.round(92 * (high * 3.28084) + 4600))
+      : wellCostMid != null
+        ? Math.round(wellCostMid * 1.22)
+        : null;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
     well_control_sparse: 'Sparse nearby well control',
@@ -3679,21 +3695,30 @@ function wellDepthSection(w, centre) {
       <div class="well-range-card">
         <span class="mono">Recommended aquifer completion</span>
         <div class="well-range-value">
-          ${fmt(depth, 'm')}
+          ${fmt(depth, 'm')}${depthFt != null ? ` <span class="fine" style="font-size:1rem;font-weight:500">(~${esc(depthFt)} ft)</span>` : ''}
         </div>
         <p class="fine">
           Confidence band ${fmt(low, 'm')}–${fmt(high, 'm')}
           ${swl != null ? ` · static water level ~${fmt(swl, 'm')} bgs` : ''}
           · ${esc(w.nearby_well_count ?? 0)} wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
         </p>
+        ${
+          wellCostMid != null
+            ? `<p class="fine" style="margin-top:0.45rem">
+                <strong>Planning drill cost (mid):</strong> ${fmtCad(wellCostMid)}
+                ${wellCostLow != null && wellCostHigh != null ? ` · band ${fmtCad(wellCostLow)}–${fmtCad(wellCostHigh)}` : ''}
+                <br/>Formula: ≈ 92 × depth(ft) + 4,600 CAD (+15% mid; min ~$11,500). Ballpark only — geology, access, and scope change the quote.
+              </p>`
+            : ''
+        }
         <p class="fine" style="margin-top:0.35rem">${basisLine}</p>
       </div>
 
       <div class="summary-grid">
         <div class="stat"><span class="k">Completion depth</span><strong>${fmt(depth, 'm')}</strong></div>
+        <div class="stat"><span class="k">Depth (ft)</span><strong>${depthFt != null ? esc(depthFt) : '—'}</strong></div>
+        <div class="stat"><span class="k">Drill cost (mid)</span><strong>${wellCostMid != null ? fmtCad(wellCostMid) : '—'}</strong></div>
         <div class="stat"><span class="k">Static water level</span><strong>${fmt(swl, 'm')}</strong></div>
-        <div class="stat"><span class="k">Nearby wells</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
-        <div class="stat"><span class="k">Confidence</span><strong>${esc(confLabel)}</strong></div>
       </div>
 
       ${wellsMinimap(w, centre)}

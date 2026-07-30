@@ -26,7 +26,7 @@ export const PACKAGE_CATALOG = {
     category: 'water',
     label: 'Groundwater well',
     blurb:
-      'Licensed drill to a hydrology-based completion depth from nearby well records. Yield measured on site — not estimated generically.',
+      'Licensed drill to a hydrology-based completion depth from nearby well records. Planning cost ≈ 92×depth(ft)+4600 CAD (+15% mid formula; min ~$11,500). Yield measured on site.',
     cta: 'Plan a well',
     href: 'https://www.expandingedge.ca/services-landing',
     effort: 'high',
@@ -533,20 +533,67 @@ function wellDepthReason(well) {
   return `Hydrology-based completion ~${well.estimated_depth_m} m (${well.nearby_well_count || 0} nearby wells).${swl}`;
 }
 
-/** Planning band for drill + pump setup — not a firm driller quote. */
+/**
+ * Well drill planning cost (CAD).
+ *
+ * Mid-value formula (+15% on prior AB ballpark):
+ *   Cost_mid ≈ 92 × D + 4600
+ * where D is completion depth in **feet**.
+ * Practical minimum ~$11,500 (was ~$10k before +15%).
+ *
+ * Examples: 100 ft → ~$13,800 · 150 → ~$18,400 · 200 → ~$23,000 · 300 → ~$32,200
+ * Ballpark only — site conditions, geology, access, and full scope change the quote.
+ */
+const WELL_COST_PER_FT = 92;
+const WELL_COST_BASE = 4600;
+const WELL_COST_MIN = 11_500; // ~10k × 1.15
+const M_TO_FT = 3.280839895;
+
+export function wellCostMidFromDepthFt(depthFt) {
+  const d = Math.max(0, Number(depthFt) || 0);
+  return Math.max(WELL_COST_MIN, Math.round(WELL_COST_PER_FT * d + WELL_COST_BASE));
+}
+
+export function wellCostMidFromDepthM(depthM) {
+  return wellCostMidFromDepthFt((Number(depthM) || 0) * M_TO_FT);
+}
+
 function wellPlanningPrice(well) {
-  const depth = well?.estimated_depth_m ?? 35;
-  // Rough AB domestic: ~$80–140/m drilling + casing + pump package floor
-  const mid = Math.round(depth * 110 + 8_500);
+  const depthM = well?.estimated_depth_m ?? 35;
+  const depthFt = round1(depthM * M_TO_FT);
+  const mid = wellCostMidFromDepthFt(depthFt);
+
+  // Band from hydrology depth range when available; else ±12% / +22% around mid
+  const lowM = well?.estimated_depth_range_m?.low_m;
+  const highM = well?.estimated_depth_range_m?.high_m;
+  let low =
+    lowM != null
+      ? wellCostMidFromDepthM(lowM)
+      : Math.round(mid * 0.88);
+  let high =
+    highM != null
+      ? wellCostMidFromDepthM(highM)
+      : Math.round(mid * 1.22);
+  low = Math.min(low, mid);
+  high = Math.max(high, mid);
+
   return {
     kind: 'planning_band',
     amount_cad: mid,
     currency: 'CAD',
-    label: 'Well drill + pump package (planning band)',
-    range_low_cad: Math.round(depth * 80 + 6_000),
-    range_high_cad: Math.round(depth * 145 + 14_000),
-    note: 'Highly site-specific — licensed driller quote required. Depth from hydrology model only.',
+    label: `Well drill package (~${depthFt} ft / ${round1(depthM)} m)`,
+    range_low_cad: low,
+    range_high_cad: high,
+    depth_ft: depthFt,
+    depth_m: round1(depthM),
+    formula: 'Cost_mid ≈ 92×D_ft + 4600 (CAD, +15% on prior mid; min ~$11,500)',
+    note:
+      'Ballpark estimate only. Actual quotes depend on site conditions, geology, access, and the full scope of work. Licensed driller quote required. Depth from hydrology model.',
   };
+}
+
+function round1(n) {
+  return Math.round(n * 10) / 10;
 }
 
 function wetlandBlocked(elements, type) {
