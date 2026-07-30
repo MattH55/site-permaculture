@@ -2044,53 +2044,70 @@ function solarCapacitySection(solar) {
   const winterPeak = annualPeak * 0.35;
 
   const markup = 1.50;
+  // batteryKwh = usable pack total (not the per-module 5.12 figure in the label)
+  // designLoadKwh = typical daily AC load this package is sized for
   const tiers = [
     {
-      name: '1. Weekend cabin',
+      name: 'Basic package',
+      blurb: 'Weekend / lights & small loads',
       panels: '3× JA Solar 440W',
       arrayKw: 1.32,
       inverter: '1× LuxpowerTek 6K Off-Grid',
       battery: '1× Volthium 5.12 kWh',
+      batteryKwh: 5.12,
+      designLoadKwh: 3,
       racking: 'SunModo rail + brackets, small run',
       generator: '— (none)',
       _total: Math.round((594 + 1890 + 2190 + 450 + 250) * markup),
     },
     {
-      name: '2. Small cabin with fridge',
+      name: 'Standard package',
+      blurb: 'Small cabin with fridge',
       panels: '5× JA Solar 440W',
       arrayKw: 2.2,
       inverter: '1× LuxpowerTek 6K Off-Grid',
       battery: '1× Volthium 5.12 kWh',
+      batteryKwh: 5.12,
+      designLoadKwh: 5,
       racking: 'Ground mount complete kit',
       generator: '3–4 kW portable',
       _total: Math.round((990 + 1890 + 2190 + 1162 + 340 + 1500) * markup),
     },
     {
-      name: '3. Modest off-grid home',
+      name: 'Plus package',
+      blurb: 'Modest off-grid home',
       panels: '12× JA Solar 440W',
       arrayKw: 5.28,
       inverter: '1× LuxpowerTek 6K Off-Grid',
-      battery: '3× Volthium 5.12 kWh (15.4 kWh)',
+      battery: '3× Volthium 5.12 kWh (15.36 kWh total)',
+      batteryKwh: 15.36,
+      designLoadKwh: 10,
       racking: 'Ground mount complete kit',
       generator: '6–8 kW propane, auto-start',
       _total: Math.round((2376 + 1890 + 6570 + 1700 + 500 + 3500) * markup),
     },
     {
-      name: '4. Full-time family home',
+      name: 'Total package',
+      blurb: 'Full-time family home',
       panels: '20× JA Solar 440W',
       arrayKw: 8.8,
       inverter: '1× LuxpowerTek 12K Hybrid',
-      battery: '5× Volthium 5.12 kWh (25.6 kWh)',
+      battery: '5× Volthium 5.12 kWh (25.6 kWh total)',
+      batteryKwh: 25.6,
+      designLoadKwh: 15,
       racking: 'Ground mount ×2 or scaled system',
       generator: '10–12 kW propane standby',
       _total: Math.round((3960 + 6490 + 10950 + 2400 + 650 + 6000) * markup),
     },
     {
-      name: '5. Large property / shop',
+      name: 'Complete package',
+      blurb: 'Large property / shop',
       panels: '32× JA Solar 440W',
       arrayKw: 14.1,
       inverter: '2× LuxpowerTek 12K Hybrid (stacked)',
-      battery: '8× Volthium 5.12 kWh (41 kWh)',
+      battery: '8× Volthium 5.12 kWh (40.96 kWh total)',
+      batteryKwh: 40.96,
+      designLoadKwh: 25,
       racking: 'Commercial-scale ground mount, engineered',
       generator: '15–20 kW propane standby',
       _total: Math.round((6336 + 12980 + 17520 + 3800 + 900 + 9000) * markup),
@@ -2103,10 +2120,10 @@ function solarCapacitySection(solar) {
     const winterDay = t.arrayKw * winterPeak * sysEff;
     const avgDay = (summerDay + winterDay) / 2;
     const annual = avgDay * 365;
-    const basicLoad = 10;
-    const batteryKwh = t.battery.match(/([\d.]+)\s*kWh/);
-    const battKwh = batteryKwh ? parseFloat(batteryKwh[1]) : 5.12;
-    const daysOnBattery = (battKwh * 0.9 / basicLoad);
+    const battKwh = t.batteryKwh;
+    const designLoad = t.designLoadKwh;
+    // Usable bank ≈ 90% DoD; autonomy vs this package's design load (not a fixed 10 kWh for every tier)
+    const daysOnBattery = (battKwh * 0.9) / designLoad;
 
     const rows = [
       ['Panels', t.panels],
@@ -2130,11 +2147,12 @@ function solarCapacitySection(solar) {
             <strong>${esc(t.name)}</strong>
             <span class="mono" style="font-size:1.05rem;font-weight:700">${fmtCad(total)}</span>
           </div>
+          <p class="fine" style="margin:0.15rem 0 0">${esc(t.blurb)}</p>
           <div style="display:flex;gap:0.8rem;flex-wrap:wrap;margin-top:0.3rem">
             <span class="fine"><strong>${t.arrayKw} kW</strong> array</span>
             <span class="fine">${battKwh} kWh battery</span>
             <span class="fine">~${summerDay.toFixed(1)} kWh/day summer</span>
-            <span class="fine">~${daysOnBattery.toFixed(1)} days on battery</span>
+            <span class="fine">~${daysOnBattery.toFixed(1)} days on battery <span title="At ~${designLoad} kWh/day design load, 90% usable bank">(@ ${designLoad} kWh/d)</span></span>
           </div>
         </summary>
         <div class="solar-tier-detail" style="margin-top:0.6rem">
@@ -2149,21 +2167,25 @@ function solarCapacitySection(solar) {
           <div class="summary-grid" style="margin-top:0.5rem">
             <div class="stat"><span class="k">Summer day</span><strong>${summerDay.toFixed(1)} kWh</strong></div>
             <div class="stat"><span class="k">Winter day</span><strong>${winterDay.toFixed(1)} kWh</strong></div>
-            <div class="stat"><span class="k">Avg day</span><strong>${avgDay.toFixed(1)} kWh</strong></div>
-            <div class="stat"><span class="k">Annual</span><strong>${Math.round(annual).toLocaleString()} kWh</strong></div>
+            <div class="stat"><span class="k">Design load</span><strong>${designLoad} kWh/d</strong></div>
+            <div class="stat"><span class="k">Days on battery</span><strong>${daysOnBattery.toFixed(1)}</strong></div>
           </div>
+          <p class="fine" style="margin-top:0.4rem">
+            Battery autonomy = ${battKwh} kWh × 90% usable ÷ ${designLoad} kWh/day design load for this package.
+            Array yield ~${Math.round(annual).toLocaleString()} kWh/yr avg (summer ${summerDay.toFixed(1)} / winter ${winterDay.toFixed(1)} kWh/day).
+          </p>
         </div>
       </details>`;
   }).join('');
 
   return `
     <section class="report-block">
-      <h2>Solar system tiers</h2>
+      <h2>Solar packages</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Five pre-sized off-grid solar packages.
-        Based on ${peak.toFixed(2)} kWh/m²·d annual mean insolation at latitude tilt for this location.
-        System efficiency assumed at 75%.
-        Click a tier to expand full specs and component costs.
+        Basic → Standard → Plus → Total → Complete off-grid packages (solar + battery${' ± '}generator).
+        Based on ${peak.toFixed(2)} kWh/m²·d annual mean insolation at latitude tilt.
+        System efficiency 75%. Days on battery use each package’s own bank size and design load — not a fixed load for every tier.
+        Click a package to expand specs.
       </p>
 
       <div style="display:grid;gap:0.5rem;margin-top:0.75rem">
@@ -2547,6 +2569,14 @@ function floodFloodCardBody(flood, floodClass) {
     'https://open.alberta.ca/opendata/gda-2ae32b0d-c6f9-4e1b-81ab-6fdecc728e28';
 
   if (floodClass === 'no_data' || (!flood?.in_mapped_study_area && floodClass !== 'unknown' && flood?.available !== false)) {
+    const nearest = flood?.nearest_study;
+    const nearbyLine = nearest
+      ? `<p class="fine">Nearest published study within ~5 km: <strong>${esc(
+          labelFlood(nearest.class)
+        )}</strong>${nearest.river_name ? ` · ${esc(nearest.river_name)}` : ''}${
+          nearest.study_name ? ` · ${esc(nearest.study_name)}` : ''
+        }</p>`
+      : '';
     return `
       <strong>${esc(flood?.headline || 'No mapped data')}</strong>
       <p class="flood-lead">
@@ -2555,6 +2585,7 @@ function floodFloodCardBody(flood, floodClass) {
             'No FHIP flood polygon intersects this parcel. That means no published study coverage here — not a certified clean bill of health.'
         )}
       </p>
+      ${nearbyLine}
       <p class="fine flood-caveat">
         <strong>No map ≠ no risk.</strong>
         ${esc(

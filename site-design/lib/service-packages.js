@@ -98,8 +98,8 @@ export const PACKAGE_CATALOG = {
   solar_cabin: {
     id: 'solar_cabin',
     category: 'energy',
-    label: 'Weekend cabin solar',
-    blurb: '1.3 kW off-grid array + 5 kWh battery — lights and small loads.',
+    label: 'Basic package (solar)',
+    blurb: '1.3 kW array + 5 kWh battery — weekend lights and small loads.',
     cta: 'View solar package',
     href: 'https://www.expandingedge.ca/services-landing',
     effort: 'medium',
@@ -108,8 +108,8 @@ export const PACKAGE_CATALOG = {
   solar_small_cabin: {
     id: 'solar_small_cabin',
     category: 'energy',
-    label: 'Small cabin + fridge solar',
-    blurb: '2.2 kW array + battery + portable generator backup.',
+    label: 'Standard package (solar)',
+    blurb: '2.2 kW array + 5 kWh battery + portable generator backup.',
     cta: 'View solar package',
     href: 'https://www.expandingedge.ca/services-landing',
     effort: 'medium',
@@ -118,7 +118,7 @@ export const PACKAGE_CATALOG = {
   solar_home: {
     id: 'solar_home',
     category: 'energy',
-    label: 'Modest off-grid home solar',
+    label: 'Plus package (solar)',
     blurb: '5.3 kW array + 15 kWh battery + propane auto-start generator.',
     cta: 'View solar package',
     href: 'https://www.expandingedge.ca/services-landing',
@@ -128,8 +128,8 @@ export const PACKAGE_CATALOG = {
   solar_family: {
     id: 'solar_family',
     category: 'energy',
-    label: 'Full-time family solar',
-    blurb: '8.8 kW hybrid system + 26 kWh battery + 10–12 kW standby generator.',
+    label: 'Total package (solar)',
+    blurb: '8.8 kW hybrid + 26 kWh battery + 10–12 kW standby generator.',
     cta: 'View solar package',
     href: 'https://www.expandingedge.ca/services-landing',
     effort: 'high',
@@ -138,7 +138,7 @@ export const PACKAGE_CATALOG = {
   solar_shop: {
     id: 'solar_shop',
     category: 'energy',
-    label: 'Large property / shop solar',
+    label: 'Complete package (solar)',
     blurb: '14 kW stacked hybrid + 41 kWh battery + 15–20 kW propane standby.',
     cta: 'View solar package',
     href: 'https://www.expandingedge.ca/services-landing',
