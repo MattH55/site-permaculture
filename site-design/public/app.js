@@ -1980,93 +1980,82 @@ function solarCapacitySection(solar) {
   const sysEff = 0.75;
   const annualPeak = peak;
   const winterPeak = annualPeak * 0.35;
-  const markup = 1.50; // 50% markup on component costs
 
   const tiers = [
     {
       name: '1. Weekend cabin',
-      useCase: 'Lights, phone/laptop charging, occasional weekend use. No fridge — too big a parasitic draw for this size.',
       panels: '3× JA Solar 440W',
       arrayKw: 1.32,
-      panelCost: Math.round(594 * markup),
+      panelCost: 594,
       inverter: '1× LuxpowerTek 6K Off-Grid',
-      inverterCost: Math.round(1890 * markup),
+      inverterCost: 1890,
       battery: '1× Volthium 5.12 kWh',
-      batteryCost: Math.round(2190 * markup),
+      batteryCost: 2190,
       racking: 'SunModo rail + brackets, small run',
-      rackingCost: Math.round(450 * markup),
-      bosCost: Math.round(250 * markup),
+      rackingCost: 450,
+      bosCost: 250,
       generator: '— (none)',
       generatorCost: 0,
-      detail: 'No generator — if the battery runs low on a cloudy weekend, you just use less. Fine for a cabin that sits empty most of the week and recharges between visits.',
     },
     {
       name: '2. Small cabin with fridge',
-      useCase: 'Above + fridge, water pump, some lighting load. Portable backup generator for stretches of winter grey.',
       panels: '5× JA Solar 440W',
       arrayKw: 2.2,
-      panelCost: Math.round(990 * markup),
+      panelCost: 990,
       inverter: '1× LuxpowerTek 6K Off-Grid',
-      inverterCost: Math.round(1890 * markup),
+      inverterCost: 1890,
       battery: '1× Volthium 5.12 kWh',
-      batteryCost: Math.round(2190 * markup),
+      batteryCost: 2190,
       racking: 'Ground mount complete kit',
-      rackingCost: Math.round(1162 * markup),
-      bosCost: Math.round(340 * markup),
+      rackingCost: 1162,
+      bosCost: 340,
       generator: '3–4 kW portable',
-      generatorCost: Math.round(1500 * markup),
-      detail: 'A fridge draws modestly but runs 24/7. The portable generator is there for a stretch of December grey days where solar can\'t keep up.',
+      generatorCost: 1500,
     },
     {
       name: '3. Modest off-grid home',
-      useCase: 'Year-round modest home, careful winter use, generator-assisted. First tier built for actual year-round living.',
       panels: '12× JA Solar 440W',
       arrayKw: 5.28,
-      panelCost: Math.round(2376 * markup),
+      panelCost: 2376,
       inverter: '1× LuxpowerTek 6K Off-Grid',
-      inverterCost: Math.round(1890 * markup),
+      inverterCost: 1890,
       battery: '3× Volthium 5.12 kWh (15.4 kWh)',
-      batteryCost: Math.round(6570 * markup),
+      batteryCost: 6570,
       racking: 'Ground mount complete kit',
-      rackingCost: Math.round(1700 * markup),
-      bosCost: Math.round(500 * markup),
+      rackingCost: 1700,
+      bosCost: 500,
       generator: '6–8 kW propane, auto-start',
-      generatorCost: Math.round(3500 * markup),
-      detail: 'Alberta winter solar can\'t carry a household alone. Summer and shoulder seasons run mostly on solar+battery; the auto-start generator picks up during winter\'s low-sun stretches.',
+      generatorCost: 3500,
     },
     {
       name: '4. Full-time family home',
-      useCase: 'Year-round normal household use — washer, dryer, well pump, full kitchen — without constant load-rationing.',
       panels: '20× JA Solar 440W',
       arrayKw: 8.8,
-      panelCost: Math.round(3960 * markup),
+      panelCost: 3960,
       inverter: '1× LuxpowerTek 12K Hybrid',
-      inverterCost: Math.round(6490 * markup),
+      inverterCost: 6490,
       battery: '5× Volthium 5.12 kWh (25.6 kWh)',
-      batteryCost: Math.round(10950 * markup),
+      batteryCost: 10950,
       racking: 'Ground mount ×2 or scaled system',
-      rackingCost: Math.round(2400 * markup),
-      bosCost: Math.round(650 * markup),
+      rackingCost: 2400,
+      bosCost: 650,
       generator: '10–12 kW propane standby',
-      generatorCost: Math.round(6000 * markup),
-      detail: 'Sized to keep the generator\'s runtime down to genuinely low-sun winter days rather than being a daily crutch. Comfortable normal household use.',
+      generatorCost: 6000,
     },
     {
       name: '5. Large property / shop',
-      useCase: 'Home + workshop/shop power, EV charging, heavy tools. Dual stacked inverters handle 24kW combined capacity.',
       panels: '32× JA Solar 440W',
       arrayKw: 14.1,
-      panelCost: Math.round(6336 * markup),
+      panelCost: 6336,
       inverter: '2× LuxpowerTek 12K Hybrid (stacked)',
-      inverterCost: Math.round(12980 * markup),
+      inverterCost: 12980,
       battery: '8× Volthium 5.12 kWh (41 kWh)',
-      batteryCost: Math.round(17520 * markup),
+      batteryCost: 17520,
       racking: 'Commercial-scale ground mount, engineered',
-      rackingCost: Math.round(3800 * markup),
-      bosCost: Math.round(900 * markup),
+      rackingCost: 3800,
+      bosCost: 900,
       generator: '15–20 kW propane standby',
-      generatorCost: Math.round(9000 * markup),
-      detail: 'Workshop-and-house scale. Two-unit stacking handles shop tools, welders, EV charging, or a large heat pump without tripping breakers. Real headroom rather than careful load management.',
+      generatorCost: 9000,
     },
   ];
 
@@ -2104,7 +2093,6 @@ function solarCapacitySection(solar) {
             <strong>${esc(t.name)}</strong>
             <span class="mono" style="font-size:1.05rem;font-weight:700">${fmtCad(total)}</span>
           </div>
-          <p class="fine" style="margin:0.2rem 0 0">${esc(t.useCase)}</p>
           <div style="display:flex;gap:0.8rem;flex-wrap:wrap;margin-top:0.3rem">
             <span class="fine"><strong>${t.arrayKw} kW</strong> array</span>
             <span class="fine">${battKwh} kWh battery</span>
@@ -2113,8 +2101,7 @@ function solarCapacitySection(solar) {
           </div>
         </summary>
         <div class="solar-tier-detail" style="margin-top:0.6rem">
-          <p class="fine">${esc(t.detail)}</p>
-          <div class="econ-table-wrap" style="margin-top:0.5rem">
+          <div class="econ-table-wrap">
             <table class="econ-table">
               <thead>
                 <tr><th>Component</th><th>Spec</th><th>Cost</th></tr>
@@ -2122,7 +2109,7 @@ function solarCapacitySection(solar) {
               <tbody>${componentRows}</tbody>
               <tfoot>
                 <tr style="font-weight:700;border-top:2px solid var(--line)">
-                  <td colspan="2">System total (50% markup)</td>
+                  <td colspan="2">System total</td>
                   <td class="mono">${fmtCad(total)}</td>
                 </tr>
               </tfoot>
@@ -2142,7 +2129,7 @@ function solarCapacitySection(solar) {
     <section class="report-block">
       <h2>Solar system tiers</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Five pre-sized off-grid solar packages, priced from the store's catalog with a 50% markup.
+        Five pre-sized off-grid solar packages.
         Based on ${peak.toFixed(2)} kWh/m²·d annual mean insolation at latitude tilt for this location.
         System efficiency assumed at 75%.
         Click a tier to expand full specs and component costs.
@@ -2154,7 +2141,7 @@ function solarCapacitySection(solar) {
 
       <p class="fine" style="margin-top:0.75rem">
         "Summer day" uses full ${peak.toFixed(2)} kWh/m²·d; "Winter day" uses ~35% of that (Alberta Dec/Jan at 53°N).
-        All costs include 50% markup. Generator costs are sourced separately — allowance shown.
+        Generator costs are sourced separately — allowance shown.
       </p>
     </section>`;
 }
