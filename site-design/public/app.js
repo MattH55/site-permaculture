@@ -222,6 +222,8 @@ function mainPostInit() {
   $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('tab-site')?.addEventListener('click', () => switchReportPane('site'));
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
+  $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
+
   $('btn-cancel-load')?.addEventListener('click', () => {
     state._reportAbort?.abort();
     clearInterval(state._loadTimer);
@@ -1222,6 +1224,8 @@ function renderReport(r) {
   $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
   bindValueFilters(allEls);
   renderPlantingPane(r.planting_plan);
+  // Inject per-section PDF download buttons after DOM is populated
+  setTimeout(() => injectSectionPdfButtons(), 200);
   $('copy-json').onclick = async () => {
     try {
       await navigator.clipboard.writeText(JSON.stringify(exportObj, null, 2));
@@ -3966,6 +3970,204 @@ function quoteSection(q) {
         <p>${esc(q.disclaimer)}</p>
       </div>
     </section>`;
+}
+
+/**
+ * PDF generation — uses html2pdf.js (loaded from CDN in index.html).
+ * Each .report-block section can be downloaded individually, or the entire
+ * report as one document.
+ */
+
+function pdfFilename(label) {
+  const site = state.report?.site_name || 'site-report';
+  const safe = site.replace(/[^\w.-]+/g, '_').substring(0, 40);
+  const slug = label.replace(/[^\w.-]+/g, '_').substring(0, 40);
+  return `${safe}_${slug}.pdf`;
+}
+
+/**
+ * Common html2pdf options for report sections.
+ * @param {string} filename
+ * @param {object} [opts]
+ */
+function pdfOpts(filename, opts = {}) {
+  return {
+    margin: [10, 8, 10, 8],
+    filename,
+    image: { type: 'jpeg', quality: 0.92 },
+    html2canvas: {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      letterRendering: true,
+      allowTaint: false,
+    },
+    jsPDF: {
+      unit: 'mm',
+      format: 'a4',
+      orientation: 'portrait',
+    },
+    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    ...opts,
+  };
+}
+
+/**
+ * Add a PDF download button to each .report-block section.
+ */
+function injectSectionPdfButtons() {
+  const sections = document.querySelectorAll('#report .report-block');
+  sections.forEach((sec) => {
+    // Don't add twice
+    if (sec.querySelector('.btn-pdf-section')) return;
+    const heading = sec.querySelector('h2');
+    if (!heading) return;
+    const label = heading.textContent.trim();
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-quiet btn-pdf-section';
+    btn.textContent = '⬇ PDF';
+    btn.title = `Download "${label}" as PDF`;
+    btn.style.cssText = 'float:right;font-size:0.75rem;padding:0.15rem 0.5rem;margin-top:-0.2rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s';
+    btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
+    btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.6'; });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadSectionPdf(sec, label);
+    });
+    heading.appendChild(btn);
+  });
+
+  // Also add to planting pane
+  const plantSections = document.querySelectorAll('#planting-pane .report-block, #planting-pane .panel');
+  plantSections.forEach((sec) => {
+    if (sec.querySelector('.btn-pdf-section')) return;
+    const heading = sec.querySelector('h1, h2');
+    if (!heading) return;
+    const label = heading.textContent.trim();
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-quiet btn-pdf-section';
+    btn.textContent = '⬇ PDF';
+    btn.title = `Download "${label}" as PDF`;
+    btn.style.cssText = 'float:right;font-size:0.75rem;padding:0.15rem 0.5rem;margin-top:-0.2rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s';
+    btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
+    btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.6'; });
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      downloadSectionPdf(sec, label);
+    });
+    heading.appendChild(btn);
+  });
+}
+
+/**
+ * Download a single section as PDF.
+ */
+async function downloadSectionPdf(sectionEl, label) {
+  if (typeof html2pdf === 'undefined') {
+    setError('PDF library not loaded — try refreshing the page.');
+    return;
+  }
+  const btn = sectionEl.querySelector('.btn-pdf-section');
+  const origText = btn?.textContent;
+  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
+
+  try {
+    // Clone the section so we can modify it for PDF without affecting the page
+    const clone = sectionEl.cloneNode(true);
+    // Remove the PDF button from the clone
+    clone.querySelectorAll('.btn-pdf-section').forEach((b) => b.remove());
+
+    // Wrap with a title block for the PDF
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'font-family: system-ui, -apple-system, sans-serif; color: #16211b; padding: 0 4px;';
+
+    // Add a header
+    const hdr = document.createElement('div');
+    hdr.style.cssText = 'margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #5b3a73;';
+    hdr.innerHTML = `
+      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Expanding Edge Permaculture</div>
+      <div style="font-size:14px;font-weight:700;margin-top:2px">${esc(state.report?.site_name || 'Site report')} — ${esc(label)}</div>
+      <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · expandingedge.ca</div>
+    `;
+    wrapper.appendChild(hdr);
+    wrapper.appendChild(clone);
+
+    const fname = pdfFilename(label);
+    await html2pdf().set(pdfOpts(fname)).from(wrapper).save();
+  } catch (err) {
+    console.error('PDF generation failed:', err);
+    setError(`PDF failed: ${err.message}`);
+  } finally {
+    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  }
+}
+
+/**
+ * Download the full site design report as one PDF document.
+ */
+async function downloadFullPdf() {
+  if (typeof html2pdf === 'undefined') {
+    setError('PDF library not loaded — try refreshing the page.');
+    return;
+  }
+  const btn = $('btn-pdf-all');
+  const origText = btn?.textContent;
+  if (btn) { btn.textContent = '⏳ Generating PDF…'; btn.disabled = true; }
+
+  try {
+    const reportEl = $('report');
+    if (!reportEl) throw new Error('No report to export');
+
+    // Clone the full report content
+    const clone = reportEl.cloneNode(true);
+    // Remove PDF buttons and minimap embeds (Leaflet tiles won't render in PDF)
+    clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map').forEach((el) => el.remove());
+
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'font-family: system-ui, -apple-system, sans-serif; color: #16211b; padding: 0 4px; max-width: 190mm;';
+
+    // Title page
+    const titlePage = document.createElement('div');
+    const r = state.report || {};
+    titlePage.style.cssText = 'text-align: center; padding: 60px 20px 40px; page-break-after: always;';
+    titlePage.innerHTML = `
+      <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Expanding Edge Permaculture</div>
+      <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
+      <div style="font-size:14px;color:#46584c;margin-bottom:30px">
+        ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
+        ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
+        ${r.climate?.plant_hardiness_zone ? ` · Zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
+      </div>
+      <div style="font-size:12px;color:#888;margin-top:40px">
+        Generated ${new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}
+        <br>expandingedge.ca · (780) 236-3630
+      </div>
+      <div style="font-size:9px;color:#aaa;margin-top:30px">
+        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment.
+      </div>
+    `;
+    wrapper.appendChild(titlePage);
+
+    // Add report content (minus SVG maps that won't render)
+    wrapper.appendChild(clone);
+
+    const site = (r.site_name || 'site-report').replace(/[^\w.-]+/g, '_').substring(0, 40);
+    const fname = `${site}_full_report.pdf`;
+    await html2pdf()
+      .set({
+        ...pdfOpts(fname),
+        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+      })
+      .from(wrapper)
+      .save();
+  } catch (err) {
+    console.error('Full PDF generation failed:', err);
+    setError(`PDF failed: ${err.message}`);
+  } finally {
+    if (btn) { btn.textContent = origText || '⬇ Download full PDF'; btn.disabled = false; }
+  }
 }
 
 function paintCore(done) {
