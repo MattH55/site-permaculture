@@ -232,7 +232,7 @@ function interpretLandUse(landUse) {
   };
 }
 
-module.exports = {
+export {
   querySturgeonCounty,
   lookupParcel,
   lookupLandUse,

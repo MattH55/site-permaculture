@@ -320,7 +320,7 @@ async function querySoilSurvey(lat, lng) {
   }
 }
 
-module.exports = {
+export {
   querySoilSurvey,
   queryLandSystem,
   queryAgrasidPolygon,
