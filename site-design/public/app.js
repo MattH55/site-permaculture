@@ -41,7 +41,8 @@ const CORE_LABELS = [
   { id: 'water', label: 'Water & wells', color: 'var(--h3)' },
   { id: 'wildlife', label: 'Wildlife & trees', color: 'var(--h4)' },
   { id: 'access', label: 'Access & community', color: 'var(--h5)' },
-  { id: 'rules', label: 'Recommendations', color: 'var(--h6)' },
+  { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
+  { id: 'rules', label: 'Recommendations', color: 'var(--h7)' },
   { id: 'plant', label: 'Planting plan', color: 'var(--h8)' },
   { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
@@ -4212,6 +4213,121 @@ async function downloadFullPdf() {
  * The "Full report" pane (#report) already has everything for PDF export.
  * Each section pane gets only the relevant sections for focused viewing.
  */
+function fecunditySection(fec) {
+  if (!fec) return '';
+  const overall = fec.overallScore;
+  const completeness = fec.dataCompleteness;
+  const cats = fec.categories || [];
+
+  // Radar-style SVG
+  const W = 280, H = 280, cx = W / 2, cy = H / 2, maxR = 110;
+  const n = cats.length;
+  const catScores = cats.map((c) => c.score ?? 0);
+  const catLabels = cats.map((c) => c.label.split('—')[0].trim());
+
+  const pts = catScores.map((v, i) => {
+    const a = ((i / n) * 360 - 90) * Math.PI / 180;
+    const r = (v / 100) * maxR;
+    return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+  }).join(' ');
+
+  const rings = [0.25, 0.5, 0.75, 1.0];
+  const ringsHtml = rings.map((f) =>
+    `<circle cx="${cx}" cy="${cy}" r="${(f * maxR).toFixed(1)}" fill="none" stroke="var(--line)" stroke-width="0.5"/>`
+  ).join('');
+
+  const labelsHtml = cats.map((c, i) => {
+    const a = ((i / n) * 360 - 90) * Math.PI / 180;
+    const tx = cx + Math.cos(a) * (maxR + 18);
+    const ty = cy + Math.sin(a) * (maxR + 18);
+    const band = c.score != null ? scoreBandLocal(c.score) : null;
+    const color = band ? band.color : 'var(--ink-soft)';
+    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="7px" fill="${color}">${esc(c.label.split('—')[0].trim())}</text>
+    <text x="${tx.toFixed(1)}" y="${(ty + 11).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="8px" font-weight="bold" fill="${color}">${c.score != null ? c.score : '—'}</text>`;
+  }).join('');
+
+  const scoreColor = overall != null ? scoreBandLocal(overall).color : 'var(--ink-soft)';
+
+  const catCards = cats.map((c) => {
+    const band = c.score != null ? scoreBandLocal(c.score) : null;
+    const barW = c.score != null ? Math.round(c.score) : 0;
+    const barColor = band ? band.color : 'var(--line)';
+    const recs = (c.recommendations || []).map((r) =>
+      `<span class="plant-chip gate-chip on" style="font-size:0.6rem"><strong>${esc(r.serviceId)}</strong> ${esc(r.rationale)}</span>`
+    ).join('');
+    return `
+      <div class="el rec-card" style="border-left-color:${barColor};padding:0.75rem 0.85rem">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem">
+          <strong style="font-size:0.92rem">${esc(c.label)}</strong>
+          <span style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:1.1rem;color:${barColor}">${c.score != null ? c.score : '—'}</span>
+        </div>
+        <div style="background:var(--line);border-radius:3px;height:6px;margin-bottom:0.35rem;overflow:hidden">
+          <div style="background:${barColor};height:100%;width:${barW}%;border-radius:3px;transition:width 0.3s"></div>
+        </div>
+        <p class="fine" style="margin:0">${esc(c.narrative)}</p>
+        <p class="fine" style="margin:0.2rem 0 0;font-size:0.72rem"><strong>Basis:</strong> ${esc(c.dataBasis.join('; '))}</p>
+        ${recs ? `<div class="plant-chips" style="margin-top:0.3rem">${recs}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-block">
+      <h2>Land fecundity assessment</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Seven levers that drive land productivity, scored from available site and regional data.
+        Every indicator is optional — missing data drops out rather than penalizing the score.
+      </p>
+
+      <div style="display:grid;grid-template-columns:280px 1fr;gap:1.2rem;align-items:start;margin-top:0.75rem">
+        <div>
+          <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fecundity radar chart" style="max-width:280px">
+            <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="var(--line)" rx="8"/>
+            ${ringsHtml}
+            <polygon points="${pts}" fill="rgba(91,58,115,0.18)" stroke="${scoreColor}" stroke-width="2"/>
+            ${labelsHtml}
+            <circle cx="${cx}" cy="${cy}" r="3" fill="var(--ink)"/>
+          </svg>
+        </div>
+        <div>
+          <div class="well-range-card" style="border-left-color:${scoreColor};margin-bottom:0.75rem">
+            <span class="mono">Overall fecundity score</span>
+            <div class="well-range-value" style="color:${scoreColor}">${overall != null ? `${overall}/100` : '—'}</div>
+            <p class="fine">
+              ${overall != null ? scoreBandLocal(overall).tone : 'Insufficient data for overall score.'}
+              · Data completeness: <strong>${completeness}%</strong> of possible indicators
+            </p>
+          </div>
+          ${fec.weakestCategories?.length ? `
+            <p class="fine" style="margin:0 0 0.5rem">
+              <strong>Weakest levers:</strong> ${fec.weakestCategories.map((w) => `${esc(w.label)} (${w.score})`).join(', ')}
+            </p>
+          ` : ''}
+          ${fec.suggestedServices?.length ? `
+            <p class="fine">
+              <strong>Suggested services:</strong> ${fec.suggestedServices.map((s) => esc(s)).join(', ')}
+            </p>
+          ` : ''}
+        </div>
+      </div>
+
+      <div class="elements" style="margin-top:1rem;display:grid;gap:0.65rem">
+        ${catCards}
+      </div>
+
+      <div class="flag" data-severity="info" style="margin-top:1rem">
+        <strong>Remote assessment — site walk recommended</strong>
+        <p>This fecundity score is inferred from topography, soil survey, canopy cover, land-cover class, and regional wildlife observations. A direct site walk with soil tests, penetrometer readings, and field observations will significantly improve accuracy. No measured indicators were collected for this remote report.</p>
+      </div>
+    </section>`;
+}
+
+function scoreBandLocal(score) {
+  if (score >= 80) return { label: 'Strong', color: 'var(--ok)', tone: 'Working well — maintain current conditions.' };
+  if (score >= 60) return { label: 'Solid, with room to optimize', color: 'var(--gold)', tone: 'Functioning adequately but clear headroom for improvement.' };
+  if (score >= 35) return { label: 'Below average', color: 'var(--caution)', tone: 'A meaningful limiting factor on overall productivity.' };
+  return { label: 'Needs significant improvement', color: 'var(--danger)', tone: 'One of the biggest constraints on what the land can produce.' };
+}
+
 function renderSectionPanes(r, ctx) {
   const { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags } = ctx;
   const b = (html, el) => { if (el) el.innerHTML = html; };
@@ -4335,6 +4451,9 @@ function renderSectionPanes(r, ctx) {
       </ul>
     </div>
   `, $('report-rules'));
+
+  // Fecundity: fecundity assessment
+  b(fecunditySection(r.fecundity), $('report-fecundity'));
 
   // Init map embed in overview pane
   initReportMapEmbed(r);

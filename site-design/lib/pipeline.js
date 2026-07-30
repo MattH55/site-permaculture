@@ -34,6 +34,7 @@ import { queryProvincialContours } from './provincial-contours.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
+import { generateFecundityReport } from './fecundity-report.js';
 
 const cache = new Map();
 
@@ -322,6 +323,20 @@ export async function generateSiteReport(input = {}) {
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
   record._provincial_contours = provincialContours;
+
+  // Fecundity assessment — infer from available pipeline data
+  const fecundityReport = generateFecundityReport({
+    measured: {},  // no direct site measurements from remote report
+    topoData: { avgSlopePercent: t.slope_percent },
+    wetlandsPresent: !!wetlands.present,
+    regionalSoilTexture: soils.texture || null,
+    ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
+    landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
+    wildlifeObservations: wildlife?.recent_sightings?.map((s) => s.species || s.common_name || '') || [],
+    windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
+    frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
+  }, { propertyLabel: siteInput.site_name });
+  record.fecundity = fecundityReport;
 
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
