@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f8f3">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Map your land — Expanding Edge Permaculture</title>
 <meta name="description" content="Draw your Alberta parcel on a topographic map. Expanding Edge pulls elevation, wetlands, soils and climate, then builds a permaculture site design report.">
   <link rel="stylesheet" href="/styles.css">
@@ -99,16 +101,18 @@
     <div class="wrap report-wrap report-dual">
       <aside class="rail">
         <span class="mono rail-label">Site core</span>
-        <div class="steps" id="report-core"></div>
-        <button type="button" class="btn btn-secondary" id="btn-back-map" style="margin-top:1rem;width:100%">
-          ← Back to map
-        </button>
-        <button type="button" class="btn btn-secondary" id="btn-open-plant" style="margin-top:0.5rem;width:100%">
-          Planting plan →
-        </button>
-        <button type="button" class="btn" id="btn-pdf-all" style="margin-top:0.5rem;width:100%">
-          ⬇ Download full PDF
-        </button>
+        <div class="steps" id="report-core" role="navigation" aria-label="Report sections"></div>
+        <div class="rail-actions">
+          <button type="button" class="btn btn-secondary" id="btn-back-map">
+            ← Back to map
+          </button>
+          <button type="button" class="btn btn-secondary" id="btn-open-plant">
+            Planting plan →
+          </button>
+          <button type="button" class="btn" id="btn-pdf-all">
+            ⬇ Download full PDF
+          </button>
+        </div>
       </aside>
       <div class="report-panes">
         <section id="pane-overview" class="report-pane is-active" role="tabpanel"><div id="report-overview" aria-live="polite"></div></section>

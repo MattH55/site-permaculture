@@ -210,6 +210,14 @@ function initLeafletMap(cfg) {
   state._leafletMap = map;
   state._drawLayer = L.layerGroup().addTo(map);
 
+  // Keep tiles sharp after orientation / layout changes (mobile critical)
+  const resizeMap = () => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  };
+  window.addEventListener('resize', resizeMap, { passive: true });
+  window.addEventListener('orientationchange', () => setTimeout(resizeMap, 200), { passive: true });
+  setTimeout(resizeMap, 100);
+
   // Double-click to finish polygon drawing
   map.on('dblclick', (e) => {
     if (state.draw.active && state.draw.kind === 'polygon') {
@@ -288,9 +296,13 @@ function switchReportPane(which) {
     active.hidden = false;
   }
 
-  // Update sidebar step highlight
+  // Update sidebar step highlight + keep chip visible on mobile rail
   document.querySelectorAll('#report-core .step-row').forEach((sr) => {
-    sr.classList.toggle('is-active-pane', sr.dataset.pane === which);
+    const on = sr.dataset.pane === which;
+    sr.classList.toggle('is-active-pane', on);
+    if (on && isMobileLayout()) {
+      sr.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
   });
 
   // Update top tabs
@@ -1070,17 +1082,33 @@ function setError(msg) {
   el.textContent = msg;
 }
 
+function isMobileLayout() {
+  return typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 820px)').matches
+    : window.innerWidth <= 820;
+}
+
 function showReport() {
   $('map-stage').hidden = true;
   $('report-stage').hidden = false;
-  switchReportPane('site');
+  // Mobile users land on Services packages first; desktop on full report
+  switchReportPane(isMobileLayout() ? 'services' : 'site');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Scroll active rail chip into view on small screens
+  requestAnimationFrame(() => {
+    const active = document.querySelector('#report-core .step-row.is-active-pane');
+    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  });
 }
 
 function showMap() {
   $('report-stage').hidden = true;
   $('map-stage').hidden = false;
-  if (state._leafletMap) state._leafletMap.invalidateSize();
+  requestAnimationFrame(() => {
+    if (state._leafletMap) {
+      try { state._leafletMap.invalidateSize({ animate: false }); } catch { /* ignore */ }
+    }
+  });
 }
 
 /* ---------- report UI ---------- */
@@ -3921,7 +3949,7 @@ function windSection(climate, r, windRose) {
         Prevailing wind: <strong>${esc(windDir)}</strong>.
         Blue arrow = dominant wind direction. Green dashed line = optimal shelterbelt orientation (perpendicular to wind).
       </p>
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:1rem;align-items:start;margin-top:0.75rem">
+      <div class="split-2col">
         <div>${compassSvg}</div>
         <div>
           <div class="well-range-card" style="border-left-color:#2a6f97;margin-bottom:0.5rem">
@@ -4722,7 +4750,7 @@ function fecunditySection(fec) {
         ${sat?.available ? 'Vegetative levers use <strong>Sentinel-2</strong> indices at ~10 m (property-scale screening).' : ''}
       </p>
 
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:1.2rem;align-items:start;margin-top:0.75rem">
+      <div class="split-2col">
         <div>
           <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fecundity radar chart" style="max-width:280px">
             <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="var(--line)" rx="8"/>
