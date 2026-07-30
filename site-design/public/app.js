@@ -41,9 +41,9 @@ const CORE_LABELS = [
   { id: 'water', label: 'Water & wells', color: 'var(--h3)' },
   { id: 'wildlife', label: 'Wildlife & trees', color: 'var(--h4)' },
   { id: 'access', label: 'Access & community', color: 'var(--h5)' },
-  { id: 'rules', label: 'Design rules', color: 'var(--h6)' },
-  { id: 'site', label: 'Full report', color: 'var(--h7)' },
+  { id: 'rules', label: 'Recommendations', color: 'var(--h6)' },
   { id: 'plant', label: 'Planting plan', color: 'var(--h8)' },
+  { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
 const HORIZONS = CORE_LABELS.map((c) => c.color);
 const SECTION_IDS = CORE_LABELS.map((c) => c.id);
@@ -4281,7 +4281,7 @@ function renderSectionPanes(r, ctx) {
     ${atsSection(r.ats, r.parcel_address)}
   `, $('report-access'));
 
-  // Rules: recommendations + site drivers + services + quote + sources + JSON
+  // Recommendations: site conditions → recommendations → investment → sales CTA
   b(`
     <section class="report-block placement-block">
       <h2>What this parcel needs</h2>
@@ -4297,10 +4297,38 @@ function renderSectionPanes(r, ctx) {
             ? '<p class="fine">No recommendations in this value filter — try All or another outcome.</p>'
             : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'}
       </div>
-      ${servicesCtaSection(services)}
     </section>
+
     ${quoteSection(r.service_quote || a.service_quote)}
-    <div class="sources">
+
+    ${servicesCtaSection(services)}
+
+    <!-- Sales funnel CTA -->
+    <div class="ee-services-cta" style="margin-top:1.5rem;border-color:var(--gold);background:linear-gradient(135deg, rgba(168,128,31,0.08), rgba(91,58,115,0.06))">
+      <span class="mono eyebrow">Ready to build this?</span>
+      <h3 style="font-size:1.3rem;margin:0.2rem 0 0.5rem;font-family:'Bricolage Grotesque',sans-serif;font-weight:800">Turn this report into action</h3>
+      <p class="fine" style="margin:0 0 1rem;max-width:60ch">
+        This analysis is a planning conversation starter — not engineered drawings. Book a site walk with Expanding Edge
+        to confirm conditions, finalize scope, and get a firm design proposal.
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+        <a class="btn" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener" style="font-size:1rem;padding:0.85rem 1.5rem">
+          Book a site design consult →
+        </a>
+        <a class="btn btn-secondary" href="tel:+17802363630" style="font-size:0.95rem;padding:0.75rem 1.2rem">
+          Call (780) 236-3630
+        </a>
+        <a class="btn btn-secondary" href="mailto:info@expandingedge.ca?subject=Site%20Design%20Inquiry" style="font-size:0.95rem;padding:0.75rem 1.2rem">
+          Email info@expandingedge.ca
+        </a>
+      </div>
+      <p class="fine" style="margin:0.75rem 0 0">
+        ${allEls.length} recommendations identified for this ${r.geometry?.area_ha != null ? `${r.geometry.area_ha} ha` : ''} parcel.
+        Estimated investment: ${r.service_quote?.subtotal ? fmtCad(r.service_quote.subtotal) : 'pending site walk'}.
+      </p>
+    </div>
+
+    <div class="sources" style="margin-top:2rem">
       <span class="mono">Data provenance</span>
       <ul>
         ${(r.data_provenance || []).map((p) => `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}
