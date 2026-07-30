@@ -415,6 +415,8 @@ h3 { font-size: 1.08rem; }
 .report-panes { min-width: 0; }
 .report-pane[hidden] { display: none !important; }
 .report-pane.is-active { display: block; }
+.step-row.is-active-pane { outline: 2px solid var(--gold); outline-offset: -2px; border-radius: 6px; }
+.step-row { transition: outline 0.15s ease; }
 
 .supplier-block {
   margin-top: 0.65rem;

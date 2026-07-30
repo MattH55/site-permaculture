@@ -35,11 +35,18 @@ const VALUE_LABELS = {
   compliance_safety: 'Compliance & risk',
 };
 
-const CORE_LABELS = ['Elev', 'Topo', 'Water', 'Well', 'Plants', 'Safety', 'Rules', 'Report'];
-const HORIZONS = [
-  'var(--h1)', 'var(--h2)', 'var(--h3)', 'var(--h4)',
-  'var(--h5)', 'var(--h6)', 'var(--h7)', 'var(--h8)',
+const CORE_LABELS = [
+  { id: 'overview', label: 'Overview', color: 'var(--h1)' },
+  { id: 'topo', label: 'Topography', color: 'var(--h2)' },
+  { id: 'water', label: 'Water & wells', color: 'var(--h3)' },
+  { id: 'wildlife', label: 'Wildlife & trees', color: 'var(--h4)' },
+  { id: 'access', label: 'Access & community', color: 'var(--h5)' },
+  { id: 'rules', label: 'Design rules', color: 'var(--h6)' },
+  { id: 'site', label: 'Full report', color: 'var(--h7)' },
+  { id: 'plant', label: 'Planting plan', color: 'var(--h8)' },
 ];
+const HORIZONS = CORE_LABELS.map((c) => c.color);
+const SECTION_IDS = CORE_LABELS.map((c) => c.id);
 
 /** EE service labels for card CTAs (mirrors lib/recommendation-values.js). */
 const EE_SERVICE_META = {
@@ -233,20 +240,47 @@ function mainPostInit() {
 }
 
 function switchReportPane(which) {
-  const site = $('pane-site');
-  const plant = $('pane-plant');
+  const allPanes = SECTION_IDS.map((id) => $(`pane-${id}`)).filter(Boolean);
+  const target = $(`pane-${which}`);
+  if (!target && which !== 'plant') return;
+
+  allPanes.forEach((p) => {
+    p.classList.remove('is-active');
+    p.hidden = true;
+  });
+
+  const active = target || $('pane-plant');
+  if (active) {
+    active.classList.add('is-active');
+    active.hidden = false;
+  }
+
+  // Update sidebar step highlight
+  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
+    sr.classList.toggle('is-active-pane', sr.dataset.pane === which);
+  });
+
+  // Update top tabs
   const tabSite = $('tab-site');
   const tabPlant = $('tab-plant');
-  if (!site || !plant) return;
   const isPlant = which === 'plant';
-  site.classList.toggle('is-active', !isPlant);
-  plant.classList.toggle('is-active', isPlant);
-  site.hidden = isPlant;
-  plant.hidden = !isPlant;
   tabSite?.classList.toggle('is-active', !isPlant);
   tabPlant?.classList.toggle('is-active', isPlant);
   tabSite?.setAttribute('aria-selected', String(!isPlant));
   tabPlant?.setAttribute('aria-selected', String(isPlant));
+
+  // Initialize Leaflet maps for the newly visible pane (they need invalidateSize)
+  setTimeout(() => {
+    active?.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
+      if (el._leaflet_id) return; // already initialized
+      // Leaflet maps created via setTimeout in the section functions handle themselves
+    });
+    // Trigger invalidateSize on any maps in the active pane
+    active?.querySelectorAll('.leaflet-container').forEach((m) => {
+      if (m._leaflet_map) m._leaflet_map.invalidateSize();
+    });
+  }, 100);
+
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -1216,6 +1250,9 @@ function renderReport(r) {
     </div>`;
 
   initReportMapEmbed(r);
+
+  // Populate section panes with grouped content
+  renderSectionPanes(r, { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags });
 
   $('btn-again-map').onclick = () => {
     clearShape();
@@ -4170,14 +4207,126 @@ async function downloadFullPdf() {
   }
 }
 
+/**
+ * Populate each section pane with grouped content.
+ * The "Full report" pane (#report) already has everything for PDF export.
+ * Each section pane gets only the relevant sections for focused viewing.
+ */
+function renderSectionPanes(r, ctx) {
+  const { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags } = ctx;
+  const b = (html, el) => { if (el) el.innerHTML = html; };
+
+  // Overview: summary + map + score
+  const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  b(`
+    <div class="panel fade">
+      <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
+      <h1>${esc(r.site_name || 'Your parcel')}</h1>
+      <div class="score-row">
+        <span class="score">${allEls.length}</span>
+        <span class="score-of">recommendations for this parcel</span>
+      </div>
+      <p class="lede">
+        ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
+        ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
+        ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
+        ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
+        ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
+        ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
+      </p>
+      ${recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
+        <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
+        <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
+        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
+      </div>
+      ${mapEmbedSection()}
+      ${flags.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
+    </div>
+  `, $('report-overview'));
+
+  // Topography: topo + temperature + hardiness/flood/zoning + wind + solar
+  b(`
+    ${topologySection(topo, a)}
+    ${temperatureSection(r.temperature || a.temperature)}
+    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
+    ${windSection(r.climate, r, r.wind_rose)}
+    ${solarSection(solar)}
+    ${landValueSection(landValue)}
+  `, $('report-topo'));
+
+  // Water: wells + wet areas + provincial contours
+  b(`
+    ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
+    ${wetAreasSection(r.wet_areas_mapping)}
+    ${provincialContoursMap(r._provincial_contours, centre)}
+  `, $('report-water'));
+
+  // Wildlife: wildlife + biodiversity + tree cover
+  b(`
+    ${wildlifeSection(r.wildlife || a.wildlife)}
+    ${biodiversitySection(r.biodiversity)}
+    ${treeCoverSection(r.tree_cover)}
+  `, $('report-wildlife'));
+
+  // Access: proximity + access + demographics + ATS
+  b(`
+    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
+    ${accessSection(r.access, city?.name, city?.distance_km)}
+    ${demographicsSection(r.demographics)}
+    ${atsSection(r.ats, r.parcel_address)}
+  `, $('report-access'));
+
+  // Rules: recommendations + site drivers + services + quote + sources + JSON
+  b(`
+    <section class="report-block placement-block">
+      <h2>What this parcel needs</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
+      </p>
+      ${siteDriversSection(siteDrivers)}
+      ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
+      <div class="elements" id="rec-elements-rules">
+        ${els.length
+          ? els.map((e) => recommendationCard(e)).join('')
+          : allEls.length
+            ? '<p class="fine">No recommendations in this value filter — try All or another outcome.</p>'
+            : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'}
+      </div>
+      ${servicesCtaSection(services)}
+    </section>
+    ${quoteSection(r.service_quote || a.service_quote)}
+    <div class="sources">
+      <span class="mono">Data provenance</span>
+      <ul>
+        ${(r.data_provenance || []).map((p) => `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}
+      </ul>
+    </div>
+  `, $('report-rules'));
+
+  // Init map embed in overview pane
+  initReportMapEmbed(r);
+}
+
 function paintCore(done) {
   $('report-core').innerHTML = CORE_LABELS.map(
-    (label, n) => `
-    <div class="step-row" data-done="${done ? '1' : '0'}"
-         style="${done ? `background-color:${HORIZONS[n]}` : ''}">
-      <span>${esc(label)}</span>
+    (item, n) => `
+    <div class="step-row" data-done="${done ? '1' : '0'}" data-pane="${item.id}"
+         style="${done ? `background-color:${item.color}` : ''};cursor:pointer">
+      <span>${esc(item.label)}</span>
     </div>`
   ).join('');
+  // Make sidebar steps clickable to switch panes
+  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
+    sr.addEventListener('click', () => {
+      const pane = sr.dataset.pane;
+      if (pane) switchReportPane(pane);
+    });
+  });
 }
 
 function confBadge(c) {
