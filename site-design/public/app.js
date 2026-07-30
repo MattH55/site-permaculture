@@ -1155,6 +1155,7 @@ function renderReport(r) {
       ${windSection(r.climate, r, r.wind_rose)}
       ${wetAreasSection(r.wet_areas_mapping)}
       ${biodiversitySection(r.biodiversity)}
+      ${soilSurveySection(r.soil_survey || a.soil_survey)}
       ${cellServiceSection(centre)}
 
       ${
@@ -3931,6 +3932,109 @@ function biodiversitySection(bio) {
     </section>`;
 }
 
+function soilSurveySection(ss) {
+  if (!ss || !ss.available) return '';
+
+  const ls = ss.land_system;
+  const ag = ss.agrasid;
+  const zoneInfo = ss.soil_zone_info;
+  const orderInfo = ss.soil_order_info;
+  const chars = ss.characteristics || {};
+
+  const zoneColor = {
+    'Brown': '#c9a35b',
+    'Dark Brown': '#8b6914',
+    'Black': '#2d2d2d',
+    'Dark Gray': '#5a5a5a',
+    'Gray': '#888888',
+  }[ls?.soil_zone] || '#7a6b5a';
+
+  const qualityColor = {
+    excellent: 'var(--ok)',
+    good: 'var(--ok)',
+    moderate: 'var(--gold)',
+    poor: 'var(--danger)',
+    variable: 'var(--caution)',
+    unknown: 'var(--ink-soft)',
+  }[orderInfo?.quality] || 'var(--ink-soft)';
+
+  const charsRows = Object.entries(chars)
+    .filter(([_, v]) => v != null)
+    .map(([k, v]) => `<tr><td class="mono">${esc(k.replace(/_/g, ' '))}</td><td><strong>${esc(v)}</strong></td></tr>`)
+    .join('');
+
+  const zoneNotes = (zoneInfo?.permaculture_notes || [])
+    .map(n => `<li>${esc(n)}</li>`)
+    .join('');
+
+  return `
+    <section class="report-block">
+      <h2>Soil survey — AGRASID/AGRASIS</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Alberta Agriculture soil inventory data for this location.
+        ${ls?.land_system_name ? `Land system: <strong>${esc(ls.land_system_name)}</strong>` : ''}
+        ${ls?.soil_zone ? ` · Soil zone: <strong style="color:${zoneColor}">${esc(ls.soil_zone)}</strong>` : ''}
+        ${ls?.ag_climate_zone ? ` · Ag climate: ${esc(ls.ag_climate_zone)}` : ''}
+      </p>
+
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Land system</span><strong>${esc(ls?.land_system_symbol || '—')}</strong></div>
+        <div class="stat"><span class="k">Soil zone</span><strong style="color:${zoneColor}">${esc(ls?.soil_zone || '—')}</strong></div>
+        <div class="stat"><span class="k">Soil order</span><strong style="color:${qualityColor}">${esc(ls?.soil_order_primary || '—')}</strong></div>
+        <div class="stat"><span class="k">Surface forms</span><strong>${esc((ls?.surface_forms || []).join(', ') || '—')}</strong></div>
+        <div class="stat"><span class="k">Major components</span><strong>${esc((ls?.major_components || []).join(', ') || '—')}</strong></div>
+        <div class="stat"><span class="k">Morphology</span><strong>${esc(ls?.morphology || '—')}</strong></div>
+      </div>
+
+      ${ag ? `
+        <div class="well-range-card" style="border-left-color:${zoneColor};margin-top:0.75rem">
+          <span class="mono">AGRASID polygon</span>
+          <div class="well-range-value" style="font-size:clamp(1rem, 2vw, 1.3rem)">
+            ${esc(ag.municipality || '—')}
+          </div>
+          <p class="fine">
+            SLC unit: ${esc(ag.slc_unit || '—')}
+            ${ag.land_capability_code ? ` · Land capability: ${esc(ag.land_capability_code)}${ag.land_capability_modifier || ''}` : ''}
+          </p>
+        </div>
+      ` : ''}
+
+      ${orderInfo ? `
+        <div class="flag" data-severity="${orderInfo.quality === 'excellent' || orderInfo.quality === 'good' ? 'info' : orderInfo.quality === 'poor' ? 'caution' : 'info'}" style="margin-top:0.75rem">
+          <strong>Soil quality: ${esc(orderInfo.quality)}</strong>
+          <p>${esc(orderInfo.note)}</p>
+        </div>
+      ` : ''}
+
+      ${zoneInfo ? `
+        <div style="margin-top:0.75rem">
+          <span class="mono topo-label">Soil zone characteristics — ${esc(zoneInfo.name)}</span>
+          <div class="summary-grid" style="margin-top:0.4rem">
+            <div class="stat"><span class="k">Precipitation</span><strong>${esc(zoneInfo.precipitation_range_mm || '—')} mm</strong></div>
+            <div class="stat"><span class="k">Typical texture</span><strong>${esc(zoneInfo.typical_texture || '—')}</strong></div>
+            <div class="stat"><span class="k">Organic matter</span><strong>${esc(zoneInfo.organic_matter_level || '—')}</strong></div>
+            <div class="stat"><span class="k">Growing season</span><strong>${esc(zoneInfo.growing_season || '—')}</strong></div>
+          </div>
+          ${zoneNotes ? `<ul class="wildlife-recs" style="margin:0.5rem 0 0;padding-left:1.2rem;font-size:0.92rem;color:var(--ink-soft);line-height:1.6">${zoneNotes}</ul>` : ''}
+        </div>
+      ` : ''}
+
+      ${charsRows ? `
+        <div class="econ-table-wrap" style="margin-top:0.75rem">
+          <table class="econ-table">
+            <thead><tr><th>Property</th><th>Inferred value</th></tr></thead>
+            <tbody>${charsRows}</tbody>
+          </table>
+        </div>
+      ` : ''}
+
+      <p class="fine" style="margin-top:0.6rem">
+        Source: <a href="${esc(ss.source_url)}" target="_blank" rel="noopener">${esc(ss.source_url)}</a>
+        · Open Government Licence — Alberta
+      </p>
+    </section>`;
+}
+
 function cellServiceSection(centre) {
   if (!centre) return '';
   const lat = centre.latitude;
@@ -4481,6 +4585,7 @@ function renderSectionPanes(r, ctx) {
     ${windSection(r.climate, r, r.wind_rose)}
     ${solarSection(solar)}
     ${landValueSection(landValue)}
+    ${soilSurveySection(r.soil_survey || a.soil_survey)}
   `, $('report-topo'));
 
   // Water: wells + wet areas + provincial contours

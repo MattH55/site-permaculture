@@ -36,6 +36,7 @@ import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
 import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
+import { querySoilSurvey } from './soil-survey.js';
 
 const cache = new Map();
 
@@ -178,6 +179,10 @@ export async function generateSiteReport(input = {}) {
     ? interpretLandUse(sturgeonCounty.land_use)
     : null;
 
+  // AGRASID/AGRASIS soil survey lookup
+  const soilSurvey = await querySoilSurvey(centre.latitude, centre.longitude)
+    .catch(() => ({ available: false, error: 'Soil survey lookup failed' }));
+
   // Prefer live NRCan hardiness + frost table over Alberta preset alone
   const hardinessZone =
     hardiness?.hardiness_zone || climate.plant_hardiness_zone;
@@ -295,6 +300,7 @@ export async function generateSiteReport(input = {}) {
   record.wildlife = wildlife;
   record.sturgeon_county = sturgeonCounty;
   record.land_use_interpretation = landUseInterpretation;
+  record.soil_survey = soilSurvey;
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
 
@@ -422,6 +428,7 @@ export async function generateSiteReport(input = {}) {
       wildlife,
       sturgeon_county: sturgeonCounty,
       land_use_interpretation: landUseInterpretation,
+      soil_survey: soilSurvey,
       planting: {
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
