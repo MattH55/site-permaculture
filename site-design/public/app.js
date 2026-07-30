@@ -12,9 +12,10 @@ const ELEMENT_LABELS = {
   hugelkultur_mound: 'Hügelkultur / raised bed',
   windbreak: 'Windbreak / shelterbelt',
   shelterbelt_zone: 'Shelterbelt zone',
-  food_forest_guild:                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        'Food forest guild',
+  food_forest_guild: 'Food forest guild',
   herb_spiral: 'Herb spiral',
   keyhole_bed: 'Keyhole bed',
+  groundwater_well: 'Groundwater well',
 };
 
 /** Client-facing value labels (mirrors lib/recommendation-values.js taxonomy). */
@@ -35,15 +36,18 @@ const VALUE_LABELS = {
   compliance_safety: 'Compliance & risk',
 };
 
+/** Report flow: site → packages (Food/Water/Energy/Shelter) → evidence */
 const CORE_LABELS = [
   { id: 'overview', label: 'Overview', color: 'var(--h1)' },
-  { id: 'topo', label: 'Topography', color: 'var(--h2)' },
-  { id: 'water', label: 'Water & wells', color: 'var(--h3)' },
-  { id: 'wildlife', label: 'Wildlife & trees', color: 'var(--h4)' },
-  { id: 'access', label: 'Access & community', color: 'var(--h5)' },
+  { id: 'services', label: 'Services', color: 'var(--h7)' },
+  { id: 'water', label: 'Water', color: 'var(--h3)' },
+  { id: 'energy', label: 'Energy', color: 'var(--h6)' },
+  { id: 'food', label: 'Food', color: 'var(--h5)' },
+  { id: 'shelter', label: 'Shelter', color: 'var(--h4)' },
+  { id: 'topo', label: 'Site data', color: 'var(--h2)' },
   { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
-  { id: 'rules', label: 'Recommendations', color: 'var(--h7)' },
-  { id: 'plant', label: 'Planting plan', color: 'var(--h8)' },
+  { id: 'rules', label: 'Placement', color: 'var(--h7)' },
+  { id: 'plant', label: 'Planting', color: 'var(--h8)' },
   { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
 const HORIZONS = CORE_LABELS.map((c) => c.color);
@@ -56,6 +60,11 @@ const EE_SERVICE_META = {
     cta: 'Talk earthworks',
     href: 'https://www.expandingedge.ca/services-landing',
   },
+  well_drilling: {
+    label: 'Groundwater well',
+    cta: 'Plan a well',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
   shelterbelt_design: {
     label: 'Shelterbelt design',
     cta: 'Design a shelterbelt',
@@ -66,9 +75,24 @@ const EE_SERVICE_META = {
     cta: 'Plan a food forest',
     href: 'https://www.expandingedge.ca/services-landing',
   },
+  soil_carbon_building: {
+    label: 'Soil carbon building',
+    cta: 'Build soil carbon',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
   kitchen_garden_design: {
     label: 'Kitchen garden design',
     cta: 'Design Zone 1',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  solar_energy_package: {
+    label: 'Solar + generator',
+    cta: 'View energy packages',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  off_grid_garage: {
+    label: 'Off-grid garage ($250k)',
+    cta: 'Reserve garage package',
     href: 'https://www.expandingedge.ca/services-landing',
   },
   full_site_design: {
@@ -76,6 +100,14 @@ const EE_SERVICE_META = {
     cta: 'Book full design',
     href: 'https://www.expandingedge.ca/services-landing',
   },
+};
+
+const PILLAR_ORDER = ['water', 'food', 'energy', 'shelter'];
+const PILLAR_META = {
+  water: { label: 'Water', client: 'Wells, swales, ponds' },
+  food: { label: 'Food', client: 'Food forest & soil carbon building' },
+  energy: { label: 'Energy', client: 'Solar power + generators' },
+  shelter: { label: 'Shelter', client: 'Off-grid garage & wind belts' },
 };
 
 const state = {
@@ -1172,10 +1204,12 @@ function renderReport(r) {
           : ''
       }
 
+      ${servicePackagesSection(r.service_packages)}
+
       <section class="report-block placement-block">
-        <h2>What this parcel needs</h2>
+        <h2>Placement details</h2>
         <p class="fine" style="margin-top:-0.3rem">
-          Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
+          Technique-level placement from site measurements — feeds the service packages above.
         </p>
         ${siteDriversSection(siteDrivers)}
         ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
@@ -1191,7 +1225,7 @@ function renderReport(r) {
         ${servicesCtaSection(services)}
       </section>
 
-      ${quoteSection(r.service_quote || a.service_quote)}
+      ${quoteSection(r.service_quote || a.service_quote, r.service_packages)}
 
       <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
         <span class="mono eyebrow">Next</span>
@@ -4152,28 +4186,152 @@ function landSalesMinimap(lv, centre) {
   return `<div id="${id}" class="report-map minimap-embed" style="height:220px;margin-top:0.6rem"></div>`;
 }
 
-function quoteSection(q) {
-  if (!q || !q.items?.length) return '';
+function servicePackagesSection(sp) {
+  if (!sp?.packages?.length) return '';
+  const flow = (sp.flow || [])
+    .map(
+      (s, i) => `
+      <div class="flow-step${i === 1 ? ' flow-step-active' : ''}">
+        <span class="mono flow-step-n">${esc(s.step)}</span>
+        <strong>${esc(s.label)}</strong>
+        <p class="fine">${esc(s.description)}</p>
+      </div>`
+    )
+    .join('');
+
+  const pillars = PILLAR_ORDER.map((pid) => {
+    const list = sp.by_category?.[pid] || [];
+    if (!list.length) return '';
+    const meta = PILLAR_META[pid] || { label: pid, client: '' };
+    const cards = list
+      .map((p) => {
+        const price = p.price;
+        const priceLine =
+          price?.amount_cad != null
+            ? `<div class="pkg-price">${fmtCad(price.amount_cad)}${
+                price.range_low_cad != null && price.range_high_cad != null
+                  ? `<span class="fine"> · ${fmtCad(price.range_low_cad)}–${fmtCad(price.range_high_cad)}</span>`
+                  : ''
+              }</div>`
+            : '<div class="pkg-price fine">Quote on site walk</div>';
+        const facts = p.site_facts
+          ? Object.entries(p.site_facts)
+              .filter(([, v]) => v != null && v !== '')
+              .slice(0, 4)
+              .map(([k, v]) => `<span class="plant-chip">${esc(k.replace(/_/g, ' '))}: <strong>${esc(v)}</strong></span>`)
+              .join('')
+          : '';
+        return `
+          <article class="pkg-card${p.featured ? ' pkg-card-featured' : ''}" data-category="${esc(p.category)}">
+            <div class="pkg-card-top">
+              <span class="mono pkg-cat">${esc(p.category_label || meta.label)}</span>
+              ${p.featured ? '<span class="pkg-badge">Featured</span>' : ''}
+            </div>
+            <h3>${esc(p.label)}</h3>
+            <p class="fine">${esc(p.blurb)}</p>
+            ${priceLine}
+            <p class="fine pkg-reason"><strong>Why here:</strong> ${esc(p.reason || '')}</p>
+            ${facts ? `<div class="plant-chips" style="margin-top:0.4rem">${facts}</div>` : ''}
+            ${p.claims_note ? `<p class="fine" style="margin-top:0.35rem;color:var(--caution)">${esc(p.claims_note)}</p>` : ''}
+            <a class="btn btn-quiet" style="margin-top:0.55rem;display:inline-block" href="${esc(p.href || 'https://www.expandingedge.ca/services-landing')}" target="_blank" rel="noopener">${esc(p.cta || 'Learn more')}</a>
+          </article>`;
+      })
+      .join('');
+    return `
+      <div class="pkg-pillar" id="pkg-${esc(pid)}">
+        <div class="pkg-pillar-head">
+          <h3>${esc(meta.label)}</h3>
+          <p class="fine">${esc(meta.client)}</p>
+        </div>
+        <div class="pkg-grid">${cards}</div>
+      </div>`;
+  }).join('');
+
+  const totals = sp.totals;
+  return `
+    <section class="report-block service-packages-block">
+      <h2>Recommended services</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Site analysis feeds four pillars — <strong>Water</strong>, <strong>Food</strong>, <strong>Energy</strong>, and <strong>Shelter</strong>.
+        ${sp.summary_sentence ? esc(sp.summary_sentence) : ''}
+      </p>
+
+      <div class="flow-steps">${flow}</div>
+
+      ${
+        totals?.planning_subtotal_cad
+          ? `<div class="well-range-card" style="margin:0.85rem 0">
+              <span class="mono">Planning total (all recommended packages)</span>
+              <div class="well-range-value">${fmtCad(totals.planning_subtotal_cad)}</div>
+              <p class="fine">${esc(totals.note || 'Mix and match pillars — not a firm quote.')}</p>
+            </div>`
+          : ''
+      }
+
+      ${pillars}
+
+      <div class="flag" data-severity="info" style="margin-top:1rem">
+        <strong>How this works</strong>
+        <p>Draw the parcel → we score water (wells, swales, ponds), food (food forest + soil-carbon interventions), energy (solar + generator packages), and shelter (including the <strong>$250,000 off-grid garage</strong> package). A site walk confirms scope before any firm quote.</p>
+      </div>
+    </section>`;
+}
+
+function quoteSection(q, packages) {
+  const pkgItems =
+    packages?.packages
+      ?.filter((p) => p.price?.amount_cad != null && p.featured)
+      .map((p) => ({
+        serviceName: p.label,
+        size: 1,
+        unit: 'package',
+        lineItems: [{ label: p.price.label || p.label, cost: p.price.amount_cad }],
+        materialsCost: 0,
+        materialsPct: 0,
+        travelCost: 0,
+        subtotal: p.price.amount_cad,
+        rangeLow: p.price.range_low_cad ?? p.price.amount_cad,
+        rangeHigh: p.price.range_high_cad ?? p.price.amount_cad,
+        fieldDays: p.price.field_days || 0,
+        valueProps: p.claims_note
+          ? [{ confidence: 'moderate', headline: p.blurb, caveat: p.claims_note }]
+          : [],
+        category: p.category,
+      })) || [];
+
+  const fieldItems = q?.items || [];
+  // Prefer package view when we have service_packages; still show field lines
+  const items = [...pkgItems];
+  for (const it of fieldItems) {
+    // Avoid double-counting names already featured as packages
+    if (items.some((x) => x.serviceName === it.serviceName)) continue;
+    items.push(it);
+  }
+  if (!items.length) return '';
+
+  const subtotal = items.reduce((s, i) => s + (i.subtotal || 0), 0);
+  const rangeLow = items.reduce((s, i) => s + (i.rangeLow || i.subtotal || 0), 0);
+  const rangeHigh = items.reduce((s, i) => s + (i.rangeHigh || i.subtotal || 0), 0);
 
   return `
     <section class="report-block quote-block">
       <h2>Estimated investment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Rough planning-level cost built from published day rates for the recommendations above —
-        not a firm quote. Final scope, site conditions, and materials are always confirmed on a site walk.
+        Planning-level costs for recommended service packages and field work —
+        not a firm quote. Final scope is confirmed on a site walk.
       </p>
 
       <div class="quote-items">
-        ${q.items
+        ${items
           .map(
             (it) => `
           <div class="quote-item">
             <div class="quote-item-head">
-              <span class="quote-item-name">${esc(it.serviceName)}</span>
-              <span class="quote-item-size mono">${esc(it.size)} ${esc(it.unit === 'flat' ? '' : it.unit)}</span>
+              <span class="quote-item-name">${esc(it.serviceName)}${it.category ? ` <span class="mono" style="font-size:0.7rem;opacity:0.75">${esc(it.category)}</span>` : ''}</span>
+              <span class="quote-item-size mono">${esc(it.size)} ${esc(it.unit === 'flat' || it.unit === 'package' ? (it.unit === 'package' ? 'pkg' : '') : it.unit)}</span>
             </div>
             <div class="quote-item-lines">
-              ${it.lineItems
+              ${(it.lineItems || [])
                 .map(
                   (l) => `
                 <div class="quote-line">
@@ -4182,14 +4340,14 @@ function quoteSection(q) {
                 </div>`
                 )
                 .join('')}
-              ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round(it.materialsPct * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
-              <div class="quote-line quote-line-sub"><span>Mob/demob + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>
+              ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round((it.materialsPct || 0) * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
+              ${it.travelCost ? `<div class="quote-line quote-line-sub"><span>Mob/demob + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>` : ''}
             </div>
             <div class="quote-item-total">
               <span>Subtotal</span>
               <span class="mono">${fmtCad(it.subtotal)}</span>
             </div>
-            <p class="fine quote-item-range">likely range ${fmtCad(it.rangeLow)} – ${fmtCad(it.rangeHigh)} · ≈ ${it.fieldDays} field day${it.fieldDays === 1 ? '' : 's'}</p>
+            <p class="fine quote-item-range">likely range ${fmtCad(it.rangeLow)} – ${fmtCad(it.rangeHigh)}${it.fieldDays ? ` · ≈ ${it.fieldDays} field day${it.fieldDays === 1 ? '' : 's'}` : ''}</p>
             ${
               it.valueProps?.length
                 ? it.valueProps
@@ -4206,14 +4364,17 @@ function quoteSection(q) {
       </div>
 
       <div class="quote-total-card">
-        <span class="mono">Estimated total (${q.itemCount} item${q.itemCount === 1 ? '' : 's'}, ≈ ${q.totalFieldDays} field day${q.totalFieldDays === 1 ? '' : 's'})</span>
-        <div class="quote-total-value">${fmtCad(q.subtotal)}</div>
-        <p class="fine">likely range ${fmtCad(q.rangeLow)} – ${fmtCad(q.rangeHigh)}</p>
+        <span class="mono">Estimated total (${items.length} item${items.length === 1 ? '' : 's'})</span>
+        <div class="quote-total-value">${fmtCad(subtotal)}</div>
+        <p class="fine">likely range ${fmtCad(rangeLow)} – ${fmtCad(rangeHigh)}</p>
       </div>
 
       <div class="flag" data-severity="info" style="margin-top:1rem">
         <strong>Planning estimate only</strong>
-        <p>${esc(q.disclaimer)}</p>
+        <p>${esc(
+          q?.disclaimer ||
+            'Planning-level estimates only. Final scope, site conditions, and materials are confirmed on a site walk before quoting.'
+        )}</p>
       </div>
     </section>`;
 }
@@ -4635,19 +4796,35 @@ function scoreBandLocal(score) {
   return { label: 'Needs significant improvement', color: 'var(--danger)', tone: 'One of the biggest constraints on what the land can produce.' };
 }
 
+function pillarPackageSlice(sp, category) {
+  if (!sp) return '';
+  const slim = {
+    ...sp,
+    packages: (sp.packages || []).filter((p) => p.category === category),
+    by_category: { [category]: sp.by_category?.[category] || [] },
+    featured: (sp.featured || []).filter((p) => p.category === category),
+    totals: null,
+    flow: sp.flow,
+    summary_sentence: null,
+  };
+  return servicePackagesSection(slim);
+}
+
 function renderSectionPanes(r, ctx) {
   const { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags } = ctx;
   const b = (html, el) => { if (el) el.innerHTML = html; };
+  const sp = r.service_packages;
+  const pkgCount = sp?.packages?.length || 0;
 
   // Overview: summary + map + score
   const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
   b(`
     <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
+      <span class="mono eyebrow">Expanding Edge · map → services</span>
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <div class="score-row">
-        <span class="score">${allEls.length}</span>
-        <span class="score-of">recommendations for this parcel</span>
+        <span class="score">${pkgCount || allEls.length}</span>
+        <span class="score-of">${pkgCount ? 'service packages for this parcel' : 'placement recommendations'}</span>
       </div>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
@@ -4657,7 +4834,7 @@ function renderSectionPanes(r, ctx) {
         ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
         ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
-      ${recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
+      ${sp?.summary_sentence ? `<p class="rec-summary">${esc(sp.summary_sentence)}</p>` : recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
@@ -4666,52 +4843,70 @@ function renderSectionPanes(r, ctx) {
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
         <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
         <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
+        <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
       </div>
       ${mapEmbedSection()}
       ${flags.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
+      <p class="fine" style="margin-top:0.85rem">Next: open <strong>Services</strong> for Food · Water · Energy · Shelter packages, or jump a pillar tab.</p>
     </div>
   `, $('report-overview'));
 
-  // Topography: topo + temperature + hardiness/flood/zoning + wind + solar
+  // Services: all packages
   b(`
-    ${topologySection(topo, a)}
-    ${temperatureSection(r.temperature || a.temperature)}
-    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-    ${windSection(r.climate, r, r.wind_rose)}
-    ${solarSection(solar)}
-    ${landValueSection(landValue)}
-    ${soilSurveySection(r.soil_survey || a.soil_survey)}
-  `, $('report-topo'));
+    ${servicePackagesSection(sp)}
+    ${quoteSection(r.service_quote || a.service_quote, sp)}
+    ${servicesCtaSection(services)}
+  `, $('report-services'));
 
-  // Water: wells + wet areas + provincial contours
+  // Water pillar evidence + water packages
   b(`
+    ${pillarPackageSlice(sp, 'water')}
     ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
     ${wetAreasSection(r.wet_areas_mapping)}
     ${provincialContoursMap(r._provincial_contours, centre)}
   `, $('report-water'));
 
-  // Wildlife: wildlife + biodiversity + tree cover
+  // Energy pillar
   b(`
+    ${pillarPackageSlice(sp, 'energy')}
+    ${solarSection(solar)}
+  `, $('report-energy'));
+
+  // Food pillar
+  b(`
+    ${pillarPackageSlice(sp, 'food')}
+    ${soilSurveySection(r.soil_survey || a.soil_survey)}
+    ${fecunditySection(r.fecundity)}
+  `, $('report-food'));
+
+  // Shelter pillar
+  b(`
+    ${pillarPackageSlice(sp, 'shelter')}
+    ${windSection(r.climate, r, r.wind_rose)}
+    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
+    ${accessSection(r.access, city?.name, city?.distance_km)}
+  `, $('report-shelter'));
+
+  // Site data (topo + climate + access remainder)
+  b(`
+    ${topologySection(topo, a)}
+    ${temperatureSection(r.temperature || a.temperature)}
+    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
+    ${landValueSection(landValue)}
+    ${demographicsSection(r.demographics)}
+    ${atsSection(r.ats, r.parcel_address)}
     ${wildlifeSection(r.wildlife || a.wildlife)}
     ${biodiversitySection(r.biodiversity)}
     ${treeCoverSection(r.tree_cover)}
-  `, $('report-wildlife'));
-
-  // Access: proximity + access + demographics + ATS
-  b(`
-    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-    ${accessSection(r.access, city?.name, city?.distance_km)}
-    ${demographicsSection(r.demographics)}
-    ${atsSection(r.ats, r.parcel_address)}
     ${cellServiceSection(centre)}
-  `, $('report-access'));
+  `, $('report-topo'));
 
-  // Recommendations: site conditions → recommendations → investment → sales CTA
+  // Placement details
   b(`
     <section class="report-block placement-block">
-      <h2>What this parcel needs</h2>
+      <h2>Placement details</h2>
       <p class="fine" style="margin-top:-0.3rem">
-        Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
+        Technique-level if→then results that feed the service package engine.
       </p>
       ${siteDriversSection(siteDrivers)}
       ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
@@ -4724,7 +4919,7 @@ function renderSectionPanes(r, ctx) {
       </div>
     </section>
 
-    ${quoteSection(r.service_quote || a.service_quote)}
+    ${quoteSection(r.service_quote || a.service_quote, sp)}
 
     ${servicesCtaSection(services)}
 

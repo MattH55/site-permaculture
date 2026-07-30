@@ -36,6 +36,7 @@ import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
+import { recommendServicePackages } from './service-packages.js';
 import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 import { querySoilSurvey } from './soil-survey.js';
 
@@ -282,9 +283,7 @@ export async function generateSiteReport(input = {}) {
 
   const record = buildSiteRecord(siteInput);
 
-  // Recommendation engine → rough field-cost quote (site assessment always
-  // included; swale/pond/shelterbelt/food-forest lines only when rules.js
-  // fired that element). Booking/deposit payment intentionally not wired up.
+  // Field-cost quote from fired design elements (swale/pond/shelterbelt/food forest)
   const service_quote = buildServiceQuote({
     design_elements: record.design_elements,
     footprint_ha: siteInput.footprint_ha,
@@ -425,12 +424,35 @@ export async function generateSiteReport(input = {}) {
   );
   record.fecundity = fecundityReport;
 
+  // High-level service packages: Food · Water · Energy · Shelter
+  // fed by design_elements, wells, solar, fecundity, and field quotes
+  const service_packages = recommendServicePackages({
+    design_elements: record.design_elements,
+    predicted_well_depth,
+    solar,
+    fecundity: fecundityReport,
+    footprint_ha: siteInput.footprint_ha,
+    slope_percent: t.slope_percent,
+    hydrology: siteInput.hydrology,
+    service_quote,
+    travel_km: service_quote?.sizing_basis?.travel_km_one_way,
+    propertyLabel: siteInput.site_name,
+  });
+  record.service_packages = service_packages;
+
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
       source_name: 'Expanding Edge rate engine (2024 rate sheet, +8% est.) applied to fired design_elements',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: null,
+    });
+    record.data_provenance.push({
+      field: 'service_packages',
+      source_name:
+        'EE service package engine — Food / Water / Energy / Shelter (wells, solar+generator, soil carbon, $250k off-grid garage)',
       source_date: new Date().toISOString().slice(0, 10),
       source_url: null,
     });
@@ -490,7 +512,7 @@ export async function generateSiteReport(input = {}) {
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v10-satellite-fecundity',
+      pipeline: 'bbox-live-v11-service-packages',
       cache: 'miss',
       cache_key: key,
     },
