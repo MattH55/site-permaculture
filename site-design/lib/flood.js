@@ -64,12 +64,16 @@ export async function queryFloodHazard(centre, bbox) {
         flood_hazard_class: 'no_data',
         flood_risk_zone: false,
         hits: [],
+        headline: 'No published FHIP mapping on this parcel',
         note:
-          'No FHIP flood polygon intersects this parcel. That means "no published study coverage here," not a certified clean bill of health — many rural Alberta watercourses are unmapped.',
+          'No Flood Hazard Identification Program polygon intersects this boundary. That means there is no published study coverage here — not that the site is free of flood risk. Many rural Alberta watercourses remain unmapped.',
+        caveat:
+          'Absence of FHIP data is not a clean bill of health. Check local knowledge, watercourse proximity, and the provincial flood awareness map before earthworks or low siting.',
         source_name: 'Alberta Flood Hazard Identification Program Mapping (2024)',
         source_url:
           'https://open.alberta.ca/opendata/gda-2ae32b0d-c6f9-4e1b-81ab-6fdecc728e28',
         feature_server: FLOOD_HAZARD,
+        awareness_map: 'https://floods.alberta.ca',
       };
     }
 
@@ -123,9 +127,14 @@ export async function queryFloodHazard(centre, bbox) {
       flood_hazard_class: 'unknown',
       flood_risk_zone: false,
       error: e.message,
+      headline: 'Flood lookup unavailable',
+      note: `Could not reach Alberta FHIP mapping (${e.message}). Treat flood status as unknown until verified.`,
+      caveat:
+        'Service error does not mean low risk. Confirm at floods.alberta.ca and with municipal planning before earthworks.',
       source_name: 'Alberta Flood Hazard Identification Program Mapping (2024)',
       source_url:
         'https://open.alberta.ca/opendata/gda-2ae32b0d-c6f9-4e1b-81ab-6fdecc728e28',
+      awareness_map: 'https://floods.alberta.ca',
     };
   }
 }

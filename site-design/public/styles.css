@@ -1070,6 +1070,34 @@ h3 { font-size: 1.08rem; }
   border-color: var(--caution);
   background: rgba(140, 90, 29, 0.06);
 }
+.phase2-grid .flood-card[data-severity="info"] {
+  border-color: var(--line);
+  background: rgba(22, 33, 27, 0.02);
+}
+.flood-card .flood-lead {
+  margin: 0.4rem 0 0.35rem;
+  font-size: 0.95rem;
+  color: var(--ink);
+  line-height: 1.45;
+}
+.flood-card .flood-caveat {
+  margin: 0.25rem 0 0.35rem;
+  padding: 0.45rem 0.55rem;
+  border-left: 3px solid var(--caution);
+  background: rgba(140, 90, 29, 0.08);
+  color: var(--ink-soft);
+}
+.flood-card .flood-caveat strong {
+  display: inline;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--caution);
+}
+.flood-card a {
+  color: var(--berry);
+  word-break: break-word;
+}
 
 .land-value-block .value-type-tag {
   display: inline-block;

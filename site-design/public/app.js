@@ -2464,9 +2464,11 @@ function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
       ? 'block'
       : floodClass === 'flood_fringe'
         ? 'caution'
-        : floodClass === 'no_data'
-          ? 'info'
+        : floodClass === 'no_data' || floodClass === 'unknown'
+          ? 'caution'
           : 'info';
+
+  const floodBody = floodFloodCardBody(flood, floodClass);
 
   return `
     <section class="report-block">
@@ -2495,34 +2497,7 @@ function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
         </article>
         <article class="prox-card flood-card" data-severity="${esc(floodSeverity)}">
           <span class="mono">Flood hazard (Alberta FHIP)</span>
-          <strong>${esc(labelFlood(floodClass))}</strong>
-          <p>
-            ${
-              flood?.in_mapped_study_area
-                ? `Mapped study${
-                    flood.primary?.river_name
-                      ? ` · ${esc(flood.primary.river_name)}`
-                      : ''
-                  }${
-                    flood.primary?.study_name
-                      ? `<br>${esc(flood.primary.study_name)}`
-                      : ''
-                  }`
-                : esc(flood?.note || 'No FHIP polygon at this parcel.')
-            }
-          </p>
-          <p class="fine">
-            ${
-              floodClass === 'no_data'
-                ? 'no_data ≠ no risk — many rural watercourses are unmapped.'
-                : esc(flood?.note || '')
-            }
-            ${
-              flood?.awareness_map
-                ? ` · <a href="${esc(flood.awareness_map)}" target="_blank" rel="noopener">floods.alberta.ca</a>`
-                : ''
-            }
-          </p>
+          ${floodBody}
         </article>
         <article class="prox-card">
           <span class="mono">Zoning (portal link — not auto-classified)</span>
@@ -2561,6 +2536,65 @@ function labelFlood(c) {
       unknown: 'Unknown',
     }[c] || c || '—'
   );
+}
+
+/** Single coherent FHIP card body — avoid repeating note + caveat. */
+function floodFloodCardBody(flood, floodClass) {
+  const awareness =
+    flood?.awareness_map || 'https://floods.alberta.ca';
+  const sourceUrl =
+    flood?.source_url ||
+    'https://open.alberta.ca/opendata/gda-2ae32b0d-c6f9-4e1b-81ab-6fdecc728e28';
+
+  if (floodClass === 'no_data' || (!flood?.in_mapped_study_area && floodClass !== 'unknown' && flood?.available !== false)) {
+    return `
+      <strong>${esc(flood?.headline || 'No mapped data')}</strong>
+      <p class="flood-lead">
+        ${esc(
+          flood?.note ||
+            'No FHIP flood polygon intersects this parcel. That means no published study coverage here — not a certified clean bill of health.'
+        )}
+      </p>
+      <p class="fine flood-caveat">
+        <strong>No map ≠ no risk.</strong>
+        ${esc(
+          flood?.caveat ||
+            'Many rural Alberta watercourses are unmapped. Confirm with local knowledge and the provincial awareness map before earthworks or low siting.'
+        )}
+      </p>
+      <p class="fine">
+        <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+        · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener">FHIP open data</a>
+      </p>`;
+  }
+
+  if (floodClass === 'unknown' || flood?.available === false) {
+    return `
+      <strong>${esc(flood?.headline || labelFlood(floodClass))}</strong>
+      <p class="flood-lead">${esc(flood?.note || flood?.error || 'Flood status could not be determined.')}</p>
+      <p class="fine flood-caveat">${esc(
+        flood?.caveat || 'Verify at floods.alberta.ca before siting ponds or low plantings.'
+      )}</p>
+      <p class="fine">
+        <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+      </p>`;
+  }
+
+  // Mapped hazard present
+  return `
+    <strong>${esc(labelFlood(floodClass))}</strong>
+    <p class="flood-lead">
+      Mapped study${
+        flood?.primary?.river_name ? ` · ${esc(flood.primary.river_name)}` : ''
+      }${
+        flood?.primary?.study_name ? `<br>${esc(flood.primary.study_name)}` : ''
+      }
+    </p>
+    <p class="fine">${esc(flood?.note || '')}</p>
+    <p class="fine">
+      <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+      · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener">FHIP open data</a>
+    </p>`;
 }
 
 function landValueSection(lv) {
