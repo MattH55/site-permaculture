@@ -4200,7 +4200,7 @@ async function downloadFullPdf() {
     // Title page
     const titlePage = document.createElement('div');
     const r = state.report || {};
-    titlePage.style.cssText = 'text-align: center; padding: 60px 20px 40px; page-break-after: always;';
+    titlePage.style.cssText = 'text-align: center; padding: 40px 20px 20px;';
     titlePage.innerHTML = `
       <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Expanding Edge Permaculture</div>
       <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
@@ -4227,7 +4227,7 @@ async function downloadFullPdf() {
     await html2pdf()
       .set({
         ...pdfOpts(fname),
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        pagebreak: { mode: ['css', 'legacy'] },
       })
       .from(wrapper)
       .save();
