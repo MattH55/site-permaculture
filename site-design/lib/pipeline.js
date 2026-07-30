@@ -35,6 +35,7 @@ import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
+import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 
 const cache = new Map();
 
@@ -170,6 +171,13 @@ export async function generateSiteReport(input = {}) {
     municipality: layers.preset?.municipality,
   });
 
+  // Sturgeon County ArcGIS Property Viewer lookup (parcel, land use, neighbourhood)
+  const sturgeonCounty = await querySturgeonCounty(centre.latitude, centre.longitude)
+    .catch(() => ({ available: false, error: 'Lookup failed' }));
+  const landUseInterpretation = sturgeonCounty?.land_use
+    ? interpretLandUse(sturgeonCounty.land_use)
+    : null;
+
   // Prefer live NRCan hardiness + frost table over Alberta preset alone
   const hardinessZone =
     hardiness?.hardiness_zone || climate.plant_hardiness_zone;
@@ -285,6 +293,8 @@ export async function generateSiteReport(input = {}) {
   record.zoning = zoning;
   record.temperature = temperature;
   record.wildlife = wildlife;
+  record.sturgeon_county = sturgeonCounty;
+  record.land_use_interpretation = landUseInterpretation;
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
 
@@ -393,6 +403,8 @@ export async function generateSiteReport(input = {}) {
       zoning,
       temperature,
       wildlife,
+      sturgeon_county: sturgeonCounty,
+      land_use_interpretation: landUseInterpretation,
       planting: {
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
@@ -601,6 +613,12 @@ function buildProvenance(
       source_url: wildlife.source_url,
     });
   }
+  rows.push({
+    field: 'sturgeon_county (parcel, land use, neighbourhood)',
+    source_name: 'Sturgeon County Property Viewer (ArcGIS FeatureServer)',
+    source_date: new Date().toISOString().slice(0, 10),
+    source_url: 'https://sturgeoncounty.maps.arcgis.com/apps/instant/media/index.html?appid=5f73684b6e8c49508b6a153a679ae008',
+  });
   rows.push({
     field: 'planting_plan',
     source_name: 'EcoCrop-style suitability · OpenSourceMed Growing Guide / farmfit catalog approach',
