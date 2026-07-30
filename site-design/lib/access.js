@@ -1,11 +1,17 @@
 /**
  * Access & mobility analysis for Alberta properties.
  *
- * Nearest road: Nominatim reverse (fast, named roads) + Overpass (distance /
- * unnamed tracks) with multi-mirror fallback.
+ * Nearest road uses the OSRM nearest API (snap to driving network) — correct
+ * distance to the road centreline, not reverse-geocode guesses or way centroids.
+ * Nominatim only fills blank names; Overpass is a last-resort fallback.
  */
 
 const GAS_PRICE_CAD_L = 1.45;
+
+const OSRM_NEAREST = [
+  'https://router.project-osrm.org/nearest/v1/driving',
+  'https://routing.openstreetmap.de/routed-car/nearest/v1/driving',
+];
 
 const OVERPASS_ENDPOINTS = [
   'https://overpass-api.de/api/interpreter',
@@ -39,7 +45,7 @@ export function findNearestRoadSync() {
     type: null,
     distance_m: null,
     available: false,
-    note: 'Async Overpass query not available in sync mode',
+    note: 'Async road query not available in sync mode',
   };
 }
 
@@ -80,8 +86,8 @@ export function tripCostsForDistance(distanceKm, opts = {}) {
   return results;
 }
 
-function haversineKm(lat1, lng1, lat2, lng2) {
-  const R = 6371;
+function haversineM(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
   const a =
@@ -91,6 +97,107 @@ function haversineKm(lat1, lng1, lat2, lng2) {
       Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
+
+function haversineKm(lat1, lng1, lat2, lng2) {
+  return haversineM(lat1, lng1, lat2, lng2) / 1000;
+}
+
+// ── OSRM nearest (primary) ───────────────────────────────
+
+/**
+ * Snap point to nearest driveable road edge(s).
+ * @returns {{ name: string|null, distance_m: number, snap_lat: number, snap_lng: number }|null}
+ */
+async function osrmNearest(lat, lng) {
+  const headers = {
+    Accept: 'application/json',
+    'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture access)',
+  };
+
+  let lastErr;
+  for (const base of OSRM_NEAREST) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10_000);
+    try {
+      // number=5 so we can prefer a named road among the closest snaps
+      const url = `${base}/${lng},${lat}?number=5`;
+      const res = await fetch(url, { signal: ctrl.signal, headers });
+      if (!res.ok) throw new Error(`OSRM ${res.status}`);
+      const data = await res.json();
+      if (data.code !== 'Ok' || !data.waypoints?.length) {
+        throw new Error(data.code || 'OSRM empty');
+      }
+
+      const waypoints = data.waypoints
+        .map((w) => ({
+          name: (w.name && String(w.name).trim()) || null,
+          distance_m: Number(w.distance),
+          snap_lng: w.location?.[0],
+          snap_lat: w.location?.[1],
+        }))
+        .filter((w) => Number.isFinite(w.distance_m));
+
+      if (!waypoints.length) throw new Error('OSRM no valid waypoints');
+
+      // Prefer the closest *named* road if it's not much farther than the absolute nearest
+      const nearest = waypoints[0];
+      const named = waypoints.find((w) => w.name);
+      let pick = nearest;
+      if (named && named.distance_m <= Math.max(nearest.distance_m * 1.5, nearest.distance_m + 40)) {
+        pick = named;
+      }
+
+      return {
+        name: pick.name,
+        distance_m: Math.round(pick.distance_m),
+        snap_lat: pick.snap_lat,
+        snap_lng: pick.snap_lng,
+        candidates: waypoints.slice(0, 3),
+        source: 'OSRM nearest (OpenStreetMap driving network)',
+      };
+    } catch (e) {
+      lastErr = e;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  throw lastErr || new Error('OSRM nearest failed');
+}
+
+/** Fill blank OSRM names via Nominatim at the snap point (or original centroid). */
+async function nominatimNameAt(lat, lng) {
+  const url =
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
+    `&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`;
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 6_000);
+  try {
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture; expandingedge.ca)',
+      },
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    const a = j.address || {};
+    return (
+      a.road ||
+      a.highway ||
+      a.residential ||
+      a.unclassified ||
+      a.pedestrian ||
+      null
+    );
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+// ── Overpass fallback (geometry-aware distance) ──────────
 
 async function overpassQuery(query, timeoutMs = 12_000) {
   const body = `data=${encodeURIComponent(query)}`;
@@ -117,184 +224,210 @@ async function overpassQuery(query, timeoutMs = 12_000) {
   }
 }
 
-/** Fast named-road lookup via Nominatim reverse geocode. */
-async function nominatimRoad(lat, lng) {
-  const url =
-    `https://nominatim.openstreetmap.org/reverse?format=jsonv2` +
-    `&lat=${lat}&lon=${lng}&zoom=17&addressdetails=1`;
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 8_000);
-  try {
-    const res = await fetch(url, {
-      signal: ctrl.signal,
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture; expandingedge.ca)',
-      },
-    });
-    if (!res.ok) throw new Error(`Nominatim ${res.status}`);
-    const j = await res.json();
-    const a = j.address || {};
-    const name =
-      a.road ||
-      a.highway ||
-      a.residential ||
-      a.unclassified ||
-      a.pedestrian ||
-      a.footway ||
-      null;
-    if (!name) return null;
-    // Rough distance: if reverse hit a road at this zoom, treat as local access
-    // (parcel centroid may be tens–hundreds of metres from the centreline)
-    return {
-      name,
-      type: a.road ? 'road' : a.highway || 'road',
-      named: true,
-      source: 'OpenStreetMap Nominatim reverse',
-      display_name: j.display_name || null,
-      osm_type: j.osm_type || null,
-      osm_id: j.osm_id || null,
-    };
-  } finally {
-    clearTimeout(t);
+/** Minimum distance from point to a polyline (lat/lng vertices). */
+function distanceToPolylineM(lat, lng, geometry) {
+  if (!geometry?.length) return Infinity;
+  let best = Infinity;
+  for (let i = 0; i < geometry.length - 1; i++) {
+    const a = geometry[i];
+    const b = geometry[i + 1];
+    if (a?.lat == null || b?.lat == null) continue;
+    const d = distanceToSegmentM(lat, lng, a.lat, a.lon, b.lat, b.lon);
+    if (d < best) best = d;
   }
+  // single-node ways
+  if (geometry.length === 1 && geometry[0]?.lat != null) {
+    best = Math.min(best, haversineM(lat, lng, geometry[0].lat, geometry[0].lon));
+  }
+  return best;
 }
 
-/** Overpass: nearest highway way with centreline distance. */
-async function overpassNearestHighway(lat, lng) {
-  // Single pass first (covers most urban + near-road rural). Expand once if empty.
-  const radii = [3000, 15000];
+/** Approx equirectangular projection for short segments. */
+function distanceToSegmentM(plat, plng, lat1, lng1, lat2, lng2) {
+  const midLat = ((lat1 + lat2) / 2) * (Math.PI / 180);
+  const mx = 111320 * Math.cos(midLat);
+  const my = 111320;
+  const px = plng * mx;
+  const py = plat * my;
+  const ax = lng1 * mx;
+  const ay = lat1 * my;
+  const bx = lng2 * mx;
+  const by = lat2 * my;
+  const abx = bx - ax;
+  const aby = by - ay;
+  const apx = px - ax;
+  const apy = py - ay;
+  const ab2 = abx * abx + aby * aby;
+  let t = ab2 > 0 ? (apx * abx + apy * aby) / ab2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx = ax + t * abx;
+  const cy = ay + t * aby;
+  const dx = px - cx;
+  const dy = py - cy;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+async function overpassNearestRoad(lat, lng) {
+  const radii = [1500, 8000, 20000];
   let lastNote = null;
   for (const radiusM of radii) {
     const query = `
-[out:json][timeout:8];
+[out:json][timeout:12];
 way(around:${radiusM},${lat},${lng})["highway"~"^(motorway|trunk|primary|secondary|tertiary|unclassified|residential|living_street|service|track)$"];
-out tags center 15;
+out tags geom 30;
 `.trim();
     try {
-      const data = await overpassQuery(query, 9_000);
-      const ranked = rankRoads(data.elements || [], lat, lng);
-      if (!ranked.length) {
-        lastNote = `No highway ways within ${radiusM / 1000} km (OSM).`;
+      const data = await overpassQuery(query, 13_000);
+      const els = data.elements || [];
+      if (!els.length) {
+        lastNote = `No OSM highway within ${radiusM / 1000} km.`;
         continue;
       }
-      const best = ranked[0];
-      return {
-        name: roadLabel(best.tags),
-        type: best.tags.highway || null,
-        distance_m: Math.round(best.distance_m),
-        named: !!(best.tags.name || best.tags.ref),
-        surface: best.tags.surface || null,
-        tracktype: best.tags.tracktype || null,
-        search_radius_m: radiusM,
-        source: 'OpenStreetMap Overpass',
-      };
+      let best = null;
+      for (const el of els) {
+        const tags = el.tags || {};
+        if (!tags.highway) continue;
+        const dist = distanceToPolylineM(lat, lng, el.geometry);
+        if (!Number.isFinite(dist)) continue;
+        const rank = HIGHWAY_RANK[tags.highway] ?? 15;
+        const named = !!(tags.name || tags.ref);
+        // Prefer closer; slight penalty for tracks/service and unnamed
+        const score = dist + rank * 15 + (named ? 0 : 25);
+        if (!best || score < best.score) {
+          best = {
+            score,
+            distance_m: dist,
+            name: tags.name || tags.ref || tags.official_name || tags.loc_name || null,
+            type: tags.highway,
+            named,
+            surface: tags.surface || null,
+            tracktype: tags.tracktype || null,
+          };
+        }
+      }
+      if (best) {
+        return {
+          name: best.name || `Unnamed ${best.type}`,
+          type: best.type,
+          distance_m: Math.round(best.distance_m),
+          named: best.named,
+          surface: best.surface,
+          tracktype: best.tracktype,
+          search_radius_m: radiusM,
+          source: 'OpenStreetMap Overpass (geometry distance)',
+        };
+      }
     } catch (e) {
       lastNote = e.message;
       if (radiusM === radii[radii.length - 1]) throw e;
     }
   }
   return {
+    available: false,
     name: null,
     type: null,
     distance_m: null,
     named: false,
-    note: lastNote || 'No road found within 15 km in OpenStreetMap.',
-    search_radius_m: 15000,
+    note: lastNote || 'No road found within 20 km.',
+    search_radius_m: 20000,
   };
 }
 
-function rankRoads(els, lat, lng) {
-  const scored = [];
-  for (const el of els) {
-    const tags = el.tags || {};
-    if (!tags.highway) continue;
-    const clat = el.lat ?? el.center?.lat;
-    const clng = el.lon ?? el.center?.lon;
-    if (clat == null || clng == null) continue;
-    const distance_m = haversineKm(lat, lng, clat, clng) * 1000;
-    const rank = HIGHWAY_RANK[tags.highway] ?? 15;
-    const named = !!(tags.name || tags.ref);
-    const score = distance_m + rank * 80 + (named ? 0 : 120);
-    scored.push({ tags, distance_m, score });
-  }
-  scored.sort((a, b) => a.score - b.score);
-  return scored;
-}
-
-function roadLabel(tags = {}) {
-  if (tags.name) return tags.name;
-  if (tags.ref) return tags.ref;
-  if (tags.official_name) return tags.official_name;
-  if (tags.loc_name) return tags.loc_name;
-  const hw = tags.highway || 'road';
-  const surface = tags.surface ? ` · ${tags.surface}` : '';
-  return `Unnamed ${hw}${surface}`;
-}
+// ── Public API ───────────────────────────────────────────
 
 /**
- * Nearest road for a site centroid.
- * Nominatim first (fast names). Overpass distance is best-effort with a short cap.
+ * Nearest road to a site centroid.
+ * 1) OSRM snap to driving network (correct distance)
+ * 2) Nominatim name fill if OSRM name blank
+ * 3) Overpass geometry distance fallback
  */
 export async function findNearestRoad(centre) {
   const { latitude, longitude } = centre;
 
-  const nom = await nominatimRoad(latitude, longitude).catch(() => null);
-
-  // If we already have a name, only wait briefly for Overpass distance
-  const overpassBudgetMs = nom?.name ? 6_000 : 14_000;
-  let ov = null;
+  // 1) OSRM nearest
   try {
-    ov = await Promise.race([
-      overpassNearestHighway(latitude, longitude),
-      new Promise((resolve) => setTimeout(() => resolve(null), overpassBudgetMs)),
-    ]);
-  } catch (e) {
-    ov = { error: e.message, note: e.message };
-  }
+    const snap = await osrmNearest(latitude, longitude);
+    let name = snap.name;
+    let named = !!name;
+    let type = 'road';
 
-  if (ov && ov.distance_m != null) {
-    const name = nom?.name || ov.name;
-    const named = !!(nom?.name || ov.named);
+    if (!name && snap.snap_lat != null && snap.snap_lng != null) {
+      const filled = await nominatimNameAt(snap.snap_lat, snap.snap_lng);
+      if (filled) {
+        name = filled;
+        named = true;
+      }
+    }
+    if (!name) {
+      const filled = await nominatimNameAt(latitude, longitude);
+      if (filled) {
+        name = filled;
+        named = true;
+      }
+    }
+    if (!name) {
+      name = 'Unnamed road';
+      named = false;
+    }
+
     return {
       name,
-      type: ov.type || nom?.type || 'road',
-      distance_m: ov.distance_m,
+      type,
+      distance_m: snap.distance_m,
       available: true,
       named,
-      surface: ov.surface || null,
-      tracktype: ov.tracktype || null,
-      search_radius_m: ov.search_radius_m,
-      source: nom?.name
-        ? 'Nominatim + OpenStreetMap Overpass'
-        : ov.source || 'OpenStreetMap Overpass',
+      snap_lat: snap.snap_lat,
+      snap_lng: snap.snap_lng,
+      candidates: snap.candidates,
+      source: snap.source + (named && !snap.name ? ' + Nominatim name' : ''),
     };
+  } catch (osrmErr) {
+    console.warn('OSRM nearest failed:', osrmErr.message);
   }
 
-  if (nom?.name) {
+  // 2) Overpass geometry fallback
+  try {
+    const ov = await overpassNearestRoad(latitude, longitude);
+    if (ov.distance_m != null) {
+      return {
+        ...ov,
+        available: true,
+      };
+    }
     return {
-      name: nom.name,
-      type: nom.type || 'road',
+      available: false,
+      name: null,
+      type: null,
       distance_m: null,
-      available: true,
-      named: true,
-      note: 'Road name from reverse geocode (OpenStreetMap).',
-      source: nom.source,
+      named: false,
+      note: ov.note || 'No road found.',
+      search_radius_m: ov.search_radius_m,
+    };
+  } catch (e) {
+    console.warn('Overpass road fallback failed:', e.message);
+    // 3) Nominatim-only last resort (name without reliable distance)
+    const nom = await nominatimNameAt(latitude, longitude);
+    if (nom) {
+      return {
+        name: nom,
+        type: 'road',
+        distance_m: null,
+        available: true,
+        named: true,
+        note: 'Road name from reverse geocode only; centreline distance unavailable.',
+        source: 'OpenStreetMap Nominatim reverse',
+      };
+    }
+    return {
+      name: null,
+      type: null,
+      distance_m: null,
+      available: false,
+      named: false,
+      error: e.message,
+      note: `Road lookup failed (${e.message}). Property may sit on an unmapped range road or trail.`,
     };
   }
-
-  return {
-    name: null,
-    type: null,
-    distance_m: null,
-    available: false,
-    named: false,
-    error: ov?.error || null,
-    note:
-      ov?.note ||
-      'No road found. Property may sit on an unmapped range road or trail in OpenStreetMap.',
-    search_radius_m: 15000,
-  };
 }
 
 export async function findNearestSupermarket(centre) {
@@ -348,7 +481,7 @@ export async function assessAccess(centre, nearestCityDistanceKm) {
     nearest_city_distance_km: distKm,
     gas_price_cad_l: GAS_PRICE_CAD_L,
     methodology:
-      'Nominatim reverse (road name) + OpenStreetMap Overpass (highway distance) + nearest-city trip costs',
+      'OSRM nearest snap to OSM driving network (distance) + Nominatim name fill when needed; Overpass geometry fallback',
   };
 }
 

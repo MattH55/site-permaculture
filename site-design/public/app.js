@@ -2337,29 +2337,34 @@ function wildlifeSection(wl) {
 }
 
 function nearestRoadCardHtml(road = {}) {
-  if (road.available && (road.name || road.type)) {
+  if (road.available && (road.name || road.type || road.distance_m != null)) {
     const dist =
       road.distance_m != null
         ? road.distance_m >= 1000
-          ? `${(road.distance_m / 1000).toFixed(1)} km`
+          ? `${(road.distance_m / 1000).toFixed(2)} km`
           : `${Math.round(road.distance_m)} m`
         : null;
     const typeBits = [road.type, road.surface, road.tracktype].filter(Boolean).join(' · ');
     const unnamedNote =
       road.named === false
-        ? '<p class="fine">OSM has no street name here — often a range road, township road, or farm track in rural Alberta.</p>'
+        ? '<p class="fine">No street name in OSM — often a range road, township road, or farm access track.</p>'
+        : '';
+    const distNote =
+      dist != null
+        ? ` · ${esc(dist)} to centreline`
         : '';
     return `
       <strong>${esc(road.name || `Unnamed ${road.type || 'road'}`)}</strong>
-      <p>${esc(typeBits || 'road')}${dist ? ` · ${esc(dist)}` : ''}</p>
+      <p>${esc(typeBits || 'driving network')}${distNote}</p>
       ${unnamedNote}
-      ${road.source ? `<p class="fine">${esc(road.source)}${road.search_radius_m ? ` · searched to ${road.search_radius_m / 1000} km` : ''}</p>` : ''}`;
+      ${road.source ? `<p class="fine">${esc(road.source)}</p>` : ''}
+      ${road.note && road.distance_m == null ? `<p class="fine">${esc(road.note)}</p>` : ''}`;
   }
   if (road.error) {
     return `
       <strong>—</strong>
       <p class="fine">Road lookup failed (${esc(road.error)}). ${esc(
-        road.note || 'Try regenerating the report — OpenStreetMap Overpass is sometimes rate-limited.'
+        road.note || 'Try regenerating the report.'
       )}</p>`;
   }
   if (road.available === false) {
@@ -2367,7 +2372,7 @@ function nearestRoadCardHtml(road = {}) {
       <strong>—</strong>
       <p class="fine">${esc(
         road.note ||
-          'No OSM highway within 25 km. Property may sit on an unmapped range road or trail.'
+          'No driveable road found nearby in OpenStreetMap. Property may sit on an unmapped range road or trail.'
       )}</p>`;
   }
   return `<strong>—</strong><p class="fine">No road data available.</p>`;
