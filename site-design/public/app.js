@@ -1526,7 +1526,7 @@ function topoContourSvg(topo) {
       used.add(i);
       let [ax, ay, bx, by] = segments[i];
       let headX = bx, headY = by;
-      let points = `${ax.toFixed(1)},${ay.toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)}`;
+      const pts = [[ax, ay], [bx, by]];
 
       // Extend forward
       let extended = true;
@@ -1539,7 +1539,7 @@ function topoContourSvg(topo) {
             used.add(j);
             headX = ex;
             headY = ey;
-            points += ` ${ex.toFixed(1)},${ey.toFixed(1)}`;
+            pts.push([ex, ey]);
             extended = true;
             break;
           }
@@ -1547,14 +1547,16 @@ function topoContourSvg(topo) {
             used.add(j);
             headX = sx;
             headY = sy;
-            points += ` ${sx.toFixed(1)},${sy.toFixed(1)}`;
+            pts.push([sx, sy]);
             extended = true;
             break;
           }
         }
       }
 
-      lines.push({ points, level, isIndexContour: isIndex(level) });
+      // Generate smooth SVG path using cubic Bézier control points (Catmull-Rom → Bézier)
+      const d = smoothSvgPath(pts);
+      lines.push({ points: pts.map(p => p.join(',')).join(' '), d, level, isIndexContour: isIndex(level) });
     }
 
     pathsByLevel.push(...lines);
@@ -1566,11 +1568,11 @@ function topoContourSvg(topo) {
   const intermediatePaths = pathsByLevel.filter((l) => !l.isIndexContour);
 
   const indexD = indexPaths.map(
-    (l) => `<path class="contour-index" d="M${l.points}"/>`
+    (l) => `<path class="contour-index" d="${l.d || 'M' + l.points}"/>`
   ).join('');
 
   const interD = intermediatePaths.map(
-    (l) => `<path class="contour-inter" d="M${l.points}"/>`
+    (l) => `<path class="contour-inter" d="${l.d || 'M' + l.points}"/>`
   ).join('');
 
   // Labels along index contours (place at midpoints of long segments)
@@ -1622,6 +1624,28 @@ function topoContourSvg(topo) {
       ${legendHtml}
       ${scaleBar}
     </svg>`;
+}
+
+/**
+ * Convert an array of [x,y] points into a smooth SVG path using
+ * Catmull-Rom → cubic Bézier conversion for natural-looking contour curves.
+ */
+function smoothSvgPath(pts, tension = 0.3) {
+  if (pts.length < 2) return 'M' + pts.map(p => p.join(',')).join(' L');
+  if (pts.length === 2) return `M${pts[0].join(',')} L${pts[1].join(',')}`;
+  const segs = [`M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) * tension;
+    const cp1y = p1[1] + (p2[1] - p0[1]) * tension;
+    const cp2x = p2[0] - (p3[0] - p1[0]) * tension;
+    const cp2y = p2[1] - (p3[1] - p1[1]) * tension;
+    segs.push(`C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`);
+  }
+  return segs.join(' ');
 }
 
 function gridShading(normValues, cols, rows, padX, padY, usableW, usableH) {
