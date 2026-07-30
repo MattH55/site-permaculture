@@ -33,6 +33,7 @@ import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
+import { getWindRose } from './wind-rose.js';
 
 const cache = new Map();
 
@@ -298,6 +299,10 @@ export async function generateSiteReport(input = {}) {
 
     assessBiodiversity(centre).then((bio) => {
       record.biodiversity = bio;
+    }).catch(() => {});
+
+    getWindRose(centre).then((wr) => {
+      record.wind_rose = wr;
     }).catch(() => {});
     record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);

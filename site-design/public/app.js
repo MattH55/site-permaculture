@@ -1115,7 +1115,7 @@ function renderReport(r) {
       ${accessSection(r.access, city?.name, city?.distance_km)}
       ${demographicsSection(r.demographics)}
       ${atsSection(r.ats, r.parcel_address)}
-      ${windSection(r.climate, r)}
+      ${windSection(r.climate, r, r.wind_rose)}
       ${wetAreasSection(r.wet_areas_mapping)}
       ${biodiversitySection(r.biodiversity)}
 
@@ -3625,50 +3625,140 @@ function provincialContoursMap(contours, centre) {
     </section>`;
 }
 
-function windSection(climate, r) {
+function windRoseSvg(windRose) {
+  if (!windRose?.available || !windRose.series?.length) return '';
+
+  const dirs16 = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  const W = 340, H = 340, cx = W / 2, cy = H / 2, maxR = 140;
+
+  // Stack the series: each series has data[0..15] for 16 directions
+  const nDirs = windRose.series[0]?.data?.length || 16;
+  const nSeries = windRose.series.length;
+
+  // Build stacked totals per direction and per (dir, speed-bin)
+  const stackedMax = new Array(nDirs).fill(0);
+  for (let s = 0; s < nSeries; s++) {
+    for (let d = 0; d < nDirs; d++) {
+      stackedMax[d] += (windRose.series[s].data?.[d] || 0);
+    }
+  }
+  const globalMax = Math.max(...stackedMax, 1);
+
+  // Colors for speed bins (low→high: calm blue → strong red)
+  const binColors = ['#4a90d9','#5ba3e6','#7ec8e3','#a8d8ea','#f6d55c','#f0a500','#e85d04','#c23e2e','#8c1d13'];
+
+  // Draw stacked polar bars
+  let barsHtml = '';
+  for (let d = 0; d < nDirs; d++) {
+    const angleDeg = (360 / nDirs) * d - 90; // N at top
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const halfSlice = (360 / nDirs / 2) * (Math.PI / 180);
+
+    let cumulative = 0;
+    for (let s = nSeries - 1; s >= 0; s--) {
+      const val = windRose.series[s].data?.[d] || 0;
+      if (val <= 0) continue;
+      const innerR = (cumulative / globalMax) * maxR;
+      cumulative += val;
+      const outerR = (cumulative / globalMax) * maxR;
+      const color = binColors[s % binColors.length];
+
+      // Arc segment as a polygon
+      const steps = 3;
+      const pts = [];
+      for (let i = 0; i <= steps; i++) {
+        const a = angleRad - halfSlice + (2 * halfSlice * i) / steps;
+        pts.push(`${(cx + innerR * Math.cos(a)).toFixed(1)},${(cy + innerR * Math.sin(a)).toFixed(1)}`);
+      }
+      for (let i = steps; i >= 0; i--) {
+        const a = angleRad - halfSlice + (2 * halfSlice * i) / steps;
+        pts.push(`${(cx + outerR * Math.cos(a)).toFixed(1)},${(cy + outerR * Math.sin(a)).toFixed(1)}`);
+      }
+      const label = windRose.series[s].name || '';
+      barsHtml += `<polygon points="${pts.join(' ')}" fill="${color}" stroke="#fff" stroke-width="0.5" opacity="0.85"><title>${dirs16[d]}: ${val.toFixed(1)}% (${esc(label)})</title></polygon>`;
+    }
+  }
+
+  // Compass labels + circles
+  const rings = [0.25, 0.5, 0.75, 1.0];
+  let ringsHtml = rings.map((f) =>
+    `<circle cx="${cx}" cy="${cy}" r="${(f * maxR).toFixed(1)}" fill="none" stroke="var(--line)" stroke-width="0.4" stroke-dasharray="2 3"/>`
+  ).join('');
+
+  let labelsHtml = dirs16.map((d, i) => {
+    const a = ((360 / nDirs) * i - 90) * Math.PI / 180;
+    const tx = cx + Math.cos(a) * (maxR + 14);
+    const ty = cy + Math.sin(a) * (maxR + 14);
+    const isMain = ['N','E','S','W'].includes(d);
+    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="${isMain ? '10px' : '7px'}" font-weight="${isMain ? 'bold' : 'normal'}" fill="var(--ink-soft)">${d}</text>`;
+  }).join('');
+
+  // Scale label
+  const scaleLabel = `${globalMax.toFixed(0)}%`;
+
+  // Legend
+  const legendItems = windRose.series.map((s, i) => {
+    const color = binColors[i % binColors.length];
+    return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.72rem;margin-right:0.5rem"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></span>${esc(s.name || `Bin ${i+1}`)}</span>`;
+  }).join('');
+
+  return `
+    <div style="margin-top:0.85rem">
+      <span class="mono topo-label">Wind rose — ${esc(windRose.station_name)} (${esc(windRose.distance_km)} km away)</span>
+      <svg class="wind-butterfly" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind rose from ACIS">
+        <rect x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="var(--line)" rx="8"/>
+        ${ringsHtml}
+        ${barsHtml}
+        ${labelsHtml}
+        <circle cx="${cx}" cy="${cy}" r="3" fill="var(--ink)"/>
+        <text x="${(cx + maxR + 4).toFixed(1)}" y="${(cy - maxR + 4).toFixed(1)}" class="svg-label" font-size="8px">${scaleLabel}</text>
+      </svg>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.2rem;margin-top:0.35rem">${legendItems}</div>
+      <p class="fine" style="margin-top:0.35rem">
+        Source: <a href="${esc(windRose.source_url || 'https://acis.alberta.ca/wind-rose.jsp')}" target="_blank" rel="noopener">ACIS</a>
+        · ${esc(windRose.start_date)} to ${esc(windRose.end_date)}
+        · Station ${esc(windRose.station_id)}
+      </p>
+    </div>`;
+}
+
+function windSection(climate, r, windRose) {
   const windDir = climate?.prevailing_wind_direction || r?.climate?.prevailing_wind_direction || 'NW';
-  // Render a wind butterfly SVG showing prevailing direction and optimal shelterbelt placement
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
   const dirIdx = dirs.indexOf(windDir.toUpperCase());
-  const idx = dirIdx >= 0 ? dirIdx : 7; // default NW
+  const idx = dirIdx >= 0 ? dirIdx : 7;
 
-  // SVG wind butterfly: compass + prevailing arrow + shelterbelt recommendation
   const w = 260, h = 260, cx = w / 2, cy = h / 2, cr = 110;
-  const dirAngle = (idx / 8) * 360 - 90; // 0=N at top, clockwise
+  const dirAngle = (idx / 8) * 360 - 90;
   const arrowLen = cr * 0.75;
-
-  // Prevailing wind arrow
   const arrowRad = (dirAngle * Math.PI) / 180;
   const ax = cx + Math.cos(arrowRad) * arrowLen;
   const ay = cy + Math.sin(arrowRad) * arrowLen;
-
-  // Shelterbelt line (perpendicular to wind)
-  const sbAngle = dirAngle + 90; // perpendicular
+  const sbAngle = dirAngle + 90;
   const sbRad = (sbAngle * Math.PI) / 180;
   const sbx1 = cx + Math.cos(sbRad) * cr * 0.6;
   const sby1 = cy + Math.sin(sbRad) * cr * 0.6;
   const sbx2 = cx - Math.cos(sbRad) * cr * 0.6;
   const sby2 = cy - Math.sin(sbRad) * cr * 0.6;
 
-  const windSvg = `
+  const compassSvg = `
     <svg class="wind-butterfly" viewBox="0 0 ${w} ${h}" role="img" aria-label="Wind direction and shelterbelt orientation">
       <rect x="0" y="0" width="${w}" height="${h}" fill="#fff" stroke="var(--line)" rx="8"/>
       <circle cx="${cx}" cy="${cy}" r="${cr}" fill="none" stroke="var(--line)" stroke-width="1"/>
       <circle cx="${cx}" cy="${cy}" r="${cr * 0.5}" fill="none" stroke="var(--line)" stroke-width="0.5" stroke-dasharray="2 3"/>
-      <!-- Compass labels -->
       ${dirs.map((d, i) => {
         const a = ((i / 8) * 360 - 90) * Math.PI / 180;
         const tx = cx + Math.cos(a) * (cr + 12);
         const ty = cy + Math.sin(a) * (cr + 12);
         return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${d === windDir.toUpperCase() ? 'bold' : 'normal'}" fill="${d === windDir.toUpperCase() ? 'var(--berry)' : 'var(--ink-soft)'}">${esc(d)}</text>`;
       }).join('')}
-      <!-- Prevailing wind arrow -->
       <line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#2a6f97" stroke-width="3" stroke-linecap="round"/>
       <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="#2a6f97"/>
-      <!-- Shelterbelt line (perpendicular) -->
       <line x1="${sbx1.toFixed(1)}" y1="${sby1.toFixed(1)}" x2="${sbx2.toFixed(1)}" y2="${sby2.toFixed(1)}" stroke="var(--ok)" stroke-width="3" stroke-dasharray="6 3" stroke-linecap="round"/>
       <text x="${(cx + Math.cos(sbRad) * cr * 0.72).toFixed(1)}" y="${(cy + Math.sin(sbRad) * cr * 0.72).toFixed(1)}" class="svg-label" fill="var(--ok)" font-size="8px">shelterbelt</text>
     </svg>`;
+
+  const roseHtml = windRoseSvg(windRose);
 
   return `
     <section class="report-block wind-section">
@@ -3678,7 +3768,7 @@ function windSection(climate, r) {
         Blue arrow = dominant wind direction. Green dashed line = optimal shelterbelt orientation (perpendicular to wind).
       </p>
       <div style="display:grid;grid-template-columns:280px 1fr;gap:1rem;align-items:start;margin-top:0.75rem">
-        <div>${windSvg}</div>
+        <div>${compassSvg}</div>
         <div>
           <div class="well-range-card" style="border-left-color:#2a6f97;margin-bottom:0.5rem">
             <span class="mono">Shelterbelt placement</span>
@@ -3699,6 +3789,7 @@ function windSection(climate, r) {
           </p>
         </div>
       </div>
+      ${roseHtml}
     </section>`;
 }
 
