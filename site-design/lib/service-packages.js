@@ -358,7 +358,7 @@ export function recommendServicePackages(ctx = {}) {
       ?.score != null &&
     fecundity.categories.some(
       (c) =>
-        (c.category === 'soilStructure' || c.category === 'soilBiology' || c.category === 'nutrientCycling') &&
+        (c.category === 'soilStructure' || c.category === 'soilBiology') &&
         c.score != null &&
         c.score < 55
     );

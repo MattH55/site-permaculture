@@ -355,7 +355,7 @@ function suggestGuilds(plants, profile) {
       label: 'Food forest understory guild',
       rationale:
         'Layered edible shrubs/trees with nitrogen support — matches vegetative structure and food goals.',
-      lever_targets: ['vegetativeStructure', 'nutrientCycling', 'faunaIntegration'],
+      lever_targets: ['vegetativeStructure', 'soilBiology', 'faunaIntegration'],
       members: [...food, ...nfix].slice(0, 6).map(guildMember),
     });
   }
@@ -390,10 +390,8 @@ function suggestGuilds(plants, profile) {
 
   // Soil / N-fix starter when nutrients weak
   const nutWeak =
-    (profile.fecundity?.lever_scores?.nutrientCycling != null &&
-      profile.fecundity.lever_scores.nutrientCycling < 55) ||
-    (profile.fecundity?.lever_scores?.soilBiology != null &&
-      profile.fecundity.lever_scores.soilBiology < 55);
+    profile.fecundity?.lever_scores?.soilBiology != null &&
+    profile.fecundity.lever_scores.soilBiology < 55;
   if (nutWeak) {
     const soilers = plants
       .filter(
@@ -409,8 +407,8 @@ function suggestGuilds(plants, profile) {
         id: 'soil_builder_starter',
         label: 'Soil-builder / N-fix starter',
         rationale:
-          'Nutrient or biology levers are weak — start with N-fixers and soil-building cover before heavy-feeding canopy crops.',
-        lever_targets: ['nutrientCycling', 'soilBiology', 'soilStructure'],
+          'Soil biology lever is weak — start with N-fixers and soil-building cover before heavy-feeding canopy crops.',
+        lever_targets: ['soilBiology', 'soilStructure'],
         members: soilers.map(guildMember),
       });
     }
@@ -651,10 +649,10 @@ function scoreCrop(crop, ctx, profile = null) {
   for (const w of weakest) {
     const cat = w.category;
     const sev = w.score != null && w.score < 40 ? 12 : w.score != null && w.score < 55 ? 8 : 4;
-    if (cat === 'nutrientCycling' && nFix) {
+    if (cat === 'soilBiology' && nFix) {
       score += sev;
-      lever_benefits.push('nutrientCycling');
-      reasons.push('Boosts weak nutrient cycling (N-fixer)');
+      lever_benefits.push('soilBiology');
+      reasons.push('Boosts weak soil biology (N-fixer / organic inputs)');
     }
     if ((cat === 'soilStructure' || cat === 'soilBiology') && soilish) {
       score += sev;

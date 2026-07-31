@@ -7268,7 +7268,7 @@ function fecunditySection(fec) {
     <section class="report-block">
       <h2>Land fecundity assessment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Seven levers that drive land productivity, scored from available site, satellite, and regional data.
+        Six levers that drive land productivity (including soil biology), scored from available site, satellite, and regional data.
         Every indicator is optional — missing data drops out rather than penalizing the score.
         ${sat?.available ? 'Vegetative levers use <strong>Sentinel-2</strong> indices at ~10 m (property-scale screening).' : ''}
       </p>

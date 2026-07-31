@@ -2,7 +2,7 @@
  * Expanding Edge — Intervention Effects Registry
  *
  * Defines how each design intervention (swale, pond, foodforest, shelterbelt)
- * affects the 7 fecundity levers. Every effect is a *delta* on the baseline
+ * affects the 6 fecundity levers. Every effect is a *delta* on the baseline
  * score (0–100 scale). Physical proxies and cost models are included so the
  * value-estimation engine can translate score changes into real-world outcomes.
  *
@@ -29,7 +29,7 @@ export const INTERVENTIONS = {
       { lever: 'water',             deltaMin: 12, deltaMax: 25, confidence: 'high' },
       { lever: 'soilStructure',     deltaMin: 2,  deltaMax: 8,  confidence: 'moderate' },
       { lever: 'microclimate',      deltaMin: 2,  deltaMax: 6,  confidence: 'low-moderate' },
-      { lever: 'nutrientCycling',   deltaMin: 1,  deltaMax: 4,  confidence: 'low' },
+      { lever: 'soilBiology',       deltaMin: 1,  deltaMax: 4,  confidence: 'low' },
     ],
     physical: {
       runoffReductionPct:        { min: 30, max: 60 },
@@ -53,7 +53,7 @@ export const INTERVENTIONS = {
       { lever: 'water',             deltaMin: 10, deltaMax: 20, confidence: 'high' },
       { lever: 'microclimate',      deltaMin: 5,  deltaMax: 12, confidence: 'moderate' },
       { lever: 'faunaIntegration',  deltaMin: 5,  deltaMax: 15, confidence: 'moderate' },
-      { lever: 'nutrientCycling',   deltaMin: 2,  deltaMax: 6,  confidence: 'low-moderate' },
+      { lever: 'soilBiology',       deltaMin: 2,  deltaMax: 6,  confidence: 'low-moderate' },
     ],
     physical: {
       waterStorage_m3:           { min: 200, max: 2000 },
@@ -75,8 +75,7 @@ export const INTERVENTIONS = {
     label: 'Food forest / polyculture planting',
     affects: [
       { lever: 'vegetativeStructure', deltaMin: 15, deltaMax: 35, confidence: 'high' },
-      { lever: 'soilBiology',         deltaMin: 8,  deltaMax: 20, confidence: 'moderate' },
-      { lever: 'nutrientCycling',     deltaMin: 8,  deltaMax: 18, confidence: 'moderate' },
+      { lever: 'soilBiology',         deltaMin: 10, deltaMax: 24, confidence: 'moderate' },
       { lever: 'faunaIntegration',    deltaMin: 5,  deltaMax: 15, confidence: 'moderate' },
       { lever: 'soilStructure',       deltaMin: 3,  deltaMax: 10, confidence: 'low-moderate' },
       { lever: 'microclimate',        deltaMin: 3,  deltaMax: 8,  confidence: 'low-moderate' },
@@ -104,7 +103,7 @@ export const INTERVENTIONS = {
       { lever: 'microclimate',        deltaMin: 10, deltaMax: 25, confidence: 'high' },
       { lever: 'vegetativeStructure', deltaMin: 5,  deltaMax: 15, confidence: 'moderate' },
       { lever: 'faunaIntegration',    deltaMin: 5,  deltaMax: 15, confidence: 'moderate' },
-      { lever: 'nutrientCycling',     deltaMin: 3,  deltaMax: 8,  confidence: 'low-moderate' },
+      { lever: 'soilBiology',         deltaMin: 3,  deltaMax: 8,  confidence: 'low-moderate' },
       { lever: 'soilStructure',       deltaMin: 2,  deltaMax: 6,  confidence: 'low' },
     ],
     physical: {

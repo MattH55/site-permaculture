@@ -19,7 +19,6 @@ const LEVER_LABELS = {
   water: 'Water — infiltration & retention',
   soilStructure: 'Soil structure',
   soilBiology: 'Soil biology',
-  nutrientCycling: 'Nutrient cycling',
   vegetativeStructure: 'Vegetative layering',
   faunaIntegration: 'Fauna integration',
   microclimate: 'Microclimate',
@@ -31,7 +30,7 @@ const VALUE_TO_LEVER = {
   snow_management: 'microclimate',
   microclimate: 'microclimate',
   food_production: 'vegetativeStructure',
-  nitrogen_fixing: 'nutrientCycling',
+  nitrogen_fixing: 'soilBiology',
   soil_building: 'soilStructure',
   biodiversity: 'faunaIntegration',
   medicinal: 'faunaIntegration',
@@ -166,7 +165,7 @@ export function enrichDesignElementsWithPlants(designElements = [], plantingPlan
         next.plant_rationale = why || null;
         next.improves_levers = uniqueLevers([
           'vegetativeStructure',
-          'nutrientCycling',
+          'soilBiology',
           'faunaIntegration',
           ...(foodPlants.flatMap((p) => p.lever_benefits || []) || []),
         ]);

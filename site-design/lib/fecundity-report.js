@@ -300,8 +300,8 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       narrative = microclimateFaunaWaterNote(rawData, key, narrative);
     }
 
-    // Enforce carbon-safe language on soil structure / nutrient narratives
-    if (key === 'soilStructure' || key === 'nutrientCycling' || key === 'soilBiology') {
+    // Enforce carbon-safe language on soil structure / biology narratives
+    if (key === 'soilStructure' || key === 'soilBiology') {
       narrative = carbonSafeText(rawData.satelliteClaims?.find((c) => c.field === 'soil_organic_carbon'), narrative);
     }
 

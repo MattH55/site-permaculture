@@ -182,7 +182,6 @@ export function normalizePlantGoals(raw, opts = {}) {
         water: 'soil_building',
         soilStructure: 'soil_building',
         soilBiology: 'soil_building',
-        nutrientCycling: 'max_nitrogen',
         vegetativeStructure: 'max_food',
         faunaIntegration: 'wildlife',
         microclimate: 'windbreak',

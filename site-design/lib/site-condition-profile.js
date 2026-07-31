@@ -226,12 +226,9 @@ export function buildSiteConditionProfile(site = {}, extras = {}) {
       },
     },
     nutrient_biology: {
-      nutrient_score: leverScores.nutrientCycling ?? null,
+      nutrient_score: leverScores.soilBiology ?? null,
       biology_score: leverScores.soilBiology ?? null,
-      status:
-        leverScores.nutrientCycling == null && leverScores.soilBiology == null
-          ? 'unknown'
-          : 'inferred',
+      status: leverScores.soilBiology == null ? 'unknown' : 'inferred',
     },
     vegetation: {
       successional_stage: succession,

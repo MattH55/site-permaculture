@@ -1,17 +1,17 @@
 /**
  * Expanding Edge Permaculture — Fecundity Assessment
- * Scores a property (0-100 per category) across 7 productivity levers.
+ * Scores a property (0-100 per category) across 6 productivity levers.
+ * Soil biology absorbs former nutrient-cycling indicators (pH, organic inputs).
  * Every indicator is OPTIONAL — missing data drops out rather than penalizing.
  */
 
 const CATEGORY_WEIGHTS = {
-  water: 0.20,
+  water: 0.2,
   soilStructure: 0.15,
-  soilBiology: 0.15,
-  nutrientCycling: 0.15,
-  vegetativeStructure: 0.20,
+  soilBiology: 0.3,
+  vegetativeStructure: 0.2,
   faunaIntegration: 0.05,
-  microclimate: 0.10,
+  microclimate: 0.1,
 };
 
 const CATEGORIES = {
@@ -206,7 +206,7 @@ const CATEGORIES = {
 
   soilBiology: {
     label: 'Soil biology',
-    suggestedServices: ['foodforest'],
+    suggestedServices: ['foodforest', 'shelterbelt'],
     indicators: [
       {
         key: 'earthwormCount',
@@ -236,13 +236,7 @@ const CATEGORIES = {
           return d.fungalNetworkObserved ? 85 : 45;
         },
       },
-    ],
-  },
-
-  nutrientCycling: {
-    label: 'Nutrient cycling',
-    suggestedServices: ['foodforest', 'shelterbelt'],
-    indicators: [
+      // Former nutrient-cycling indicators — chemistry that drives biology
       {
         key: 'soilPh',
         fields: ['soilPh'],
