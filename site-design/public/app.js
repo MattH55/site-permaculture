@@ -302,6 +302,29 @@ function mainPostInit() {
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
 
+  // Delegated nav so "Read findings" / "Your plan" always work after re-render
+  $('report-stage')?.addEventListener('click', (ev) => {
+    const findings = ev.target.closest('[data-open-findings], [data-open-findings-link]');
+    if (findings) {
+      ev.preventDefault();
+      switchReportPane('findings');
+      return;
+    }
+    const plan = ev.target.closest(
+      '[data-open-your-plan], [data-open-your-plan-findings], [data-open-your-plan-rules]'
+    );
+    if (plan) {
+      ev.preventDefault();
+      switchReportPane('services');
+      return;
+    }
+    const plant = ev.target.closest('[data-open-plant-beta]');
+    if (plant) {
+      ev.preventDefault();
+      switchReportPane('plant');
+    }
+  });
+
   $('btn-cancel-load')?.addEventListener('click', () => {
     state._reportAbort?.abort();
     clearInterval(state._loadTimer);
@@ -324,21 +347,28 @@ function switchReportPane(which) {
   };
   which = aliases[which] || which;
 
-  const allPanes = SECTION_IDS.map((id) => $(`pane-${id}`)).filter(Boolean);
-  // Never show PDF-only full dump in the main UI
-  const target = which === 'site' ? $('pane-overview') : $(`pane-${which}`);
-  if (!target && which !== 'plant') return;
+  // Prefer explicit DOM ids so Findings always resolves (do not depend only on SECTION_IDS)
+  const paneId = which === 'plant' ? 'pane-plant' : `pane-${which}`;
+  const target = document.getElementById(paneId);
+  if (!target) {
+    console.warn('switchReportPane: missing pane', paneId);
+    return;
+  }
 
-  allPanes.forEach((p) => {
+  document.querySelectorAll('.report-pane').forEach((p) => {
+    // Keep PDF export host hidden and out of the tab flow
+    if (p.id === 'pane-site') {
+      p.hidden = true;
+      p.classList.remove('is-active');
+      return;
+    }
     p.classList.remove('is-active');
     p.hidden = true;
   });
 
-  const active = target || $('pane-plant');
-  if (active) {
-    active.classList.add('is-active');
-    active.hidden = false;
-  }
+  target.classList.add('is-active');
+  target.hidden = false;
+  target.removeAttribute('hidden');
 
   // Update sidebar step highlight + keep chip visible on mobile rail
   document.querySelectorAll('#report-core .step-row, #report-side-offerings [data-pane]').forEach((sr) => {
@@ -361,7 +391,7 @@ function switchReportPane(which) {
 
   // Leaflet maps need invalidateSize when their pane becomes visible
   setTimeout(() => {
-    active?.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
+    target.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
       const map = el._eeLeafletMap;
       if (map && typeof map.invalidateSize === 'function') {
         try {
@@ -1320,7 +1350,8 @@ function renderReport(r) {
 }
 
 /**
- * Live unified property map host (parcel + elevation + contours + plantings + water).
+ * Live property map host (parcel + elevation + contours + plantings + water data).
+ * No client-side image / AI feature detection.
  * @param {string} [idSuffix] unique suffix so overview + full report don't share one #id
  */
 function mapEmbedSection(idSuffix = 'main') {
@@ -1331,12 +1362,11 @@ function mapEmbedSection(idSuffix = 'main') {
     <section class="report-block report-map-block">
       <h2>Property map</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Live satellite view of the boundary you drew, with elevation surface, contours,
-        water inventory, proposed plantings, and image-detected canopy / structures.
-        Use the layer control (top-right) to toggle overlays. The same parcel coordinates
-        drive wetlands, small-water, and other maps in this report.
+        Satellite view of the boundary you drew, with elevation, contours, inventory water,
+        and proposed plantings from site data — not image AI guesses.
+        Use the layer control (top-right) to toggle overlays.
       </p>
-      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Unified property map with elevation, contours, and plantings"></div>
+      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Property map with elevation, contours, and plantings"></div>
       <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
       <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
     </section>`;
@@ -1392,7 +1422,7 @@ function getParcelLatLngsFromReport(r) {
 
 /**
  * Unified property map: parcel boundary + elevation + contours + plantings + water
- * + nearby settlements + client-side image analysis (trees / water / structures).
+ * + nearby named places. No AI pixel detection.
  */
 function mountUnifiedPropertyMap(el, latlngs, report) {
   if (!el || typeof L === 'undefined' || !latlngs?.length) return;
@@ -1625,13 +1655,7 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     settleLayer.addTo(map);
   }
 
-  // Image-analysis layers (trees / water / structures) — filled async
-  const treeDetect = L.layerGroup().addTo(map);
-  const waterDetect = L.layerGroup();
-  const structureDetect = L.layerGroup();
-  overlays['Trees (image analysis)'] = treeDetect;
-  overlays['Water (image analysis)'] = waterDetect;
-  overlays['Structures (image analysis)'] = structureDetect;
+  // No AI / pixel image-analysis layers — only measured data layers above.
 
   L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
   labels.addTo(map);
@@ -1645,7 +1669,6 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
       <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Contours</span>
       <span class="fine"><span class="legend-swatch" style="background:#2a9d8f;border-color:#0b6e4f"></span>Wetlands / water</span>
       <span class="fine"><span class="legend-swatch" style="background:#2f5d3a;border-color:#16211b;border-radius:50%"></span>Plantings</span>
-      <span class="fine"><span class="legend-swatch" style="background:#4a7c59;border-color:#2f5d3a;border-radius:50%"></span>Trees (AI)</span>
       <span class="fine"><span class="legend-swatch" style="background:#8c2f1d;border-color:#fff;border-radius:50%"></span>Settlements</span>
     `;
   }
@@ -1657,27 +1680,11 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     if (demFc?.features?.length) bits.push(`${demFc.features.length} contour lines`);
     if (plantFc?.features?.length) bits.push(`${plantFc.features.length} plantings`);
     if (waterFc?.features?.length) bits.push(`${waterFc.features.length} water features`);
-    bits.push('running image analysis…');
+    if (settleFc?.features?.length) bits.push('nearby places');
     statusEl.textContent = bits.length
-      ? `Layers: ${bits.join(' · ')}`
-      : 'Parcel boundary only — generate a full report for elevation and plantings.';
+      ? `Layers: ${bits.join(' · ')} (data layers only — no image AI)`
+      : 'Parcel boundary only.';
   }
-
-  // Client-side satellite image analysis for trees / water / structures
-  runPropertyImageAnalysis(map, latlngs, {
-    treeLayer: treeDetect,
-    waterLayer: waterDetect,
-    structureLayer: structureDetect,
-    statusEl,
-    treeCoverPct: sm.trees?.cover_pct ?? report?.tree_cover?.tree_cover_pct,
-  }).catch(() => {
-    if (statusEl) {
-      statusEl.textContent = (statusEl.textContent || '').replace(
-        / · running image analysis…|running image analysis…/,
-        ' · image analysis unavailable'
-      );
-    }
-  });
 
   const fit = () => {
     try {
@@ -1808,204 +1815,6 @@ function hslToRgb(h, s, l) {
     b = hue2rgb(p, q, h - 1 / 3);
   }
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
-}
-
-/**
- * Client-side Esri imagery export + pixel analysis for trees, water, and
- * possible structures/settlements within the parcel bbox.
- */
-async function runPropertyImageAnalysis(map, latlngs, opts = {}) {
-  const bounds = L.latLngBounds(latlngs);
-  const pad = 0.00015;
-  const west = bounds.getWest() - pad;
-  const south = bounds.getSouth() - pad;
-  const east = bounds.getEast() + pad;
-  const north = bounds.getNorth() + pad;
-  const size = 512;
-  const url =
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export' +
-    `?bbox=${west},${south},${east},${north}` +
-    '&bboxSR=4326&imageSR=4326' +
-    `&size=${size},${size}&format=jpg&f=image`;
-
-  let img;
-  try {
-    img = await loadImageCors(url);
-  } catch {
-    // Fallback: sample tree grid heuristically if export blocked
-    placeHeuristicTreeMarkers(opts.treeLayer, latlngs, opts.treeCoverPct);
-    if (opts.statusEl) {
-      opts.statusEl.textContent = (opts.statusEl.textContent || '')
-        .replace(/ · running image analysis…|running image analysis…/, '')
-        + ' · canopy estimate (export blocked)';
-    }
-    return;
-  }
-
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  ctx.drawImage(img, 0, 0, size, size);
-  const data = ctx.getImageData(0, 0, size, size).data;
-
-  const cell = 16; // sample every 16px → ~32×32 grid
-  const trees = [];
-  const waters = [];
-  const structures = [];
-
-  for (let py = cell / 2; py < size; py += cell) {
-    for (let px = cell / 2; px < size; px += cell) {
-      const i = (Math.floor(py) * size + Math.floor(px)) * 4;
-      const r = data[i];
-      const g = data[i + 1];
-      const b = data[i + 2];
-      const max = Math.max(r, g, b);
-      const min = Math.min(r, g, b);
-      const sum = r + g + b + 1e-6;
-      const brightness = sum / 3;
-      const sat = max === 0 ? 0 : (max - min) / max;
-      const greenness = (2 * g - r - b) / sum;
-      const blueness = (2 * b - r - g) / sum;
-
-      // Map pixel → lat/lng (image y grows down = north→south)
-      const lng = west + (px / size) * (east - west);
-      const lat = north - (py / size) * (north - south);
-      if (!pointInParcel(lat, lng, latlngs)) continue;
-
-      // Vegetation / trees: green-dominant, moderate brightness
-      if (greenness > 0.08 && g > r + 8 && g > b + 5 && brightness > 35 && brightness < 200) {
-        trees.push({ lat, lng, score: greenness });
-      }
-      // Water: blue-dominant or very dark low-sat (open water / shadow)
-      else if (
-        (blueness > 0.06 && b > r + 10 && b > g) ||
-        (brightness < 55 && sat < 0.25 && b >= g)
-      ) {
-        waters.push({ lat, lng, score: blueness });
-      }
-      // Structures / roofs: gray or bright low-sat patches
-      else if (sat < 0.18 && brightness > 90 && brightness < 210 && Math.abs(r - g) < 18 && Math.abs(g - b) < 18) {
-        structures.push({ lat, lng, score: 1 - sat });
-      }
-    }
-  }
-
-  // Cluster / thin markers so the map stays readable
-  const treePts = thinPoints(trees, 12);
-  const waterPts = thinPoints(waters, 8);
-  const structPts = thinPoints(structures, 6);
-
-  if (opts.treeLayer) {
-    opts.treeLayer.clearLayers();
-    treePts.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: 4,
-        fillColor: '#4a7c59',
-        fillOpacity: 0.75,
-        color: '#2f5d3a',
-        weight: 1,
-      })
-        .bindTooltip('Possible tree / canopy', { direction: 'top' })
-        .addTo(opts.treeLayer);
-    });
-  }
-  if (opts.waterLayer) {
-    opts.waterLayer.clearLayers();
-    waterPts.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: 5,
-        fillColor: '#4cc9f0',
-        fillOpacity: 0.7,
-        color: '#1d6a9a',
-        weight: 1,
-      })
-        .bindTooltip('Possible water (image)', { direction: 'top' })
-        .addTo(opts.waterLayer);
-    });
-  }
-  if (opts.structureLayer) {
-    opts.structureLayer.clearLayers();
-    structPts.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: 5,
-        fillColor: '#c4c4c4',
-        fillOpacity: 0.85,
-        color: '#5a5a5a',
-        weight: 1.5,
-      })
-        .bindTooltip('Possible structure / hard surface', { direction: 'top' })
-        .addTo(opts.structureLayer);
-    });
-  }
-
-  if (opts.statusEl) {
-    const cover =
-      opts.treeCoverPct != null ? ` · heuristic canopy ~${opts.treeCoverPct}%` : '';
-    opts.statusEl.textContent =
-      `Image analysis: ${treePts.length} canopy · ${waterPts.length} water · ${structPts.length} structure candidates` +
-      cover +
-      ' (screening only)';
-  }
-}
-
-function loadImageCors(url) {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('image load failed'));
-    img.src = url;
-  });
-}
-
-function pointInParcel(lat, lng, latlngs) {
-  // Ray casting on [lat,lng] ring
-  let inside = false;
-  for (let i = 0, j = latlngs.length - 1; i < latlngs.length; j = i++) {
-    const yi = latlngs[i][0];
-    const xi = latlngs[i][1];
-    const yj = latlngs[j][0];
-    const xj = latlngs[j][1];
-    const intersect =
-      yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi + 1e-12) + xi;
-    if (intersect) inside = !inside;
-  }
-  return inside;
-}
-
-function thinPoints(pts, maxN) {
-  if (!pts.length) return [];
-  const sorted = [...pts].sort((a, b) => (b.score || 0) - (a.score || 0));
-  const out = [];
-  const minSep = 0.00008;
-  for (const p of sorted) {
-    if (out.length >= maxN) break;
-    if (out.some((q) => Math.hypot(q.lat - p.lat, q.lng - p.lng) < minSep)) continue;
-    out.push(p);
-  }
-  return out;
-}
-
-function placeHeuristicTreeMarkers(layer, latlngs, coverPct) {
-  if (!layer || !latlngs?.length) return;
-  layer.clearLayers();
-  const n = coverPct != null ? Math.min(10, Math.max(2, Math.round(coverPct / 10))) : 4;
-  const b = L.latLngBounds(latlngs);
-  for (let i = 0; i < n; i++) {
-    const lat = b.getSouth() + ((i + 1) / (n + 1)) * (b.getNorth() - b.getSouth());
-    const lng = b.getWest() + (0.3 + (i % 3) * 0.2) * (b.getEast() - b.getWest());
-    if (!pointInParcel(lat, lng, latlngs)) continue;
-    L.circleMarker([lat, lng], {
-      radius: 4,
-      fillColor: '#4a7c59',
-      fillOpacity: 0.6,
-      color: '#2f5d3a',
-      weight: 1,
-    })
-      .bindTooltip('Estimated canopy (heuristic)', { direction: 'top' })
-      .addTo(layer);
-  }
 }
 
 /** @deprecated use mountUnifiedPropertyMap — kept as thin alias */
@@ -7649,13 +7458,12 @@ function renderSectionPanes(r, ctx) {
       </div>
       <p class="fine" style="margin-top:0.75rem">
         Free analysis first. When you’re ready, choose plantings and water options, download the report, and inquire.
+        Or use <strong>Findings</strong> / <strong>Your plan</strong> in the left menu.
       </p>
     </div>
   `,
     $('report-overview')
   );
-  $('report-overview')?.querySelector('[data-open-findings]')?.addEventListener('click', () => switchReportPane('findings'));
-  $('report-overview')?.querySelector('[data-open-your-plan]')?.addEventListener('click', () => switchReportPane('services'));
 
   // 2) Findings — single evidence scroll (no sales packages)
   b(
@@ -7684,9 +7492,6 @@ function renderSectionPanes(r, ctx) {
   `,
     $('report-findings')
   );
-  $('report-findings')
-    ?.querySelector('[data-open-your-plan-findings]')
-    ?.addEventListener('click', () => switchReportPane('services'));
 
   // 3) Your plan — only conversion surface
   b(
