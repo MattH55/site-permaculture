@@ -1182,6 +1182,14 @@ async function generateReport() {
     try {
       renderReport(data);
       showReport();
+      // Maps after the pane is visible — avoids Leaflet parentNode errors on hidden containers
+      setTimeout(() => {
+        try {
+          initReportMapEmbed(state.report);
+        } catch (mapErr) {
+          console.warn('Map embed failed (report still shown)', mapErr);
+        }
+      }, 80);
     } catch (renderErr) {
       console.error(renderErr);
       showLoading(false);
