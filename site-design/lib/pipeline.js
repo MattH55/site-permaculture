@@ -38,6 +38,7 @@ import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
 import { buildElevationOverlays } from './elevation-overlays.js';
+import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
@@ -478,7 +479,8 @@ export async function generateSiteReport(input = {}) {
     },
   };
 
-  const [accessRaw, elevationOverlays, satellite, wetlandsDetail, windRose, precipitation] =
+  const hrdemHint = layers.hrdem || {};
+  const [accessRaw, elevationOverlays, hrdemTerrain, satellite, wetlandsDetail, windRose, precipitation] =
     await Promise.all([
       withTimeout(
         assessAccess(centre, nearestCityDist),
@@ -490,7 +492,7 @@ export async function generateSiteReport(input = {}) {
         // Altalis map id=118 product family (open Titan) + HRDEM when available
         buildElevationOverlays(bbox, {
           limit: 1200,
-          hrdem_hint: layers.hrdem,
+          hrdem_hint: hrdemHint,
         }),
         22_000,
         {
@@ -499,9 +501,16 @@ export async function generateSiteReport(input = {}) {
             features: [],
             source: 'Alberta provincial elevation (timeout)',
           },
-          hrdem: layers.hrdem || { available: false },
+          hrdem: hrdemHint || { available: false },
         },
         'elevation_overlays'
+      ),
+      // 3D terrain grid from HRDEM DTM COG (STAC finds coverage; soft-miss if none)
+      withTimeout(
+        sampleHrdemTerrain(bbox, { size: 64, prefer: 'dtm' }),
+        28_000,
+        { available: false, error: 'timeout' },
+        'hrdem_terrain'
       ),
       withTimeout(
         fetchSatelliteIndices(
@@ -617,6 +626,18 @@ export async function generateSiteReport(input = {}) {
     record.hrdem = {
       ...(layers.hrdem || {}),
       ...elevationOverlays.hrdem,
+    };
+  }
+  // HRDEM sampled terrain for 3D viewer (prefer over coarse DEM when available)
+  record.hrdem_terrain = hrdemTerrain || { available: false };
+  if (hrdemTerrain?.available) {
+    record.hrdem = {
+      ...(record.hrdem || layers.hrdem || {}),
+      terrain_sampled: true,
+      terrain_rows: hrdemTerrain.rows,
+      terrain_cols: hrdemTerrain.cols,
+      terrain_relief_m: hrdemTerrain.relief_m,
+      terrain_source: hrdemTerrain.source,
     };
   }
 

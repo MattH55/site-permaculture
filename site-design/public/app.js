@@ -1825,7 +1825,13 @@ function topologySection(topo, a) {
   if (!topo || topo.elevation_m == null) {
     return `<section class="report-block"><h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p></section>`;
   }
-  // Stats only — elevation grid / cross-section / SVG contours removed (use provincial contours on satellite maps).
+  // Stats + interactive 3D terrain (HRDEM DTM when sampled, else design DEM grid)
+  const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
+  const report = state.report || {};
+  setTimeout(() => {
+    mountTerrain3dViewer(terrain3dId, report, topo, a);
+  }, 200);
+
   return `
     <section class="report-block">
       <h2>Topology</h2>
@@ -1842,7 +1848,323 @@ function topologySection(topo, a) {
         <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope p90</span><strong>${fmt(topo.slope_stats?.p90, '%')}</strong></div>
       </div>
+      ${terrain3dBlock(terrain3dId, report)}
     </section>`;
+}
+
+/**
+ * 3D terrain panel — prefers NRCan HRDEM DTM sample grid, falls back to design DEM.
+ */
+function terrain3dBlock(id, report) {
+  const ht = report?.hrdem_terrain;
+  const hrdem = report?.hrdem || report?.elevation_overlays?.hrdem;
+  const hasHrdemGrid = !!(ht?.available && ht.elevations_m?.length);
+  const sourceLabel = hasHrdemGrid
+    ? `NRCan HRDEM ${ht.resolution_m || 2} m DTM`
+    : 'Design DEM grid (Open-Meteo / regional)';
+  return `
+    <div class="terrain-3d-panel" style="margin-top:1rem">
+      <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
+        <span class="mono topo-label">3D terrain surface</span>
+        <span class="fine">${esc(sourceLabel)}${
+          hrdem?.available && !hasHrdemGrid
+            ? ' · HRDEM coverage noted; high-res sample pending'
+            : ''
+        }</span>
+      </div>
+      <div id="${id}" class="terrain-3d-host report-map"
+        style="height:min(380px,55vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0c1210;position:relative;touch-action:none"
+        role="img" aria-label="Interactive 3D terrain model of the parcel">
+        <p class="fine" style="padding:1rem;color:#c8cec1">Loading 3D terrain…</p>
+      </div>
+      <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-top:0.45rem">
+        <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
+          Vertical exaggerate
+          <input type="range" min="1" max="12" step="0.5" value="3" data-terrain-exag="${esc(id)}" style="width:8rem" />
+          <span class="mono" data-terrain-exag-val="${esc(id)}">3×</span>
+        </label>
+        <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
+      </div>
+      <p class="fine" style="margin-top:0.35rem">
+        Drag to orbit · scroll to zoom · exaggeration for readability (not true scale).
+        ${
+          hasHrdemGrid
+            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a> (Open Government Licence – Canada).`
+            : 'Built from the design elevation samples used for slope and placement rules.'
+        }
+      </p>
+    </div>`;
+}
+
+/**
+ * Mount Three.js mesh from hrdem_terrain or topology.grid elevations.
+ */
+function mountTerrain3dViewer(hostId, report, topo, analysis) {
+  const el = document.getElementById(hostId);
+  if (!el || typeof THREE === 'undefined') {
+    if (el) el.innerHTML = '<p class="fine" style="padding:1rem">3D viewer unavailable (Three.js not loaded).</p>';
+    return;
+  }
+
+  const ht = report?.hrdem_terrain;
+  let rows;
+  let cols;
+  let elevations;
+  let source = 'dem';
+  if (ht?.available && ht.elevations_m?.length && ht.rows && ht.cols) {
+    rows = ht.rows;
+    cols = ht.cols;
+    elevations = ht.elevations_m;
+    source = 'hrdem';
+  } else {
+    const g = topo?.grid || {};
+    rows = g.rows;
+    cols = g.cols;
+    elevations = g.elevations_m || null;
+    if ((!elevations || !elevations.length) && analysis?.elevation?.elevations) {
+      elevations = analysis.elevation.elevations;
+      rows = analysis.elevation.rows;
+      cols = analysis.elevation.cols;
+    }
+    if ((!elevations || !elevations.length) && report) {
+      const ep = elevPayloadFromTopology(report);
+      if (ep?.elevations_m?.length) {
+        elevations = ep.elevations_m;
+        rows = ep.rows;
+        cols = ep.cols;
+      }
+    }
+  }
+
+  if (!rows || !cols || !elevations?.length) {
+    el.innerHTML =
+      '<p class="fine" style="padding:1rem">No elevation grid for 3D surface yet. Provincial contours still appear on the map.</p>';
+    return;
+  }
+
+  // Destroy previous
+  if (el._eeTerrain) {
+    try {
+      el._eeTerrain.dispose();
+    } catch { /* ignore */ }
+    el._eeTerrain = null;
+  }
+  el.innerHTML = '';
+
+  const valid = elevations.filter((z) => z != null && Number.isFinite(z));
+  if (valid.length < 4) {
+    el.innerHTML = '<p class="fine" style="padding:1rem">Not enough elevation samples for a 3D surface.</p>';
+    return;
+  }
+
+  const zMin = Math.min(...valid);
+  const zMax = Math.max(...valid);
+  const zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
+  const relief = Math.max(zMax - zMin, 0.5);
+
+  const W = el.clientWidth || 640;
+  const H = el.clientHeight || 360;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0c1210);
+  const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 5000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(W, H, false);
+  el.appendChild(renderer.domElement);
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.style.display = 'block';
+
+  // Horizontal scale: unit square-ish mesh, aspect from cols/rows
+  const aspect = cols / rows;
+  const meshW = aspect >= 1 ? 100 : 100 * aspect;
+  const meshD = aspect >= 1 ? 100 / aspect : 100;
+
+  const geo = new THREE.PlaneGeometry(meshW, meshD, cols - 1, rows - 1);
+  geo.rotateX(-Math.PI / 2);
+
+  let exaggerate = 3;
+  const positions = geo.attributes.position;
+  const colors = new Float32Array(positions.count * 3);
+  const colorAttr = new THREE.BufferAttribute(colors, 3);
+
+  const heightColor = (t) => {
+    // low: deep green → mid: gold → high: pale
+    const r = 0.15 + t * 0.55;
+    const g = 0.28 + t * 0.35;
+    const b = 0.18 + t * 0.25;
+    return [r, g, b];
+  };
+
+  const applyHeights = () => {
+    const vertScale = (meshW * 0.08 * exaggerate) / relief;
+    for (let i = 0; i < positions.count; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      // PlaneGeometry UV: row 0 is bottom; our grid row 0 is north — flip Y
+      const gr = rows - 1 - row;
+      const z = elevations[gr * cols + col];
+      const elev = z != null && Number.isFinite(z) ? z : zMean;
+      const h = (elev - zMean) * vertScale;
+      positions.setY(i, h);
+      const t = (elev - zMin) / relief;
+      const [cr, cg, cb] = heightColor(Math.max(0, Math.min(1, t)));
+      colors[i * 3] = cr;
+      colors[i * 3 + 1] = cg;
+      colors[i * 3 + 2] = cb;
+    }
+    positions.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    geo.computeVertexNormals();
+  };
+
+  geo.setAttribute('color', colorAttr);
+  applyHeights();
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: false,
+    metalness: 0.05,
+    roughness: 0.85,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  // Wireframe overlay for structure
+  const wire = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({
+      color: 0xc4a35a,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.12,
+    })
+  );
+  scene.add(wire);
+
+  const ambient = new THREE.AmbientLight(0xb8c4b0, 0.55);
+  scene.add(ambient);
+  const sun = new THREE.DirectionalLight(0xfff2d6, 0.95);
+  sun.position.set(40, 80, 20);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x8ab4d4, 0.25);
+  fill.position.set(-30, 20, -40);
+  scene.add(fill);
+
+  // Orbit state
+  let dist = 140;
+  let theta = 0.65;
+  let phi = 0.95;
+  const target = new THREE.Vector3(0, 0, 0);
+  const updateCam = () => {
+    camera.position.set(
+      target.x + dist * Math.sin(phi) * Math.cos(theta),
+      target.y + dist * Math.cos(phi),
+      target.z + dist * Math.sin(phi) * Math.sin(theta)
+    );
+    camera.lookAt(target);
+  };
+  updateCam();
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  const onDown = (e) => {
+    dragging = true;
+    lastX = e.clientX ?? e.touches?.[0]?.clientX;
+    lastY = e.clientY ?? e.touches?.[0]?.clientY;
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const x = e.clientX ?? e.touches?.[0]?.clientX;
+    const y = e.clientY ?? e.touches?.[0]?.clientY;
+    if (x == null) return;
+    const dx = x - lastX;
+    const dy = y - lastY;
+    lastX = x;
+    lastY = y;
+    theta += dx * 0.008;
+    phi = Math.max(0.15, Math.min(Math.PI / 2 - 0.05, phi - dy * 0.008));
+    updateCam();
+  };
+  const onUp = () => {
+    dragging = false;
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    dist = Math.max(40, Math.min(400, dist * (e.deltaY > 0 ? 1.08 : 0.92)));
+    updateCam();
+  };
+  const canvas = renderer.domElement;
+  canvas.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+
+  let raf = 0;
+  const animate = () => {
+    raf = requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  };
+  animate();
+
+  const onResize = () => {
+    const w2 = el.clientWidth || W;
+    const h2 = el.clientHeight || H;
+    camera.aspect = w2 / h2;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w2, h2, false);
+  };
+  window.addEventListener('resize', onResize);
+
+  const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
+  const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
+  if (exagInput) {
+    exagInput.addEventListener('input', () => {
+      exaggerate = Number(exagInput.value) || 3;
+      if (exagVal) exagVal.textContent = `${exaggerate}×`;
+      applyHeights();
+    });
+  }
+  const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      dist = 140;
+      theta = 0.65;
+      phi = 0.95;
+      updateCam();
+    });
+  }
+
+  el._eeTerrain = {
+    dispose() {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('resize', onResize);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('wheel', onWheel);
+      geo.dispose();
+      mat.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+    },
+    source,
+  };
+
+  // Badge
+  const badge = document.createElement('div');
+  badge.className = 'fine';
+  badge.style.cssText =
+    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none';
+  badge.textContent =
+    source === 'hrdem'
+      ? `HRDEM DTM · relief ${relief.toFixed(1)} m · ${rows}×${cols}`
+      : `DEM grid · relief ${relief.toFixed(1)} m · ${rows}×${cols}`;
+  el.style.position = 'relative';
+  el.appendChild(badge);
 }
 
 function topoHeatHtml(topo) {
