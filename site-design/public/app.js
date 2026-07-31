@@ -12,9 +12,10 @@ const ELEMENT_LABELS = {
   hugelkultur_mound: 'Hügelkultur / raised bed',
   windbreak: 'Windbreak / shelterbelt',
   shelterbelt_zone: 'Shelterbelt zone',
-  food_forest_guild:                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        'Food forest guild',
+  food_forest_guild: 'Food forest guild',
   herb_spiral: 'Herb spiral',
   keyhole_bed: 'Keyhole bed',
+  groundwater_well: 'Groundwater well',
 };
 
 /** Client-facing value labels (mirrors lib/recommendation-values.js taxonomy). */
@@ -35,25 +36,44 @@ const VALUE_LABELS = {
   compliance_safety: 'Compliance & risk',
 };
 
+/** Report flow: site → packages (Food/Water/Energy/Shelter) → evidence */
+/**
+ * Simplified IA (value → plan):
+ *  1. Overview — simple map + headline facts + full findings (one scroll)
+ *  2. Your plan — select / email / estimate / inquire
+ * Planting planner stays a side beta offering.
+ * (Full report HTML still built for PDF export only.)
+ */
 const CORE_LABELS = [
-  { id: 'overview', label: 'Overview', color: 'var(--h1)' },
-  { id: 'topo', label: 'Topography', color: 'var(--h2)' },
-  { id: 'water', label: 'Water & wells', color: 'var(--h3)' },
-  { id: 'wildlife', label: 'Wildlife & trees', color: 'var(--h4)' },
-  { id: 'access', label: 'Access & community', color: 'var(--h5)' },
-  { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
-  { id: 'rules', label: 'Recommendations', color: 'var(--h7)' },
-  { id: 'plant', label: 'Planting plan', color: 'var(--h8)' },
-  { id: 'site', label: 'Full report', color: 'var(--h7)' },
+  { id: 'overview', label: 'Your site', color: 'var(--h1)' },
+  { id: 'services', label: 'Your plan', color: 'var(--h7)' },
+];
+/** Side-rail add-ons — not part of the core site design package */
+const SIDE_OFFERINGS = [
+  {
+    id: 'plant',
+    label: 'Planting planner',
+    badge: 'Beta',
+    color: 'var(--h8)',
+    blurb: 'Crop list, economics, and vendors — separate beta preview',
+  },
 ];
 const HORIZONS = CORE_LABELS.map((c) => c.color);
-const SECTION_IDS = CORE_LABELS.map((c) => c.id);
+const SECTION_IDS = [
+  ...CORE_LABELS.map((c) => c.id),
+  ...SIDE_OFFERINGS.map((s) => s.id),
+];
 
 /** EE service labels for card CTAs (mirrors lib/recommendation-values.js). */
 const EE_SERVICE_META = {
   water_earthworks_consult: {
     label: 'Water & earthworks consult',
     cta: 'Talk earthworks',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  well_drilling: {
+    label: 'Groundwater well',
+    cta: 'Plan a well',
     href: 'https://www.expandingedge.ca/services-landing',
   },
   shelterbelt_design: {
@@ -66,9 +86,24 @@ const EE_SERVICE_META = {
     cta: 'Plan a food forest',
     href: 'https://www.expandingedge.ca/services-landing',
   },
+  soil_carbon_building: {
+    label: 'Soil carbon building',
+    cta: 'Build soil carbon',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
   kitchen_garden_design: {
     label: 'Kitchen garden design',
     cta: 'Design Zone 1',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  solar_energy_package: {
+    label: 'Solar + generator',
+    cta: 'View energy packages',
+    href: 'https://www.expandingedge.ca/services-landing',
+  },
+  off_grid_garage: {
+    label: 'Off-grid garage ($250k)',
+    cta: 'Reserve garage package',
     href: 'https://www.expandingedge.ca/services-landing',
   },
   full_site_design: {
@@ -76,6 +111,14 @@ const EE_SERVICE_META = {
     cta: 'Book full design',
     href: 'https://www.expandingedge.ca/services-landing',
   },
+};
+
+const PILLAR_ORDER = ['water', 'food', 'energy', 'shelter'];
+const PILLAR_META = {
+  water: { label: 'Water', client: 'Wells, swales, ponds' },
+  food: { label: 'Food', client: 'Food forest & soil carbon building' },
+  energy: { label: 'Energy', client: 'Solar power + generators' },
+  shelter: { label: 'Shelter', client: 'Off-grid garage & wind belts' },
 };
 
 const state = {
@@ -91,6 +134,15 @@ const state = {
   valueFilter: 'all',
   /** Phase 4: plant list value filter */
   plantValueFilter: 'all',
+  /** Planting planner goals (max food, max nitrogen, lowest cost, …) */
+  plantGoals: ['balanced'],
+  plantScenario: 'market_garden',
+  plantReplanning: false,
+  /** Build-your-plan: selected intervention ids */
+  selectedInterventions: null,
+  /** Email captured for full report download */
+  reportEmail: null,
+  reportUnlocked: false,
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -159,24 +211,21 @@ function initLeafletMap(cfg) {
     opacity: 0.5,
   }).addTo(map);
 
-  // Wet Areas Mapping — depth-to-water WMS overlay (requires leaflet.wms plugin)
-  try {
-    if (typeof L.tileLayer.wms === 'function') {
-      const wamLayer = L.tileLayer.wms('https://geospatial.alberta.ca/umbriel/rest/services/hydrography/wet_areas_mapping_classified_depth_to_water_estimates/ImageServer/WMS', {
-        layers: '0',
-        format: 'image/png',
-        transparent: true,
-        opacity: 0.55,
-        attribution: 'Alberta — Wet Areas Mapping',
-      });
-      const overlayMaps = { 'Wet Areas (depth-to-water)': wamLayer };
-      L.control.layers(null, overlayMaps, { position: 'topright', collapsed: true }).addTo(map);
-    }
-  } catch (e) { console.warn('WMS overlay unavailable:', e.message); }
-
   state.map = map;
   state._leafletMap = map;
+  // In-progress drawing (vertices, rubber-band) vs finished parcel outline
   state._drawLayer = L.layerGroup().addTo(map);
+  state._shapeLayer = L.layerGroup().addTo(map);
+  state._previewRect = null;
+  state._previewPoly = null;
+
+  // Keep tiles sharp after orientation / layout changes (mobile critical)
+  const resizeMap = () => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  };
+  window.addEventListener('resize', resizeMap, { passive: true });
+  window.addEventListener('orientationchange', () => setTimeout(resizeMap, 200), { passive: true });
+  setTimeout(resizeMap, 100);
 
   // Double-click to finish polygon drawing
   map.on('dblclick', (e) => {
@@ -185,6 +234,9 @@ function initLeafletMap(cfg) {
       finishPolygonDraw();
     }
   });
+
+  // Live rubber-band while drawing (mousemove)
+  map.on('mousemove', (e) => leafletDrawMouseMove(e));
 
   $('draw-hint').textContent = 'Satellite map ready. Drag to pan · scroll to zoom · Draw parcel to outline land.';
   setDrawButtons(null);
@@ -228,9 +280,52 @@ function mainPostInit() {
   $('btn-back-map').onclick = showMap;
   $('btn-back-map-top')?.addEventListener('click', showMap);
   $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
-  $('tab-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('tab-site')?.addEventListener('click', () => switchReportPane('overview'));
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
+
+  // Global nav helpers (onclick-safe; survives re-renders)
+  window.__eeNav = (pane) => {
+    try {
+      switchReportPane(pane);
+    } catch (e) {
+      console.warn('nav failed', e);
+    }
+  };
+  window.__eeScrollFindings = () => {
+    switchReportPane('overview');
+    requestAnimationFrame(() => {
+      const el =
+        document.getElementById('site-findings') ||
+        document.getElementById('findings-water');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  // Delegated nav for data-* attributes
+  $('report-stage')?.addEventListener('click', (ev) => {
+    const findings = ev.target.closest(
+      '[data-open-findings], [data-open-findings-link], [data-scroll-findings]'
+    );
+    if (findings) {
+      ev.preventDefault();
+      window.__eeScrollFindings();
+      return;
+    }
+    const plan = ev.target.closest(
+      '[data-open-your-plan], [data-open-your-plan-findings], [data-open-your-plan-rules]'
+    );
+    if (plan) {
+      ev.preventDefault();
+      switchReportPane('services');
+      return;
+    }
+    const plant = ev.target.closest('[data-open-plant-beta]');
+    if (plant) {
+      ev.preventDefault();
+      switchReportPane('plant');
+    }
+  });
 
   $('btn-cancel-load')?.addEventListener('click', () => {
     state._reportAbort?.abort();
@@ -241,27 +336,61 @@ function mainPostInit() {
 }
 
 function switchReportPane(which) {
-  const allPanes = SECTION_IDS.map((id) => $(`pane-${id}`)).filter(Boolean);
-  const target = $(`pane-${which}`);
-  if (!target && which !== 'plant') return;
+  // Legacy / alias pane ids → current IA
+  const aliases = {
+    findings: 'overview', // findings live on overview as one scroll
+    water: 'overview',
+    energy: 'overview',
+    food: 'overview',
+    shelter: 'overview',
+    topo: 'overview',
+    fecundity: 'overview',
+    rules: 'overview',
+    site: 'overview',
+    plan: 'services',
+  };
+  which = aliases[which] || which;
 
-  allPanes.forEach((p) => {
-    p.classList.remove('is-active');
-    p.hidden = true;
-  });
-
-  const active = target || $('pane-plant');
-  if (active) {
-    active.classList.add('is-active');
-    active.hidden = false;
+  const paneId = which === 'plant' ? 'pane-plant' : `pane-${which}`;
+  let target = document.getElementById(paneId);
+  // Fallbacks if deploy HTML is out of date
+  if (!target && which === 'overview') {
+    target = document.getElementById('pane-overview') || document.getElementById('report-overview')?.closest('.report-pane');
+  }
+  if (!target && which === 'services') {
+    target = document.getElementById('pane-services');
+  }
+  if (!target) {
+    console.warn('switchReportPane: missing pane', paneId);
+    return;
   }
 
-  // Update sidebar step highlight
-  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
-    sr.classList.toggle('is-active-pane', sr.dataset.pane === which);
+  document.querySelectorAll('.report-pane').forEach((p) => {
+    if (p.id === 'pane-site' || p.id === 'pane-findings') {
+      // PDF host + retired findings pane stay hidden
+      p.hidden = true;
+      p.classList.remove('is-active');
+      p.style.display = 'none';
+      return;
+    }
+    p.classList.remove('is-active');
+    p.hidden = true;
+    p.style.display = 'none';
   });
 
-  // Update top tabs
+  target.classList.add('is-active');
+  target.hidden = false;
+  target.removeAttribute('hidden');
+  target.style.display = 'block';
+
+  document.querySelectorAll('#report-core .step-row, #report-side-offerings [data-pane]').forEach((sr) => {
+    const on = sr.dataset.pane === which;
+    sr.classList.toggle('is-active-pane', on);
+    if (on && isMobileLayout()) {
+      sr.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+    }
+  });
+
   const tabSite = $('tab-site');
   const tabPlant = $('tab-plant');
   const isPlant = which === 'plant';
@@ -269,20 +398,22 @@ function switchReportPane(which) {
   tabPlant?.classList.toggle('is-active', isPlant);
   tabSite?.setAttribute('aria-selected', String(!isPlant));
   tabPlant?.setAttribute('aria-selected', String(isPlant));
+  document.body.classList.toggle('is-plant-pane', isPlant);
 
-  // Initialize Leaflet maps for the newly visible pane (they need invalidateSize)
   setTimeout(() => {
-    active?.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
-      if (el._leaflet_id) return; // already initialized
-      // Leaflet maps created via setTimeout in the section functions handle themselves
+    target.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
+      const map = el._eeLeafletMap;
+      if (map && typeof map.invalidateSize === 'function') {
+        try {
+          map.invalidateSize({ animate: false });
+        } catch { /* ignore */ }
+      }
     });
-    // Trigger invalidateSize on any maps in the active pane
-    active?.querySelectorAll('.leaflet-container').forEach((m) => {
-      if (m._leaflet_map) m._leaflet_map.invalidateSize();
-    });
-  }, 100);
+  }, 120);
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (which !== 'overview') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
 function loadGoogleMaps(key) {
@@ -404,23 +535,20 @@ function detachDrawListeners() {
   state._drawClickHandler = null;
 }
 
-function clearVertexMarkers() {
+function clearDrawPreview() {
   state._drawLayer?.clearLayers();
-}
-
-function clearPreview() {
-  clearVertexMarkers();
+  state._previewRect = null;
+  state._previewPoly = null;
   state.preview = null;
-  state.draw.rectStart = null;
 }
 
-function stopDrawingMode() {
+function stopDrawingMode({ clearInProgress = true } = {}) {
   detachDrawListeners();
   state.draw.active = false;
   state.draw.kind = null;
   state.draw.points = [];
   state.draw.rectStart = null;
-  clearPreview();
+  if (clearInProgress) clearDrawPreview();
   setDrawButtons(null);
 }
 
@@ -442,10 +570,102 @@ function startDraw(kind) {
     state._leafletMap.on('click', state._drawClickHandler);
   } else {
     ensureFinishButton(false);
-    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner.';
+    $('draw-hint').textContent = 'Click one corner of the parcel, then click the opposite corner. Move the mouse to preview the rectangle.';
     state._drawClickHandler = (e) => leafletRectClick(e);
     state._leafletMap.on('click', state._drawClickHandler);
   }
+}
+
+/** Live rubber-band: polygon closing edge / rectangle from first corner. */
+function leafletDrawMouseMove(e) {
+  if (!state.draw.active || !state._drawLayer || !e?.latlng) return;
+  const ll = e.latlng;
+
+  if (state.draw.kind === 'rectangle' && state.draw.rectStart) {
+    const a = state.draw.rectStart;
+    const path = [
+      [a.lat, a.lng],
+      [ll.lat, a.lng],
+      [ll.lat, ll.lng],
+      [a.lat, ll.lng],
+    ];
+    redrawInProgress({
+      markers: [[a.lat, a.lng]],
+      polygon: path,
+      dashed: true,
+    });
+    return;
+  }
+
+  if (state.draw.kind === 'polygon' && state.draw.points.length >= 1) {
+    const pts = state.draw.points.map((p) => [p.lat, p.lng]);
+    const cursor = [ll.lat, ll.lng];
+    const line = [...pts, cursor];
+    // Preview fill when ≥2 corners (triangle with cursor)
+    const poly = state.draw.points.length >= 2 ? [...pts, cursor] : null;
+    redrawInProgress({
+      markers: pts,
+      polyline: line,
+      polygon: poly,
+      dashed: true,
+    });
+  }
+}
+
+/**
+ * Redraw in-progress drawing graphics (keeps finished shape on _shapeLayer).
+ * @param {{ markers?: number[][], polyline?: number[][], polygon?: number[][], dashed?: boolean }} opts
+ */
+function redrawInProgress(opts = {}) {
+  if (!state._drawLayer) return;
+  state._drawLayer.clearLayers();
+  const color = '#5b3a73';
+  const gold = '#a8801f';
+
+  if (opts.polygon?.length >= 3) {
+    L.polygon(opts.polygon, {
+      color: gold,
+      fillColor: gold,
+      fillOpacity: opts.dashed ? 0.12 : 0.22,
+      weight: 2.5,
+      dashArray: opts.dashed ? '6 4' : null,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  } else if (opts.polyline?.length >= 2) {
+    L.polyline(opts.polyline, {
+      color: gold,
+      weight: 2.5,
+      opacity: 0.95,
+      dashArray: opts.dashed ? '6 4' : null,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  }
+
+  (opts.markers || []).forEach((m) => {
+    L.circleMarker(m, {
+      radius: 5,
+      fillColor: color,
+      fillOpacity: 1,
+      color: '#f7f8f3',
+      weight: 2,
+      interactive: false,
+    }).addTo(state._drawLayer);
+  });
+}
+
+function setFinishedParcelShape(latlngs) {
+  if (!state._shapeLayer || !state._leafletMap) return;
+  state._shapeLayer.clearLayers();
+  if (!latlngs?.length) return;
+  const poly = L.polygon(latlngs, {
+    color: '#a8801f',
+    fillColor: '#a8801f',
+    fillOpacity: 0.22,
+    weight: 3,
+  }).addTo(state._shapeLayer);
+  try {
+    state._leafletMap.fitBounds(poly.getBounds(), { padding: [36, 36], maxZoom: 18 });
+  } catch { /* ignore */ }
 }
 
 function ensureFinishButton(show) {
@@ -469,32 +689,24 @@ function ensureFinishButton(show) {
 
 function leafletPolygonClick(e) {
   if (!state.draw.active || state.draw.kind !== 'polygon') return;
+  L.DomEvent.stopPropagation(e);
   const ll = e.latlng;
   state.draw.points.push(ll);
-  L.circleMarker([ll.lat, ll.lng], {
-    radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
-    color: '#f7f8f3', weight: 2,
-  }).addTo(state._drawLayer);
 
-  if (state.draw.points.length >= 2) {
-    state._drawLayer.clearLayers();
-    state.draw.points.forEach((p) => {
-      L.circleMarker([p.lat, p.lng], {
-        radius: 5, fillColor: '#5b3a73', fillOpacity: 1,
-        color: '#f7f8f3', weight: 2,
-      }).addTo(state._drawLayer);
-    });
-    L.polyline(state.draw.points.map((p) => [p.lat, p.lng]), {
-      color: '#5b3a73', weight: 2.5, opacity: 0.95,
-    }).addTo(state._drawLayer);
-  }
+  const pts = state.draw.points.map((p) => [p.lat, p.lng]);
+  redrawInProgress({
+    markers: pts,
+    polyline: pts.length >= 2 ? pts : null,
+    polygon: pts.length >= 3 ? pts : null,
+    dashed: false,
+  });
 
   const finishBtn = $('btn-finish-poly');
   if (finishBtn) finishBtn.disabled = state.draw.points.length < 3;
 
   $('draw-hint').textContent = state.draw.points.length < 3
-    ? `Corner ${state.draw.points.length} placed — need at least 3.`
-    : `${state.draw.points.length} corners — double-click or Finish parcel to close.`;
+    ? `Corner ${state.draw.points.length} placed — need at least 3. Move mouse to preview the edge.`
+    : `${state.draw.points.length} corners — move mouse to preview · double-click or Finish to close.`;
 }
 
 function finishPolygonDraw() {
@@ -506,11 +718,9 @@ function finishPolygonDraw() {
   const latlngs = state.draw.points.map((ll) => [ll.lat, ll.lng]);
   state.paths = latlngs.map(([lat, lng]) => [lng, lat]);
   state.shape = { leaflet: true };
-  state._drawLayer.clearLayers();
-  L.polygon(latlngs, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
-  stopDrawingMode();
+  clearDrawPreview();
+  setFinishedParcelShape(latlngs);
+  stopDrawingMode({ clearInProgress: true });
   ensureFinishButton(false);
   updateParcelMeta();
   $('draw-hint').textContent = 'Parcel set. Generate site report.';
@@ -519,12 +729,12 @@ function finishPolygonDraw() {
 
 function leafletRectClick(e) {
   if (!state.draw.active || state.draw.kind !== 'rectangle') return;
+  L.DomEvent.stopPropagation(e);
   const ll = e.latlng;
   if (!state.draw.rectStart) {
     state.draw.rectStart = ll;
-    state._drawLayer.clearLayers();
-    L.circleMarker([ll.lat, ll.lng], { radius: 5, fillColor: '#5b3a73', fillOpacity: 1, color: '#f7f8f3', weight: 2 }).addTo(state._drawLayer);
-    $('draw-hint').textContent = 'Now click the opposite corner.';
+    redrawInProgress({ markers: [[ll.lat, ll.lng]] });
+    $('draw-hint').textContent = 'Move the mouse to stretch the rectangle, then click the opposite corner.';
     return;
   }
   const a = state.draw.rectStart;
@@ -532,11 +742,9 @@ function leafletRectClick(e) {
   const path = [[a.lat, a.lng], [b.lat, a.lng], [b.lat, b.lng], [a.lat, b.lng]];
   state.paths = path.map(([lat, lng]) => [lng, lat]);
   state.shape = { leaflet: true };
-  state._drawLayer.clearLayers();
-  L.polygon(path, {
-    color: '#5b3a73', fillColor: '#5b3a73', fillOpacity: 0.28, weight: 2.5,
-  }).addTo(state._drawLayer);
-  stopDrawingMode();
+  clearDrawPreview();
+  setFinishedParcelShape(path);
+  stopDrawingMode({ clearInProgress: true });
   updateParcelMeta();
   $('draw-hint').textContent = 'Parcel set. Generate site report.';
 }
@@ -564,20 +772,22 @@ function pathFromRect(rect) {
 }
 
 function clearShape(resetHint = true) {
-  stopDrawingMode();
+  stopDrawingMode({ clearInProgress: true });
   ensureFinishButton(false);
 
   if (state.shape) {
-    if (state.mode === 'google') state.shape.setMap(null);
+    if (state.mode === 'google' && state.shape.setMap) state.shape.setMap(null);
     state.shape = null;
   }
+  state._shapeLayer?.clearLayers();
+  clearDrawPreview();
   if (state.mode === 'fallback') fallbackClear();
   state.paths = null;
   $('btn-report').disabled = true;
   $('parcel-meta').hidden = true;
   if (resetHint) {
     $('draw-hint').textContent =
-      'Click Draw parcel, then click the map to place corners (double-click to finish).';
+      'Click Draw parcel, then click the map to place corners (double-click to finish). Use Rectangle for a box — drag-preview shows as you move.';
   }
   setError('');
 }
@@ -929,7 +1139,9 @@ async function generateReport() {
 
   const ctrl = new AbortController();
   state._reportAbort = ctrl;
-  const timeoutMs = 90_000;
+  // Free-tier hosts + satellite layers can exceed 90s on cold start; soft pipeline
+  // timeouts still return a report, but keep a long client ceiling as safety net.
+  const timeoutMs = 180_000;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
@@ -939,7 +1151,8 @@ async function generateReport() {
       signal: ctrl.signal,
       body: JSON.stringify({
         site_name: $('site_name').value.trim(),
-        polygon: { paths: [state.paths] },
+        // paths: closed ring of [lng, lat] — same shape pipeline expects
+        polygon: { paths: state.paths },
       }),
     });
     let data;
@@ -954,6 +1167,14 @@ async function generateReport() {
     try {
       renderReport(data);
       showReport();
+      // Maps after the pane is visible — avoids Leaflet parentNode errors on hidden containers
+      setTimeout(() => {
+        try {
+          initReportMapEmbed(state.report);
+        } catch (mapErr) {
+          console.warn('Map embed failed (report still shown)', mapErr);
+        }
+      }, 80);
     } catch (renderErr) {
       console.error(renderErr);
       showLoading(false);
@@ -963,7 +1184,7 @@ async function generateReport() {
     showLoading(false);
     const msg =
       e.name === 'AbortError'
-        ? 'Timed out waiting for land data (try a smaller parcel or again in a moment).'
+        ? 'Timed out waiting for land data after 3 minutes. The first request after idle can be slow — try Generate again (often cached). A smaller parcel also helps.'
         : e.message || 'Could not generate report';
     setError(msg);
   } finally {
@@ -1010,10 +1231,15 @@ function pulseLoading() {
     const sub = document.querySelector('#loading h2');
     if (sub) {
       const sec = Math.round((Date.now() - started) / 1000);
-      sub.textContent =
-        sec < 3
-          ? 'Reading the land…'
-          : `Reading the land… (${sec}s — elevation & Alberta layers)`;
+      if (sec < 10) sub.textContent = 'Reading the land…';
+      else if (sec < 35)
+        sub.textContent = `Reading the land… (${sec}s of ~60s — elevation & contours)`;
+      else if (sec < 55)
+        sub.textContent = `Still working… (${sec}s of ~60s — wetlands, soils, climate)`;
+      else if (sec < 75)
+        sub.textContent = `Almost there… (${sec}s — finishing report)`;
+      else
+        sub.textContent = `Finishing… (${sec}s — slow layers will skip rather than hang)`;
     }
   }, 700);
 }
@@ -1038,22 +1264,41 @@ function setError(msg) {
   el.textContent = msg;
 }
 
+function isMobileLayout() {
+  return typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 820px)').matches
+    : window.innerWidth <= 820;
+}
+
 function showReport() {
   $('map-stage').hidden = true;
   $('report-stage').hidden = false;
-  switchReportPane('site');
+  // Value first: land on overview (insights), not sales. Plan is at the end.
+  switchReportPane('overview');
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  // Scroll active rail chip into view on small screens
+  requestAnimationFrame(() => {
+    const active = document.querySelector('#report-core .step-row.is-active-pane');
+    active?.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  });
 }
 
 function showMap() {
   $('report-stage').hidden = true;
   $('map-stage').hidden = false;
-  if (state._leafletMap) state._leafletMap.invalidateSize();
+  requestAnimationFrame(() => {
+    if (state._leafletMap) {
+      try { state._leafletMap.invalidateSize({ animate: false }); } catch { /* ignore */ }
+    }
+  });
 }
 
 /* ---------- report UI ---------- */
 
 function renderReport(r) {
+  // Fresh plan selections for each new report
+  state.selectedInterventions = null;
+  // Keep email unlock across re-draws of the same session if already unlocked
   paintCore(true);
   // Reset value filter only when a new report arrives
   if (state.report !== r) {
@@ -1092,264 +1337,1095 @@ function renderReport(r) {
   const services =
     recommendations?.related_services || collectServicesClient(allEls);
 
-  // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
-  const exportObj = JSON.parse(JSON.stringify(r));
-  delete exportObj._meta;
-  if (exportObj.topology?.grid?.elevations_m) {
-    // keep normalized grid for re-use; drop raw if needed later
+  // Slim export for JSON — never let stringify crash the UI
+  let exportObj = r;
+  try {
+    exportObj = JSON.parse(JSON.stringify(r));
+    delete exportObj._meta;
+  } catch (e) {
+    console.warn('exportObj clone failed', e);
+    exportObj = { site_name: r.site_name, error: 'export clone failed' };
   }
 
-  const solarDaily =
-    solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  const ctx = {
+    topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar,
+    landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts,
+    services, recommendations, exportObj, flags,
+  };
 
-  $('report').innerHTML = `
-    <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
+  // Hidden linear document for PDF export (not shown in nav)
+  try {
+    const reportEl = $('report');
+    if (reportEl) {
+      reportEl.innerHTML = `
+    <div class="panel">
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
-      <div class="score-row">
-        <span class="score">${allEls.length}</span>
-        <span class="score-of">recommendations for this parcel</span>
-      </div>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
         ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-        ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
-        ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
-        ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
-      ${
-        recommendations?.summary_sentence
-          ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>`
-          : ''
-      }
-
-      <div class="summary-grid">
-        <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
-        <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
-        <div class="stat"><span class="k">Landform</span><strong>${esc((r.terrain?.landform_position || '—').replace(/_/g, ' '))}</strong></div>
-        <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
-        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
-        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${
-          solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'
-        }</strong></div>
-      </div>
-
-      ${mapEmbedSection()}
-
-      ${topologySection(topo, a)}
-      ${temperatureSection(r.temperature || a.temperature)}
-      ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-      ${solarSection(solar)}
-      ${landValueSection(landValue)}
-      ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-      ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
-      ${provincialContoursMap(r._provincial_contours, centre)}
-      ${wildlifeSection(r.wildlife || a.wildlife)}
-      ${treeCoverSection(r.tree_cover)}
-      ${accessSection(r.access, city?.name, city?.distance_km)}
-      ${demographicsSection(r.demographics)}
-      ${atsSection(r.ats, r.parcel_address)}
-      ${windSection(r.climate, r, r.wind_rose)}
-      ${wetAreasSection(r.wet_areas_mapping)}
-      ${biodiversitySection(r.biodiversity)}
-
-      ${
-        flags.length
-          ? `<div class="flags">${flags
-              .map(
-                (f) => `
-            <div class="flag" data-severity="${esc(f.severity)}">
-              <strong>${esc(severityLabel(f.severity))}</strong>
-              <p>${esc(f.message)}</p>
-            </div>`
-              )
-              .join('')}</div>`
-          : ''
-      }
-
-      <section class="report-block placement-block">
-        <h2>What this parcel needs</h2>
-        <p class="fine" style="margin-top:-0.3rem">
-          Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
-        </p>
-        ${siteDriversSection(siteDrivers)}
-        ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
-        <div class="elements" id="rec-elements">
-          ${
-            els.length
-              ? els.map((e) => recommendationCard(e)).join('')
-              : allEls.length
-                ? '<p class="fine" id="rec-empty-filter">No recommendations in this value filter — try All or another outcome.</p>'
-                : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
-          }
-        </div>
-        ${servicesCtaSection(services)}
-      </section>
-
-      ${quoteSection(r.service_quote || a.service_quote)}
-
-      <div class="plant-cta panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
-        <span class="mono eyebrow">Next</span>
-        <h2 style="font-size:1.25rem;margin:0.2rem 0 0.4rem">Planting plan</h2>
-        <p class="fine" style="margin:0 0 0.8rem">
-          Open the separate planting pane for Alberta-suited crops, economics, and vendor links
-          for seeds, saplings, and fertilizer.
-        </p>
-        <button type="button" class="btn" id="btn-goto-plant">Open planting plan →</button>
-      </div>
-
-      <div class="sources">
-        <span class="mono">Data provenance</span>
-        <ul>
-          ${(r.data_provenance || [])
-            .map(
-              (p) =>
-                `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${
-                  p.source_url
-                    ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>`
-                    : ''
-                }</li>`
-            )
-            .join('')}
-          ${
-            a.elevation?.source
-              ? `<li>DEM samples: ${esc(a.elevation.source)} (${esc(a.elevation.grid)} grid)</li>`
-              : ''
-          }
-          ${
-            a.hrdem?.note
-              ? `<li>HRDEM: ${esc(a.hrdem.note)}</li>`
-              : ''
-          }
-        </ul>
-      </div>
-
-      <div class="json-box">
-        <header>
-          <span class="mono">Schema export</span>
-          <div>
-            <button type="button" class="btn-quiet" id="copy-json">Copy</button>
-            <button type="button" class="btn-quiet" id="dl-json">Download</button>
-          </div>
-        </header>
-        <pre>${esc(JSON.stringify(exportObj, null, 2))}</pre>
-      </div>
-
-      <div class="actions">
-        <button type="button" class="btn" id="btn-again-map">Draw another parcel</button>
-        <a class="btn btn-secondary" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener">Book a design consult</a>
-      </div>
+      ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
-        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment for a parcel.
-        (780) 236-3630 · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a>
-        ${r._meta?.duration_ms ? ` · generated in ${Math.round(r._meta.duration_ms / 100) / 10}s` : ''}
-        ${r._meta?.cache === 'hit' ? ' · cached' : ''}
+        Planning guidance for Expanding Edge — not engineered drawings.
+        (780) 236-3630 · info@expandingedge.ca
       </p>
     </div>`;
+    }
+  } catch (e) {
+    console.warn('PDF shell render failed', e);
+  }
 
-  initReportMapEmbed(r);
-
-  // Populate section panes with grouped content
-  renderSectionPanes(r, { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags });
-
-  $('btn-again-map').onclick = () => {
-    clearShape();
-    showMap();
-  };
-  $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
-  bindValueFilters(allEls);
-  renderPlantingPane(r.planting_plan);
-  // Inject per-section PDF download buttons after DOM is populated
-  setTimeout(() => injectSectionPdfButtons(), 200);
-  $('copy-json').onclick = async () => {
+  renderSectionPanes(r, ctx);
+  try {
+    renderPlantingPane(r.planting_plan);
+  } catch (e) {
+    console.warn('planting pane render failed', e);
+  }
+  setTimeout(() => {
     try {
-      await navigator.clipboard.writeText(JSON.stringify(exportObj, null, 2));
-      $('copy-json').textContent = 'Copied';
-      setTimeout(() => ($('copy-json').textContent = 'Copy'), 1200);
-    } catch { /* ignore */ }
-  };
-  $('dl-json').onclick = () => {
-    const blob = new Blob([JSON.stringify(exportObj, null, 2)], {
-      type: 'application/json',
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${(r.site_id || 'site-report').replace(/[^\w.-]+/g, '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
+      injectSectionPdfButtons();
+    } catch (e) {
+      console.warn('pdf buttons failed', e);
+    }
+  }, 200);
 }
 
-/** Placeholder host for the live Google Map embed — populated by initReportMapEmbed() after insertion. */
-function mapEmbedSection() {
+/** Tear down a Leaflet map on a container without throwing parentNode errors. */
+function destroyLeafletOn(el) {
+  if (!el) return;
+  try {
+    if (el._eeLeafletMap) {
+      el._eeLeafletMap.off();
+      el._eeLeafletMap.remove();
+    }
+  } catch (e) {
+    console.warn('leaflet remove', e);
+  }
+  el._eeLeafletMap = null;
+  // Leaflet stamps _leaflet_id on the container; clear so L.map can re-init
+  try {
+    if (el._leaflet_id) {
+      // eslint-disable-next-line no-underscore-dangle
+      delete el._leaflet_id;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    el.innerHTML = '';
+  } catch {
+    /* ignore */
+  }
+  el.dataset.leafletReady = '0';
+}
+
+/**
+ * Overview property map: parcel + Alberta provincial contours (Altalis map id=118
+ * product family via open Titan) + HRDEM hillshade where NRCan coverage exists.
+ * @param {string} [idSuffix]
+ */
+function mapEmbedSection(idSuffix = 'main') {
+  const id = `report-map-${idSuffix}`;
+  const legendId = `report-map-legend-${idSuffix}`;
+  const statusId = `report-map-status-${idSuffix}`;
   return `
     <section class="report-block report-map-block">
       <h2>Your parcel</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Live satellite view — the exact boundary you drew.
+        Satellite basemap with the boundary you drew,
+        <strong>Alberta 1:20&nbsp;000 provincial contours</strong>
+        (same product family as
+        <a href="https://www.altalis.com/map;id=118" target="_blank" rel="noopener">Altalis map id=118</a>,
+        served openly via Alberta Titan), and
+        <strong>HRDEM hillshade</strong> where NRCan coverage exists
+        (<a href="https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b" target="_blank" rel="noopener">HRDEM Mosaic</a>).
       </p>
-      <div id="report-map" class="report-map"></div>
+      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Parcel map with provincial contours and HRDEM"></div>
+      <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
+      <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
     </section>`;
 }
 
-function initReportMapEmbed(r) {
-  const el = $('report-map');
-  if (!el) return;
-  el.innerHTML = '';
-  const ring = r.geometry?.coordinates?.[0];
-  if (!Array.isArray(ring) || ring.length < 3) return;
-  const latlngs = ring.map(([lng, lat]) => [lat, lng]);
-  const map = L.map(el, { zoomControl: true, attributionControl: false });
-  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: '&copy; Esri', maxZoom: 20 }).addTo(map);
-  L.polygon(latlngs, { color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.15, weight: 3 }).addTo(map);
-  try { map.fitBounds(latlngs, { padding: [30, 30] }); } catch {}
+/**
+ * Init Leaflet unified property map(s) from drawn parcel + site_map payload.
+ * Safe for hidden panes: unique containers + delayed invalidateSize.
+ */
+function initReportMapEmbed(r, preferredId) {
+  if (typeof L === 'undefined') return;
+  const latlngs = getParcelLatLngsFromReport(r);
+  if (!latlngs) return;
+
+  const candidates = preferredId
+    ? [document.getElementById(preferredId)].filter(Boolean)
+    : [
+        document.getElementById('report-map-overview'),
+        document.getElementById('report-map-full'),
+        document.getElementById('report-map-main'),
+        document.getElementById('report-map'),
+      ].filter(Boolean);
+
+  const els = [
+    ...candidates.filter((el) => el.offsetParent !== null || el.offsetWidth > 0),
+    ...candidates,
+  ];
+  const seen = new Set();
+  for (const el of els) {
+    if (!el || seen.has(el)) continue;
+    seen.add(el);
+    mountUnifiedPropertyMap(el, latlngs, r);
+  }
+}
+
+/** Parcel ring as Leaflet [lat,lng][] from report geometry or live draw state. */
+function getParcelLatLngsFromReport(r) {
+  const ring =
+    r?.geometry?.coordinates?.[0] ||
+    r?.site_map?.parcel?.coordinates?.[0] ||
+    (Array.isArray(state.paths) && state.paths.length >= 3 ? state.paths : null);
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const latlngs = ring
+    .filter((p) => Array.isArray(p) && p.length >= 2)
+    .map(([lng, lat]) => [Number(lat), Number(lng)])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  if (latlngs.length < 3) return null;
+  const a = latlngs[0];
+  const b = latlngs[latlngs.length - 1];
+  if (a[0] !== b[0] || a[1] !== b[1]) latlngs.push([...a]);
+  return latlngs;
+}
+
+/**
+ * Overview map: satellite + parcel + Alberta provincial contours (Altalis id=118
+ * product family via open Titan) + HRDEM hillshade WMS when coverage exists.
+ */
+function mountUnifiedPropertyMap(el, latlngs, report) {
+  if (!el || typeof L === 'undefined' || !latlngs?.length) return;
+  try {
+    destroyLeafletOn(el);
+    el.classList.add('report-map', 'report-map-unified');
+    if (!el.style.height) el.style.minHeight = '380px';
+
+    let map;
+    try {
+      map = L.map(el, {
+        zoomControl: true,
+        attributionControl: true,
+        scrollWheelZoom: true,
+      });
+    } catch (err) {
+      console.warn('Parcel map init failed', err);
+      el.innerHTML = '<p class="fine">Map could not load — try reopening this section.</p>';
+      return;
+    }
+    el._eeLeafletMap = map;
+    el.dataset.leafletReady = '1';
+
+    const imagery = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution:
+          'Esri · Alberta contours (Titan / Altalis map 118 family) · HRDEM (NRCan)',
+        maxZoom: 20,
+      }
+    ).addTo(map);
+
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { opacity: 0.5, maxZoom: 20 }
+    ).addTo(map);
+
+    const overlays = {};
+    try {
+      const hrdemLayer = addHrdemWmsToMap(map, report);
+      if (hrdemLayer) overlays['HRDEM hillshade'] = hrdemLayer;
+    } catch (e) {
+      console.warn('HRDEM overlay skipped', e);
+    }
+
+    const parcelLayer = L.polygon(latlngs, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+    }).addTo(map);
+    parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    overlays['Your parcel'] = parcelLayer;
+
+    const legendEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-legend-')
+    );
+    const statusEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-status-')
+    );
+    const hrdem = getHrdemOverlay(report);
+
+    const updateLegendStatus = (contourCount) => {
+      if (legendEl) {
+        legendEl.innerHTML = `
+      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#e8d5ff;border-width:2px"></span>Provincial contour</span>
+      ${
+        hrdem?.available
+          ? '<span class="fine"><span class="legend-swatch" style="background:rgba(80,80,80,0.45);border-color:#444"></span>HRDEM hillshade</span>'
+          : ''
+      }
+    `;
+      }
+      if (statusEl) {
+        const bits = [];
+        if (contourCount) bits.push(`${contourCount} provincial contour lines`);
+        else bits.push('loading contours…');
+        if (hrdem?.available) bits.push('HRDEM hillshade on');
+        else bits.push('HRDEM not available here');
+        statusEl.textContent = bits.join(' · ');
+      }
+    };
+
+    // Contours: use report data, or fetch live from Alberta Titan if missing
+    let contourLayer = null;
+    let contourCount = 0;
+    try {
+      contourLayer = addProvincialContoursToMap(map, report);
+      if (contourLayer) {
+        overlays['Provincial contours'] = contourLayer;
+        contourCount = getProvincialContoursFc(report)?.features?.length || 0;
+      }
+    } catch (e) {
+      console.warn('Contours overlay skipped', e);
+    }
+    updateLegendStatus(contourCount);
+
+    if (!contourCount) {
+      // Async fallback so the satellite map still gets contour lines
+      ensureProvincialContoursOnMap(map, report, latlngs, overlays, parcelLayer)
+        .then((n) => {
+          updateLegendStatus(n || 0);
+          try {
+            parcelLayer.bringToFront();
+          } catch { /* ignore */ }
+        })
+        .catch((e) => console.warn('contour fetch failed', e));
+    }
+
+    try {
+      parcelLayer.bringToFront();
+    } catch { /* ignore */ }
+
+    try {
+      if (Object.keys(overlays).length > 1) {
+        L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
+      }
+    } catch (e) {
+      console.warn('layer control skipped', e);
+    }
+
+    const fit = () => {
+      try {
+        map.invalidateSize({ animate: false });
+        map.fitBounds(parcelLayer.getBounds(), { padding: [32, 32], maxZoom: 18 });
+        parcelLayer.bringToFront();
+      } catch { /* ignore */ }
+    };
+    requestAnimationFrame(() => {
+      fit();
+      setTimeout(fit, 80);
+      setTimeout(fit, 320);
+    });
+  } catch (err) {
+    console.warn('mountUnifiedPropertyMap failed', err);
+    try {
+      el.innerHTML =
+        '<p class="fine">Map could not load. Scroll down for findings and use Your plan.</p>';
+    } catch { /* ignore */ }
+  }
+}
+
+/** Build elevation overlay payload from topology when site_map is absent. */
+function elevPayloadFromTopology(report, latlngs) {
+  const topo = report?.topology;
+  const g = topo?.grid;
+  if (!g?.elevations_m?.length || !g.rows || !g.cols) return null;
+  let bbox = null;
+  if (report?.geometry?.bbox?.length === 4) {
+    const [west, south, east, north] = report.geometry.bbox;
+    bbox = { west, south, east, north };
+  } else if (latlngs?.length) {
+    const b = L.latLngBounds(latlngs);
+    bbox = {
+      west: b.getWest(),
+      south: b.getSouth(),
+      east: b.getEast(),
+      north: b.getNorth(),
+    };
+  }
+  if (!bbox) return null;
+  return {
+    rows: g.rows,
+    cols: g.cols,
+    elevations_m: g.elevations_m,
+    values: g.values,
+    min_m: topo.elevation_min_m,
+    max_m: topo.elevation_max_m,
+    mean_m: topo.elevation_m,
+    bbox,
+  };
+}
+
+/** Fallback water FC when site_map missing (older cached reports). */
+function packageWaterFromReport(report) {
+  const features = [];
+  for (const f of report?.wetlands?.wetland_polygons?.features || []) {
+    features.push({
+      ...f,
+      properties: { ...(f.properties || {}), layer: 'wetlands', class: 'wetland_inventory' },
+    });
+  }
+  for (const f of report?.small_water?.feature_collection?.features || []) {
+    features.push({
+      ...f,
+      properties: { ...(f.properties || {}), layer: 'small_water' },
+    });
+  }
+  return features.length ? { type: 'FeatureCollection', features } : null;
+}
+
+/**
+ * Elevation heatmap as Leaflet imageOverlay from topology / site_map grid.
+ */
+function buildElevationImageOverlay(elev) {
+  if (!elev || !elev.elevations_m?.length || !elev.rows || !elev.cols) return null;
+  const bbox = elev.bbox;
+  if (!bbox || bbox.west == null) return null;
+  const { rows, cols, elevations_m: z } = elev;
+  const min = elev.min_m ?? Math.min(...z.filter((v) => v != null && Number.isFinite(v)));
+  const max = elev.max_m ?? Math.max(...z.filter((v) => v != null && Number.isFinite(v)));
+  const span = max - min || 1;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = cols;
+  canvas.height = rows;
+  const ctx = canvas.getContext('2d');
+  const img = ctx.createImageData(cols, rows);
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const v = z[r * cols + c];
+      const i = (r * cols + c) * 4;
+      if (v == null || !Number.isFinite(v)) {
+        img.data[i + 3] = 0;
+        continue;
+      }
+      const t = (v - min) / span;
+      // Parkland soil palette: dark low → gold high
+      const h = 32;
+      const s = 35 + t * 30;
+      const l = 28 + t * 42;
+      const [rr, gg, bb] = hslToRgb(h / 360, s / 100, l / 100);
+      img.data[i] = rr;
+      img.data[i + 1] = gg;
+      img.data[i + 2] = bb;
+      img.data[i + 3] = 150;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  const url = canvas.toDataURL('image/png');
+  const bounds = [
+    [bbox.south, bbox.west],
+    [bbox.north, bbox.east],
+  ];
+  return L.imageOverlay(url, bounds, { opacity: 0.55, interactive: false });
+}
+
+function hslToRgb(h, s, l) {
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+/** @deprecated use mountUnifiedPropertyMap — kept as thin alias */
+function mountParcelSatelliteMap(el, latlngs, report) {
+  mountUnifiedPropertyMap(el, latlngs, report || state.report);
+}
+
+/**
+ * Lightweight client-side re-placement after planting goal replan.
+ * Server placement (site-map-features) is authoritative on full report generate.
+ */
+function clientPlacePlantings(plan, latlngs) {
+  const plants = plan?.recommended || [];
+  if (!plants.length || !latlngs?.length) {
+    return { type: 'FeatureCollection', features: [], note: 'No plantings' };
+  }
+  const b = L.latLngBounds(latlngs);
+  const features = plants.slice(0, 16).map((p, i) => {
+    const role = /shelter|wind|caragana|poplar|spruce/i.test(
+      `${p.common_name || ''} ${p.guild_layer || ''} ${p.primary_value || ''}`
+    )
+      ? 'windbreak'
+      : /wet|riparian|sedge|willow/i.test(`${p.common_name || ''} ${p.primary_value || ''}`)
+        ? 'riparian'
+        : p.guild_layer === 'canopy' || p.guild_layer === 'tree'
+          ? 'canopy'
+          : p.guild_layer === 'shrub'
+            ? 'shrub'
+            : 'herbaceous';
+    const t = (i + 1) / (Math.min(plants.length, 16) + 1);
+    const u = 0.25 + (i % 4) * 0.15;
+    let lat = b.getSouth() + t * (b.getNorth() - b.getSouth());
+    let lng = b.getWest() + u * (b.getEast() - b.getWest());
+    if (role === 'windbreak') {
+      lat = b.getNorth() - 0.15 * (b.getNorth() - b.getSouth());
+      lng = b.getWest() + t * (b.getEast() - b.getWest());
+    } else if (role === 'riparian') {
+      lat = b.getSouth() + 0.2 * (b.getNorth() - b.getSouth());
+      lng = b.getWest() + t * (b.getEast() - b.getWest());
+    }
+    const e = p.economics || {};
+    return {
+      type: 'Feature',
+      properties: {
+        id: p.id || p.common_name || `plant-${i}`,
+        common_name: p.common_name || 'Plant',
+        scientific_name: p.scientific_name || null,
+        role,
+        guild_layer: p.guild_layer || null,
+        score: p.score ?? null,
+        quantity: e.suggested_quantity ?? null,
+        product_yield_mid_kg: e.yield_on_parcel_kg?.mid_kg ?? null,
+        cash_yield_mid_cad: e.gross_revenue_cad?.mid ?? null,
+        placement_rule: role,
+      },
+      geometry: { type: 'Point', coordinates: [lng, lat] },
+    };
+  });
+  return {
+    type: 'FeatureCollection',
+    features,
+    note: 'Indicative placement after goal replan — regenerate full report for wind/water-aware layout.',
+  };
 }
 
 function topologySection(topo, a) {
   if (!topo || topo.elevation_m == null) {
-    return `<h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p>`;
+    return `<section class="report-block"><h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p></section>`;
   }
-  const heat = topoHeatHtml(topo);
-  const profile = topoProfileSvg(topo.profile || []);
-  const contour = topoContourSvg(topo);
+  // Stats + interactive 3D terrain (HRDEM DTM when sampled, else design DEM grid)
+  const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
+  const report = state.report || {};
+  setTimeout(() => {
+    mountTerrain3dViewer(terrain3dId, report, topo, a);
+  }, 200);
+
   return `
     <section class="report-block">
       <h2>Topology</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Derived from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Summary from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Contour lines are shown on the satellite maps (Alberta provincial elevation).
         Relief ${fmt(topo.relief_m, 'm')} ·
         ${topo.keypoint_present ? 'keypoint candidate present' : 'no clear keypoint'} ·
         erosion ${esc(topo.erosion_risk || '—')}
       </p>
-      <div class="topo-layout">
-        <div class="topo-heat-wrap">
-          <span class="mono topo-label">Elevation surface (sample grid)</span>
-          ${heat}
-          <div class="topo-scale mono">
-            <span>${fmt(topo.elevation_min_m, 'm')}</span>
-            <span>low → high</span>
-            <span>${fmt(topo.elevation_max_m, 'm')}</span>
-          </div>
-        </div>
-        <div class="topo-profile-wrap">
-          <span class="mono topo-label">W → E cross-section (mid parcel)</span>
-          ${profile}
-        </div>
-        <div class="topo-contour-wrap">
-          <span class="mono topo-label">Contour map (plan view)</span>
-          ${contour}
-        </div>
-      </div>
-      <div class="summary-grid" style="margin-top:1rem">
+      <div class="summary-grid" style="margin-top:0.65rem">
         <div class="stat"><span class="k">Min elev</span><strong>${fmt(topo.elevation_min_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Mean elev</span><strong>${fmt(topo.elevation_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope p90</span><strong>${fmt(topo.slope_stats?.p90, '%')}</strong></div>
       </div>
+      ${terrain3dBlock(terrain3dId, report)}
     </section>`;
+}
+
+/**
+ * 3D terrain panel — prefers NRCan HRDEM DTM sample grid, falls back to design DEM.
+ * Overlays: contour lines, catchment, pond candidates, swale hillsides.
+ */
+function terrain3dBlock(id, report) {
+  const ht = report?.hrdem_terrain;
+  const hrdem = report?.hrdem || report?.elevation_overlays?.hrdem;
+  const hasHrdemGrid = !!(ht?.available && ht.elevations_m?.length);
+  const sourceLabel = hasHrdemGrid
+    ? `NRCan HRDEM ${ht.resolution_m || 2} m DTM`
+    : 'Design DEM grid (Open-Meteo / regional)';
+  const els = report?.design_elements || report?.recommendations?.priority_ordered || [];
+  const hasSwaleRec = els.some((e) => e.element_type === 'swale' || e.element_type === 'terrace');
+  const hasPondRec = els.some(
+    (e) => e.element_type === 'pond' || e.element_type === 'water_harvesting_earthwork'
+  );
+  const wetlandBlock = els.some(
+    (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
+  );
+  return `
+    <div class="terrain-3d-panel" style="margin-top:1rem">
+      <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
+        <span class="mono topo-label">3D terrain · water placement</span>
+        <span class="fine">${esc(sourceLabel)}${
+          hrdem?.available && !hasHrdemGrid
+            ? ' · HRDEM coverage noted; high-res sample pending'
+            : ''
+        }</span>
+      </div>
+      <div id="${id}" class="terrain-3d-host report-map"
+        style="height:min(420px,58vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0c1210;position:relative;touch-action:none"
+        role="img" aria-label="3D terrain with contours, catchment, pond and swale zones">
+        <p class="fine" style="padding:1rem;color:#c8cec1">Loading 3D terrain…</p>
+      </div>
+      <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.65rem 1rem;align-items:center;margin-top:0.5rem">
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="contours" />
+          <span style="display:inline-block;width:14px;height:2px;background:#e8e0ff;vertical-align:middle"></span>
+          Contours
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="catchment" />
+          <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;border-radius:2px;vertical-align:middle"></span>
+          Catchment
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="pond" />
+          <span style="display:inline-block;width:10px;height:10px;background:#1a9bb5;border-radius:2px;vertical-align:middle"></span>
+          Pond sites
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="swale" />
+          <span style="display:inline-block;width:10px;height:10px;background:#c4a035;border-radius:2px;vertical-align:middle"></span>
+          Swale hills
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
+          Exaggerate
+          <input type="range" min="1" max="12" step="0.5" value="3.5" data-terrain-exag="${esc(id)}" style="width:7rem" />
+          <span class="mono" data-terrain-exag-val="${esc(id)}">3.5×</span>
+        </label>
+        <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
+      </div>
+      <p class="fine" style="margin-top:0.4rem">
+        <strong>Blue / teal</strong> = low catchment &amp; pond candidates ·
+        <strong>Gold</strong> = mid-slope hillsides suited to contour swales ·
+        <strong>Light lines</strong> = elevation contours.
+        Drag to orbit · scroll to zoom. Zones are DEM-derived planning hints
+        ${hasPondRec ? ' · report recommends pond / water storage' : ''}
+        ${hasSwaleRec ? ' · report recommends swale / terrace' : ''}
+        ${wetlandBlock ? ' · <strong>wetland present — earthworks need approvals</strong>' : ''}.
+        ${
+          hasHrdemGrid
+            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a>.`
+            : 'Built from design elevation samples.'
+        }
+      </p>
+    </div>`;
+}
+
+/**
+ * Classify DEM cells into catchment / pond / swale / ridge / neutral for 3D colouring.
+ * Pond = low + flat; catchment = broader low basin; swale = mid-slope hillsides.
+ */
+function classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean) {
+  const relief = Math.max(zMax - zMin, 0.5);
+  const n = rows * cols;
+  const zones = new Array(n).fill('neutral'); // pond | catchment | swale | ridge | neutral
+  const slopes = new Array(n).fill(0);
+  const elevAt = (r, c) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return null;
+    const z = elevations[r * cols + c];
+    return z != null && Number.isFinite(z) ? z : null;
+  };
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const z = elevAt(r, c);
+      if (z == null) continue;
+      const zl = elevAt(r, c - 1) ?? z;
+      const zr = elevAt(r, c + 1) ?? z;
+      const zu = elevAt(r - 1, c) ?? z;
+      const zd = elevAt(r + 1, c) ?? z;
+      // Unit-grid slope proxy (relative)
+      const g = Math.hypot(zr - zl, zd - zu) / 2;
+      const slopePct = (g / relief) * 100; // rough relative slope
+      slopes[i] = slopePct;
+      const t = (z - zMin) / relief;
+      // Concavity: positive when cell lower than neighbours (sink)
+      const neigh = [zl, zr, zu, zd].filter((v) => v != null);
+      const curv = neigh.length
+        ? neigh.reduce((a, b) => a + b, 0) / neigh.length - z
+        : 0;
+      const concave = curv > relief * 0.02;
+
+      if (t <= 0.14 && slopePct < 8) zones[i] = 'pond';
+      else if (t <= 0.28 || (t <= 0.38 && concave)) zones[i] = 'catchment';
+      else if (t >= 0.32 && t <= 0.78 && slopePct >= 1.5 && slopePct <= 22)
+        zones[i] = 'swale';
+      else if (t >= 0.82) zones[i] = 'ridge';
+      else zones[i] = 'neutral';
+    }
+  }
+
+  // Soften pond: keep only connected low patches near mean of lowest 15%
+  const pondThresh = zMin + relief * 0.16;
+  for (let i = 0; i < n; i++) {
+    const z = elevations[i];
+    if (z == null) continue;
+    if (zones[i] === 'pond' && z > pondThresh && slopes[i] > 6) zones[i] = 'catchment';
+  }
+
+  return { zones, slopes };
+}
+
+/**
+ * Marching-squares contour polylines in grid (row,col) space for 3D lift.
+ */
+function extractContourPolylines(elevations, rows, cols, levels) {
+  const elevAt = (r, c) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return null;
+    const z = elevations[r * cols + c];
+    return z != null && Number.isFinite(z) ? z : null;
+  };
+  const lines = []; // { level, points: [[r,c],...] } as segments
+
+  for (const level of levels) {
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const tl = elevAt(r, c);
+        const tr = elevAt(r, c + 1);
+        const bl = elevAt(r + 1, c);
+        const br = elevAt(r + 1, c + 1);
+        if ([tl, tr, bl, br].some((v) => v == null)) continue;
+        let code = 0;
+        if (tl >= level) code |= 1;
+        if (tr >= level) code |= 2;
+        if (br >= level) code |= 4;
+        if (bl >= level) code |= 8;
+        if (code === 0 || code === 15) continue;
+
+        const lerp = (a, b, va, vb) => {
+          if (Math.abs(vb - va) < 1e-9) return 0.5;
+          return (level - va) / (vb - va);
+        };
+        // Edge midpoints in (row, col) continuous space
+        const top = [r, c + lerp(0, 1, tl, tr)];
+        const bottom = [r + 1, c + lerp(0, 1, bl, br)];
+        const left = [r + lerp(0, 1, tl, bl), c];
+        const right = [r + lerp(0, 1, tr, br), c + 1];
+
+        const segs = {
+          1: [left, top],
+          2: [top, right],
+          3: [left, right],
+          4: [right, bottom],
+          5: [left, top, right, bottom], // saddle — two segs
+          6: [top, bottom],
+          7: [left, bottom],
+          8: [left, bottom],
+          9: [top, bottom],
+          10: [top, right, left, bottom],
+          11: [right, bottom],
+          12: [left, right],
+          13: [top, right],
+          14: [left, top],
+        };
+        const pts = segs[code];
+        if (!pts) continue;
+        for (let k = 0; k + 1 < pts.length; k += 2) {
+          lines.push({ level, a: pts[k], b: pts[k + 1] });
+        }
+      }
+    }
+  }
+  return lines;
+}
+
+/**
+ * Mount Three.js mesh from hrdem_terrain or topology.grid elevations,
+ * with contour lines + catchment / pond / swale zone colouring.
+ */
+function mountTerrain3dViewer(hostId, report, topo, analysis) {
+  const el = document.getElementById(hostId);
+  if (!el || typeof THREE === 'undefined') {
+    if (el) el.innerHTML = '<p class="fine" style="padding:1rem">3D viewer unavailable (Three.js not loaded).</p>';
+    return;
+  }
+
+  const ht = report?.hrdem_terrain;
+  let rows;
+  let cols;
+  let elevations;
+  let source = 'dem';
+  if (ht?.available && ht.elevations_m?.length && ht.rows && ht.cols) {
+    rows = ht.rows;
+    cols = ht.cols;
+    elevations = ht.elevations_m;
+    source = 'hrdem';
+  } else {
+    const g = topo?.grid || {};
+    rows = g.rows;
+    cols = g.cols;
+    elevations = g.elevations_m || null;
+    if ((!elevations || !elevations.length) && analysis?.elevation?.elevations) {
+      elevations = analysis.elevation.elevations;
+      rows = analysis.elevation.rows;
+      cols = analysis.elevation.cols;
+    }
+    if ((!elevations || !elevations.length) && report) {
+      const ep = elevPayloadFromTopology(report);
+      if (ep?.elevations_m?.length) {
+        elevations = ep.elevations_m;
+        rows = ep.rows;
+        cols = ep.cols;
+      }
+    }
+  }
+
+  if (!rows || !cols || !elevations?.length) {
+    el.innerHTML =
+      '<p class="fine" style="padding:1rem">No elevation grid for 3D surface yet. Provincial contours still appear on the map.</p>';
+    return;
+  }
+
+  if (el._eeTerrain) {
+    try {
+      el._eeTerrain.dispose();
+    } catch { /* ignore */ }
+    el._eeTerrain = null;
+  }
+  el.innerHTML = '';
+
+  const valid = elevations.filter((z) => z != null && Number.isFinite(z));
+  if (valid.length < 4) {
+    el.innerHTML = '<p class="fine" style="padding:1rem">Not enough elevation samples for a 3D surface.</p>';
+    return;
+  }
+
+  const zMin = Math.min(...valid);
+  const zMax = Math.max(...valid);
+  const zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
+  const relief = Math.max(zMax - zMin, 0.5);
+  const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
+
+  const W = el.clientWidth || 640;
+  const H = el.clientHeight || 360;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0c1210);
+  const camera = new THREE.PerspectiveCamera(42, W / H, 0.1, 5000);
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(W, H, false);
+  el.appendChild(renderer.domElement);
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.style.display = 'block';
+
+  const aspect = cols / rows;
+  const meshW = aspect >= 1 ? 100 : 100 * aspect;
+  const meshD = aspect >= 1 ? 100 / aspect : 100;
+
+  const geo = new THREE.PlaneGeometry(meshW, meshD, cols - 1, rows - 1);
+  geo.rotateX(-Math.PI / 2);
+
+  let exaggerate = 3.5;
+  const layersVisible = { contours: true, catchment: true, pond: true, swale: true };
+  const positions = geo.attributes.position;
+  const colors = new Float32Array(positions.count * 3);
+  const colorAttr = new THREE.BufferAttribute(colors, 3);
+
+  const baseHeightColor = (t) => {
+    const r = 0.18 + t * 0.4;
+    const g = 0.26 + t * 0.28;
+    const b = 0.16 + t * 0.18;
+    return [r, g, b];
+  };
+  const zoneTint = {
+    pond: [0.12, 0.55, 0.72],
+    catchment: [0.15, 0.38, 0.58],
+    swale: [0.72, 0.58, 0.18],
+    ridge: [0.55, 0.52, 0.48],
+    neutral: null,
+  };
+
+  /** Grid (r,c) → world XYZ on current mesh heights */
+  const gridToWorld = (r, c, elevOverride) => {
+    // mesh row 0 = south (bottom of PlaneGeometry after rotateX)
+    const mr = rows - 1 - r;
+    const x = -meshW / 2 + (c / Math.max(cols - 1, 1)) * meshW;
+    const z = -meshD / 2 + (mr / Math.max(rows - 1, 1)) * meshD;
+    const elev =
+      elevOverride != null
+        ? elevOverride
+        : elevations[r * cols + c] != null && Number.isFinite(elevations[r * cols + c])
+          ? elevations[r * cols + c]
+          : zMean;
+    const vertScale = (meshW * 0.08 * exaggerate) / relief;
+    const y = (elev - zMean) * vertScale + 0.15; // slight lift for lines
+    return new THREE.Vector3(x, y, z);
+  };
+
+  let contourGroup = new THREE.Group();
+  scene.add(contourGroup);
+
+  const rebuildContours = () => {
+    while (contourGroup.children.length) {
+      const ch = contourGroup.children.pop();
+      ch.geometry?.dispose();
+      ch.material?.dispose();
+    }
+    if (!layersVisible.contours) return;
+
+    const nLevels = Math.min(14, Math.max(6, Math.round(relief / Math.max(relief / 10, 0.5))));
+    const step = relief / nLevels;
+    const levels = [];
+    for (let k = 1; k < nLevels; k++) levels.push(zMin + k * step);
+
+    const segs = extractContourPolylines(elevations, rows, cols, levels);
+    if (!segs.length) return;
+
+    const elevAtRC = (rr, cc) => {
+      const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
+      const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
+      const fr = Math.max(0, Math.min(1, rr - r0));
+      const fc = Math.max(0, Math.min(1, cc - c0));
+      const e00 = elevations[r0 * cols + c0] ?? zMean;
+      const e10 = elevations[r0 * cols + c0 + 1] ?? e00;
+      const e01 = elevations[(r0 + 1) * cols + c0] ?? e00;
+      const e11 = elevations[(r0 + 1) * cols + c0 + 1] ?? e00;
+      return (
+        e00 * (1 - fr) * (1 - fc) +
+        e10 * (1 - fr) * fc +
+        e01 * fr * (1 - fc) +
+        e11 * fr * fc
+      );
+    };
+    const pos = [];
+    for (const s of segs) {
+      const ea = elevAtRC(s.a[0], s.a[1]);
+      const eb = elevAtRC(s.b[0], s.b[1]);
+      const pa = gridToWorld(s.a[0], s.a[1], ea);
+      const pb = gridToWorld(s.b[0], s.b[1], eb);
+      pos.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
+    }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const lm = new THREE.LineBasicMaterial({
+      color: 0xe8e0ff,
+      transparent: true,
+      opacity: 0.75,
+      depthTest: true,
+    });
+    const lines = new THREE.LineSegments(lg, lm);
+    contourGroup.add(lines);
+  };
+
+  const applyHeights = () => {
+    const vertScale = (meshW * 0.08 * exaggerate) / relief;
+    for (let i = 0; i < positions.count; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const gr = rows - 1 - row;
+      const z = elevations[gr * cols + col];
+      const elev = z != null && Number.isFinite(z) ? z : zMean;
+      const h = (elev - zMean) * vertScale;
+      positions.setY(i, h);
+
+      const t = (elev - zMin) / relief;
+      let [cr, cg, cb] = baseHeightColor(Math.max(0, Math.min(1, t)));
+      const zone = zones[gr * cols + col] || 'neutral';
+      const tint = zoneTint[zone];
+      if (tint) {
+        const show =
+          (zone === 'pond' && layersVisible.pond) ||
+          (zone === 'catchment' && layersVisible.catchment) ||
+          (zone === 'swale' && layersVisible.swale) ||
+          zone === 'ridge';
+        if (show) {
+          const w = zone === 'pond' ? 0.72 : zone === 'catchment' ? 0.55 : zone === 'swale' ? 0.62 : 0.35;
+          cr = cr * (1 - w) + tint[0] * w;
+          cg = cg * (1 - w) + tint[1] * w;
+          cb = cb * (1 - w) + tint[2] * w;
+        }
+      }
+      colors[i * 3] = cr;
+      colors[i * 3 + 1] = cg;
+      colors[i * 3 + 2] = cb;
+    }
+    positions.needsUpdate = true;
+    colorAttr.needsUpdate = true;
+    geo.computeVertexNormals();
+    rebuildContours();
+  };
+
+  geo.setAttribute('color', colorAttr);
+  applyHeights();
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    flatShading: false,
+    metalness: 0.05,
+    roughness: 0.82,
+    side: THREE.DoubleSide,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  scene.add(mesh);
+
+  const wire = new THREE.Mesh(
+    geo,
+    new THREE.MeshBasicMaterial({
+      color: 0xc4a35a,
+      wireframe: true,
+      transparent: true,
+      opacity: 0.08,
+    })
+  );
+  scene.add(wire);
+
+  scene.add(new THREE.AmbientLight(0xb8c4b0, 0.55));
+  const sun = new THREE.DirectionalLight(0xfff2d6, 0.95);
+  sun.position.set(40, 80, 20);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0x8ab4d4, 0.28);
+  fill.position.set(-30, 20, -40);
+  scene.add(fill);
+
+  let dist = 145;
+  let theta = 0.7;
+  let phi = 0.92;
+  const target = new THREE.Vector3(0, 0, 0);
+  const updateCam = () => {
+    camera.position.set(
+      target.x + dist * Math.sin(phi) * Math.cos(theta),
+      target.y + dist * Math.cos(phi),
+      target.z + dist * Math.sin(phi) * Math.sin(theta)
+    );
+    camera.lookAt(target);
+  };
+  updateCam();
+
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  const onDown = (e) => {
+    dragging = true;
+    lastX = e.clientX ?? e.touches?.[0]?.clientX;
+    lastY = e.clientY ?? e.touches?.[0]?.clientY;
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const x = e.clientX ?? e.touches?.[0]?.clientX;
+    const y = e.clientY ?? e.touches?.[0]?.clientY;
+    if (x == null) return;
+    const dx = x - lastX;
+    const dy = y - lastY;
+    lastX = x;
+    lastY = y;
+    theta += dx * 0.008;
+    phi = Math.max(0.15, Math.min(Math.PI / 2 - 0.05, phi - dy * 0.008));
+    updateCam();
+  };
+  const onUp = () => {
+    dragging = false;
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    dist = Math.max(40, Math.min(400, dist * (e.deltaY > 0 ? 1.08 : 0.92)));
+    updateCam();
+  };
+  const canvas = renderer.domElement;
+  canvas.addEventListener('pointerdown', onDown);
+  window.addEventListener('pointermove', onMove);
+  window.addEventListener('pointerup', onUp);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+
+  let raf = 0;
+  const animate = () => {
+    raf = requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+  };
+  animate();
+
+  const onResize = () => {
+    const w2 = el.clientWidth || W;
+    const h2 = el.clientHeight || H;
+    camera.aspect = w2 / h2;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w2, h2, false);
+  };
+  window.addEventListener('resize', onResize);
+
+  const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
+  const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
+  if (exagInput) {
+    exagInput.addEventListener('input', () => {
+      exaggerate = Number(exagInput.value) || 3.5;
+      if (exagVal) exagVal.textContent = `${exaggerate}×`;
+      applyHeights();
+    });
+  }
+  document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const layer = cb.getAttribute('data-layer');
+      if (layer && layersVisible[layer] != null) {
+        layersVisible[layer] = !!cb.checked;
+        applyHeights();
+      }
+    });
+  });
+  const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
+  if (resetBtn) {
+    resetBtn.addEventListener('click', () => {
+      dist = 145;
+      theta = 0.7;
+      phi = 0.92;
+      updateCam();
+    });
+  }
+
+  el._eeTerrain = {
+    dispose() {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('resize', onResize);
+      canvas.removeEventListener('pointerdown', onDown);
+      canvas.removeEventListener('wheel', onWheel);
+      while (contourGroup.children.length) {
+        const ch = contourGroup.children.pop();
+        ch.geometry?.dispose();
+        ch.material?.dispose();
+      }
+      geo.dispose();
+      mat.dispose();
+      renderer.dispose();
+      if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
+    },
+    source,
+  };
+
+  const badge = document.createElement('div');
+  badge.className = 'fine';
+  badge.style.cssText =
+    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;max-width:90%';
+  const nPond = zones.filter((z) => z === 'pond').length;
+  const nSwale = zones.filter((z) => z === 'swale').length;
+  const nCatch = zones.filter((z) => z === 'catchment').length;
+  badge.textContent =
+    (source === 'hrdem' ? 'HRDEM DTM' : 'DEM') +
+    ` · relief ${relief.toFixed(1)} m · pond ${nPond} · catchment ${nCatch} · swale ${nSwale} cells`;
+  el.style.position = 'relative';
+  el.appendChild(badge);
 }
 
 function topoHeatHtml(topo) {
@@ -1525,7 +2601,7 @@ function topoContourSvg(topo) {
       used.add(i);
       let [ax, ay, bx, by] = segments[i];
       let headX = bx, headY = by;
-      let points = `${ax.toFixed(1)},${ay.toFixed(1)} ${bx.toFixed(1)},${by.toFixed(1)}`;
+      const pts = [[ax, ay], [bx, by]];
 
       // Extend forward
       let extended = true;
@@ -1538,7 +2614,7 @@ function topoContourSvg(topo) {
             used.add(j);
             headX = ex;
             headY = ey;
-            points += ` ${ex.toFixed(1)},${ey.toFixed(1)}`;
+            pts.push([ex, ey]);
             extended = true;
             break;
           }
@@ -1546,14 +2622,16 @@ function topoContourSvg(topo) {
             used.add(j);
             headX = sx;
             headY = sy;
-            points += ` ${sx.toFixed(1)},${sy.toFixed(1)}`;
+            pts.push([sx, sy]);
             extended = true;
             break;
           }
         }
       }
 
-      lines.push({ points, level, isIndexContour: isIndex(level) });
+      // Generate smooth SVG path using cubic Bézier control points (Catmull-Rom → Bézier)
+      const d = smoothSvgPath(pts);
+      lines.push({ points: pts.map(p => p.join(',')).join(' '), d, level, isIndexContour: isIndex(level) });
     }
 
     pathsByLevel.push(...lines);
@@ -1565,11 +2643,11 @@ function topoContourSvg(topo) {
   const intermediatePaths = pathsByLevel.filter((l) => !l.isIndexContour);
 
   const indexD = indexPaths.map(
-    (l) => `<path class="contour-index" d="M${l.points}"/>`
+    (l) => `<path class="contour-index" d="${l.d || 'M' + l.points}"/>`
   ).join('');
 
   const interD = intermediatePaths.map(
-    (l) => `<path class="contour-inter" d="M${l.points}"/>`
+    (l) => `<path class="contour-inter" d="${l.d || 'M' + l.points}"/>`
   ).join('');
 
   // Labels along index contours (place at midpoints of long segments)
@@ -1621,6 +2699,28 @@ function topoContourSvg(topo) {
       ${legendHtml}
       ${scaleBar}
     </svg>`;
+}
+
+/**
+ * Convert an array of [x,y] points into a smooth SVG path using
+ * Catmull-Rom → cubic Bézier conversion for natural-looking contour curves.
+ */
+function smoothSvgPath(pts, tension = 0.3) {
+  if (pts.length < 2) return 'M' + pts.map(p => p.join(',')).join(' L');
+  if (pts.length === 2) return `M${pts[0].join(',')} L${pts[1].join(',')}`;
+  const segs = [`M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const cp1x = p1[0] + (p2[0] - p0[0]) * tension;
+    const cp1y = p1[1] + (p2[1] - p0[1]) * tension;
+    const cp2x = p2[0] - (p3[0] - p1[0]) * tension;
+    const cp2y = p2[1] - (p3[1] - p1[1]) * tension;
+    segs.push(`C${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`);
+  }
+  return segs.join(' ');
 }
 
 function gridShading(normValues, cols, rows, padX, padY, usableW, usableH) {
@@ -1690,7 +2790,12 @@ function proximitySection(px, water, city, settlement, crime, nearestCrimes, cen
       </div>
 
       <div class="crime-card">
-        <span class="mono">Safety context (jurisdiction — not parcel-level)</span>
+        <span class="mono">Crime awareness — RCMP / Rural Crime Watch</span>
+        <p class="fine" style="margin:0.4rem 0 0.65rem">
+          Primary map:
+          <a href="${esc(rcmpCrimeMapEmbedUrl(centre))}" target="_blank" rel="noopener">RCMP Area Crime Map</a>
+          (Alberta Rural Crime Watch). Full interactive map is in <strong>Findings → Security</strong>.
+        </p>
         ${
           crime
             ? `
@@ -1715,28 +2820,78 @@ function proximitySection(px, water, city, settlement, crime, nearestCrimes, cen
                 'Canadian crime statistics are published by police service, not by address. This is jurisdiction-level context only — not a safety score for your parcel.'
             )}</p>
           </div>`
-            : `<p class="fine">Crime context unavailable.</p>`
+            : `<p class="fine">Open the RCMP map for current rural incident locations. Jurisdiction CSI is optional context when available.</p>`
         }
-        ${nearestCrimesSection(nearestCrimes, centre)}
+      </div>
+    </section>`;
+}
+
+/** Alberta RCMP / Rural Crime Watch public crime map (province-wide). */
+const RCMP_CRIME_MAP_PAGE =
+  'https://www.ruralcrimewatch.ab.ca/resources/RCMP-area-crime-map';
+const RCMP_CRIME_MAP_VIEWER =
+  'https://rcmp-k-div.maps.arcgis.com/apps/webappviewer/index.html?id=f648d78dbfb143d0b3bdf47d8eb2bbee';
+
+function rcmpCrimeMapEmbedUrl(centre) {
+  if (centre && Number.isFinite(centre.latitude) && Number.isFinite(centre.longitude)) {
+    return `${RCMP_CRIME_MAP_VIEWER}&center=${centre.longitude},${centre.latitude}&level=10`;
+  }
+  return RCMP_CRIME_MAP_VIEWER;
+}
+
+/**
+ * Primary crime map for Alberta parcels — RCMP Area Crime Map via Rural Crime Watch.
+ */
+function rcmpCrimeMapSection(centre) {
+  const mapUrl = rcmpCrimeMapEmbedUrl(centre);
+  return `
+    <section class="report-block">
+      <h2>RCMP area crime map</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Live Alberta RCMP crime awareness map from
+        <a href="${esc(RCMP_CRIME_MAP_PAGE)}" target="_blank" rel="noopener">Alberta Rural Crime Watch</a>.
+        Approximate recent incidents for community awareness — not a parcel risk score.
+      </p>
+      <div class="rcmp-crime-map-wrap" style="margin-top:0.65rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0f1410">
+        <iframe
+          title="Alberta RCMP Area Crime Map"
+          src="${esc(mapUrl)}"
+          style="width:100%;height:min(520px,70vh);border:0;display:block"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+        ></iframe>
+      </div>
+      <p class="fine" style="margin-top:0.55rem">
+        <a class="rec-service-link" href="${esc(mapUrl)}" target="_blank" rel="noopener">Open map fullscreen →</a>
+        ·
+        <a href="${esc(RCMP_CRIME_MAP_PAGE)}" target="_blank" rel="noopener">Rural Crime Watch resource page</a>
+        · Report suspicious activity: <a href="tel:3107267">310-RCMP (7267)</a>
+        · Emergencies: 911
+      </p>
+      <div class="flag" data-severity="caution" style="margin-top:0.65rem">
+        <strong>Important caveat</strong>
+        <p>
+          RCMP publishes approximate incident locations for public awareness; data may be delayed or incomplete.
+          This is situational awareness only — not a safety rating, insurance product, or police clearance for your property.
+        </p>
       </div>
     </section>`;
 }
 
 function nearestCrimesSection(nc, centre) {
-  if (!nc) return '';
-  if (!nc.available) {
-    return `
-      <div class="crime-nearest" style="margin-top:1rem">
-        <span class="mono">EPS Community Safety Map — nearest occurrences</span>
-        <p class="fine" style="margin:0.4rem 0 0">${esc(
-          nc.note || nc.error || 'Live EPS nearest-occurrence list not available for this site.'
-        )}</p>
-        ${
-          nc.source_url
-            ? `<p class="fine"><a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Open Community Safety Map</a></p>`
-            : ''
-        }
-      </div>`;
+  // EPS city layer is optional context inside Edmonton only
+  if (!nc?.available || !nc?.nearest?.length) {
+    if (nc && nc.in_eps_coverage === false) {
+      return `
+        <div class="crime-nearest" style="margin-top:0.75rem">
+          <p class="fine" style="margin:0">
+            Edmonton EPS nearest-occurrence list applies only inside / near the city.
+            Use the <strong>RCMP area crime map</strong> above for Alberta rural / provincial context.
+          </p>
+        </div>`;
+    }
+    return '';
   }
   const rows = (nc.nearest || [])
     .map(
@@ -1766,8 +2921,10 @@ function nearestCrimesSection(nc, centre) {
 
   return `
     <div class="crime-nearest" style="margin-top:1.1rem">
-      <span class="mono">20 nearest EPS-reported occurrences</span>
-      <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}</p>
+      <span class="mono">Supplemental — Edmonton EPS nearest occurrences</span>
+      <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}
+        City of Edmonton Community Safety Map only (not RCMP rural map).
+      </p>
       ${crimeMinimap(nc, centre)}
       ${chips ? `<div class="plant-chips">${chips}</div>` : ''}
       <div class="econ-table-wrap crime-table-wrap">
@@ -1787,7 +2944,7 @@ function nearestCrimesSection(nc, centre) {
       <p class="fine" style="margin-top:0.6rem">${esc(nc.disclaimer || '')}
         ${
           nc.source_url
-            ? ` · <a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Community Safety Map</a>`
+            ? ` · <a href="${esc(nc.source_url)}" target="_blank" rel="noopener">EPS Community Safety Map</a>`
             : ''
         }
       </p>
@@ -1849,7 +3006,6 @@ function solarSection(solar) {
       }
       ${bars}
       ${solar?.monthly_latitude_tilt?.length ? dailySolarProfile(solar.monthly_latitude_tilt) : ''}
-      ${solarCapacitySection(solar)}
       <div class="flag" data-severity="info" style="margin-top:0.85rem">
         <strong>Methodology note</strong>
         <p>${esc(solar.methodology_note || '')} ${esc(solar.disclaimer || '')}</p>
@@ -1945,163 +3101,6 @@ function dailySolarProfile(monthly) {
     </div>`;
 }
 
-function solarCapacitySection(solar) {
-  if (!solar?.available) return '';
-  const m = solar.mean_daily_global_insolation_kwh_m2 || {};
-  const peak = m.south_latitude_tilt || 0;
-  if (peak <= 0) return '';
-
-  // Panel sizes (kW of array)
-  const panelSizes = [3, 5, 8, 10, 15, 20];
-  // System efficiency (inverter losses, wiring, dust, temp derate ~ 75%)
-  const sysEff = 0.75;
-  // Alberta avg sun hours from the peak month (use peak for "summer day" and annual for "typical day")
-  const annualPeak = peak;
-  const winterPeak = annualPeak * 0.35; // ~35% of summer in winter at 53°N
-
-  // Battery options
-  const batteries = [
-    { name: 'Tesla Powerwall 3', kwh: 13.5, cost: 12000 },
-    { name: 'Enphase IQ 5P', kwh: 5.0, cost: 6000 },
-    { name: 'LG RESU 16H', kwh: 16.0, cost: 14000 },
-    { name: 'Generac PWRcell', kwh: 18.0, cost: 16000 },
-  ];
-
-  // Typical appliances (name, watts, hours/day typical use → kWh/day)
-  const appliances = [
-    { name: 'LED lighting (10 bulbs)', watts: 100, hours: 6 },
-    { name: 'Refrigerator/freezer', watts: 150, hours: 24 },
-    { name: 'Well pump (½ HP)', watts: 750, hours: 2 },
-    { name: 'Washing machine', watts: 500, hours: 1 },
-    { name: 'Electric kettle', watts: 1500, hours: 0.3 },
-    { name: 'Microwave oven', watts: 1000, hours: 0.5 },
-    { name: 'Laptop + WiFi router', watts: 100, hours: 10 },
-    { name: 'Electric stove burner', watts: 2000, hours: 1 },
-    { name: 'Space heater (1 room)', watts: 1500, hours: 4 },
-    { name: 'Hot water tank (40 gal)', watts: 4500, hours: 2 },
-    { name: 'EV charger (Level 2)', watts: 7200, hours: 4 },
-    { name: 'Air conditioner (window)', watts: 1200, hours: 6 },
-    { name: 'Dehydrator', watts: 500, hours: 8 },
-    { name: 'Greenhouse heater', watts: 1500, hours: 6 },
-  ];
-
-  const appRows = appliances.map(a => {
-    const kwhDay = (a.watts * a.hours / 1000);
-    return `<tr>
-      <td>${esc(a.name)}</td>
-      <td class="mono">${a.watts}W</td>
-      <td class="mono">${a.hours}h</td>
-      <td class="mono">${kwhDay.toFixed(1)} kWh</td>
-    </tr>`;
-  }).join('');
-
-  const panelRows = panelSizes.map(kw => {
-    const summerDay = kw * annualPeak * sysEff;
-    const winterDay = kw * winterPeak * sysEff;
-    const avgDay = (summerDay + winterDay) / 2;
-    const summerMonth = summerDay * 30;
-    const winterMonth = winterDay * 30;
-    const annual = avgDay * 365;
-    return `<tr>
-      <td><strong>${kw} kW</strong></td>
-      <td class="mono">${summerDay.toFixed(1)}</td>
-      <td class="mono">${winterDay.toFixed(1)}</td>
-      <td class="mono">${avgDay.toFixed(1)}</td>
-      <td class="mono">${Math.round(summerMonth).toLocaleString()}</td>
-      <td class="mono">${Math.round(winterMonth).toLocaleString()}</td>
-      <td class="mono">${Math.round(annual).toLocaleString()}</td>
-    </tr>`;
-  }).join('');
-
-  // How many days a panel+battery can run a basic off-grid load
-  const basicLoad = 10; // kWh/day (fridge, lights, pump, devices)
-  const batteryRows = batteries.map(b => {
-    const daysOnBattery = (b.kwh * 0.9 / basicLoad); // 90% DoD
-    return `<tr>
-      <td><strong>${esc(b.name)}</strong></td>
-      <td class="mono">${b.kwh} kWh</td>
-      <td class="mono">~$${Math.round(b.cost).toLocaleString()}</td>
-      <td class="mono">${daysOnBattery.toFixed(1)} days</td>
-      <td class="fine">${daysOnBattery < 1 ? 'Partial backup only' : daysOnBattery < 2 ? 'Overnight + morning' : 'Multi-day backup'}</td>
-    </tr>`;
-  }).join('');
-
-  return `
-    <section class="report-block">
-      <h2>Solar sizing & appliance planner</h2>
-      <p class="fine" style="margin-top:-0.35rem">
-        Based on ${peak.toFixed(2)} kWh/m²·d annual mean insolation at latitude tilt for this location.
-        System efficiency assumed at 75% (inverter, wiring, dust, temperature derate).
-      </p>
-
-      <span class="mono topo-label">Panel array production (kWh/day)</span>
-      <div class="econ-table-wrap" style="margin-top:0.5rem">
-        <table class="econ-table">
-          <thead>
-            <tr>
-              <th>Array size</th>
-              <th>Summer day</th>
-              <th>Winter day</th>
-              <th>Avg day</th>
-              <th>Summer month</th>
-              <th>Winter month</th>
-              <th>Annual</th>
-            </tr>
-          </thead>
-          <tbody>${panelRows}</tbody>
-        </table>
-      </div>
-      <p class="fine" style="margin-top:0.3rem">
-        "Summer day" uses full ${peak.toFixed(2)} kWh/m²·d; "Winter day" uses ~35% of that (Alberta Dec/Jan at 53°N).
-      </p>
-
-      <span class="mono topo-label">Battery storage options</span>
-      <div class="econ-table-wrap" style="margin-top:0.5rem">
-        <table class="econ-table">
-          <thead>
-            <tr>
-              <th>Battery</th>
-              <th>Capacity</th>
-              <th>Installed est.</th>
-              <th>Days on 10kWh/day</th>
-              <th>Use case</th>
-            </tr>
-          </thead>
-          <tbody>${batteryRows}</tbody>
-        </table>
-      </div>
-      <p class="fine" style="margin-top:0.3rem">
-        "Days" = usable capacity (90% DoD) ÷ 10 kWh/day basic load. Actual backup depends on your load and charge rate.
-      </p>
-
-      <span class="mono topo-label">Typical appliance power draw</span>
-      <p class="fine" style="margin:0.3rem 0 0.5rem">Match your daily kWh production above to the appliances below.</p>
-      <div class="econ-table-wrap">
-        <table class="econ-table">
-          <thead>
-            <tr>
-              <th>Appliance</th>
-              <th>Watts</th>
-              <th>Typical use</th>
-              <th>kWh/day</th>
-            </tr>
-          </thead>
-          <tbody>${appRows}</tbody>
-        </table>
-      </div>
-
-      <div class="well-range-card" style="border-left-color:var(--caution);margin-top:1rem">
-        <span class="mono">Quick sizing guide</span>
-        <p class="fine" style="margin:0.3rem 0 0">
-          <strong>5 kW array</strong> ≈ ${Math.round(5 * annualPeak * sysEff)} kWh/day summer · powers fridge + lights + pump + devices<br>
-          <strong>10 kW array</strong> ≈ ${Math.round(10 * annualPeak * sysEff)} kWh/day summer · adds cooking + laundry + heating assist<br>
-          <strong>15 kW array</strong> ≈ ${Math.round(15 * annualPeak * sysEff)} kWh/day summer · covers most household loads<br>
-          <strong>20 kW array</strong> ≈ ${Math.round(20 * annualPeak * sysEff)} kWh/day summer · EV charging + full electric home
-        </p>
-      </div>
-    </section>`;
-}
-
 function monthlySolarBars(monthly) {
   if (!monthly?.length) return '';
   const max = Math.max(
@@ -2176,17 +3175,17 @@ function monthlyTempBars(months) {
   const bars = months.map((m, i) => {
     const x = padX + (i / (months.length - 1)) * usableW;
     // High bar (warm)
-    const highY = padY + ((maxHigh - (m.avg_high || 0)) / range) * usableH;
+    const highY = padY + ((maxHigh - (m.avg_max || 0)) / range) * usableH;
     const highH = padY + ((maxHigh - minLow) / range) * usableH - highY;
     // Low bar (cold)
-    const lowTop = padY + ((maxHigh - (m.avg_low || 0)) / range) * usableH;
+    const lowTop = padY + ((maxHigh - (m.avg_min || 0)) / range) * usableH;
     const lowH = padY + usableH - lowTop;
     return `<g>
       <rect x="${(x - 6).toFixed(1)}" y="${highY.toFixed(1)}" width="12" height="${Math.max(2, highH).toFixed(1)}" fill="#c23e2e" opacity="0.7" rx="2"/>
       <rect x="${(x - 6).toFixed(1)}" y="${lowTop.toFixed(1)}" width="12" height="${Math.max(2, lowH).toFixed(1)}" fill="#2a6f97" opacity="0.7" rx="2"/>
       <text x="${x.toFixed(1)}" y="${(h - 8).toFixed(1)}" class="temp-month-label" text-anchor="middle">${esc(m.month || '')}</text>
-      <text x="${x.toFixed(1)}" y="${(highY - 3).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_high || 0).toFixed(0)}</text>
-      <text x="${x.toFixed(1)}" y="${(lowTop + lowH + 9).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_low || 0).toFixed(0)}</text>
+      <text x="${x.toFixed(1)}" y="${(highY - 3).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_max || 0).toFixed(0)}</text>
+      <text x="${x.toFixed(1)}" y="${(lowTop + lowH + 9).toFixed(1)}" class="temp-val-label" text-anchor="middle">${(m.avg_min || 0).toFixed(0)}</text>
     </g>`;
   }).join('');
 
@@ -2209,7 +3208,7 @@ function wildlifeSection(wl) {
   if (!deer) return '';
 
   const recList = (deer.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
-  const sightings = wl.recent_sightings;
+  const sightings = wl.recent_sightings && typeof wl.recent_sightings === 'object' && !Array.isArray(wl.recent_sightings) ? wl.recent_sightings : null;
 
   return `
     <section class="report-block">
@@ -2240,8 +3239,51 @@ function wildlifeSection(wl) {
     </section>`;
 }
 
+function nearestRoadCardHtml(road = {}) {
+  if (road.available && (road.name || road.type || road.distance_m != null)) {
+    const dist =
+      road.distance_m != null
+        ? road.distance_m >= 1000
+          ? `${(road.distance_m / 1000).toFixed(2)} km`
+          : `${Math.round(road.distance_m)} m`
+        : null;
+    const typeBits = [road.type, road.surface, road.tracktype].filter(Boolean).join(' · ');
+    const unnamedNote =
+      road.named === false
+        ? '<p class="fine">No street name in OSM — often a range road, township road, or farm access track.</p>'
+        : '';
+    const distNote =
+      dist != null
+        ? ` · ${esc(dist)} to centreline`
+        : '';
+    return `
+      <strong>${esc(road.name || `Unnamed ${road.type || 'road'}`)}</strong>
+      <p>${esc(typeBits || 'driving network')}${distNote}</p>
+      ${unnamedNote}
+      ${road.source ? `<p class="fine">${esc(road.source)}</p>` : ''}
+      ${road.note && road.distance_m == null ? `<p class="fine">${esc(road.note)}</p>` : ''}`;
+  }
+  if (road.error) {
+    return `
+      <strong>—</strong>
+      <p class="fine">Road lookup failed (${esc(road.error)}). ${esc(
+        road.note || 'Try regenerating the report.'
+      )}</p>`;
+  }
+  if (road.available === false) {
+    return `
+      <strong>—</strong>
+      <p class="fine">${esc(
+        road.note ||
+          'No driveable road found nearby in OpenStreetMap. Property may sit on an unmapped range road or trail.'
+      )}</p>`;
+  }
+  return `<strong>—</strong><p class="fine">No road data available.</p>`;
+}
+
 function accessSection(acc, cityName, cityDistKm) {
-  if (!acc || !acc.available) return '';
+  if (!acc) return '';
+  // Still show section while access is loading / failed partially
   const road = acc.nearest_road || {};
   const trips = acc.trip_costs_to_city || acc.trip_costs_to_supermarket || [];
   const distLabel = acc.nearest_city_distance_km || cityDistKm;
@@ -2265,12 +3307,7 @@ function accessSection(acc, cityName, cityDistKm) {
       <div class="prox-grid">
         <article class="prox-card">
           <span class="mono">Nearest road</span>
-          ${road.name
-            ? `<strong>${esc(road.name)}</strong>
-               <p>${esc(road.type || 'road')} · ${fmt(road.distance_m, 'm')}</p>`
-            : road.available === false
-              ? `<strong>—</strong><p class="fine">No named road within 10 km. Property may be accessed by range road or trail.</p>`
-              : `<strong>—</strong><p class="fine">No road data available.</p>`}
+          ${nearestRoadCardHtml(road)}
         </article>
         <article class="prox-card">
           <span class="mono">Driving to city centre</span>
@@ -2390,9 +3427,11 @@ function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
       ? 'block'
       : floodClass === 'flood_fringe'
         ? 'caution'
-        : floodClass === 'no_data'
-          ? 'info'
+        : floodClass === 'no_data' || floodClass === 'unknown'
+          ? 'caution'
           : 'info';
+
+  const floodBody = floodFloodCardBody(flood, floodClass);
 
   return `
     <section class="report-block">
@@ -2421,34 +3460,7 @@ function hardinessFloodZoningSection(hardiness, flood, zoning, r) {
         </article>
         <article class="prox-card flood-card" data-severity="${esc(floodSeverity)}">
           <span class="mono">Flood hazard (Alberta FHIP)</span>
-          <strong>${esc(labelFlood(floodClass))}</strong>
-          <p>
-            ${
-              flood?.in_mapped_study_area
-                ? `Mapped study${
-                    flood.primary?.river_name
-                      ? ` · ${esc(flood.primary.river_name)}`
-                      : ''
-                  }${
-                    flood.primary?.study_name
-                      ? `<br>${esc(flood.primary.study_name)}`
-                      : ''
-                  }`
-                : esc(flood?.note || 'No FHIP polygon at this parcel.')
-            }
-          </p>
-          <p class="fine">
-            ${
-              floodClass === 'no_data'
-                ? 'no_data ≠ no risk — many rural watercourses are unmapped.'
-                : esc(flood?.note || '')
-            }
-            ${
-              flood?.awareness_map
-                ? ` · <a href="${esc(flood.awareness_map)}" target="_blank" rel="noopener">floods.alberta.ca</a>`
-                : ''
-            }
-          </p>
+          ${floodBody}
         </article>
         <article class="prox-card">
           <span class="mono">Zoning (portal link — not auto-classified)</span>
@@ -2489,6 +3501,74 @@ function labelFlood(c) {
   );
 }
 
+/** Single coherent FHIP card body — avoid repeating note + caveat. */
+function floodFloodCardBody(flood, floodClass) {
+  const awareness =
+    flood?.awareness_map || 'https://floods.alberta.ca';
+  const sourceUrl =
+    flood?.source_url ||
+    'https://open.alberta.ca/opendata/gda-2ae32b0d-c6f9-4e1b-81ab-6fdecc728e28';
+
+  if (floodClass === 'no_data' || (!flood?.in_mapped_study_area && floodClass !== 'unknown' && flood?.available !== false)) {
+    const nearest = flood?.nearest_study;
+    const nearbyLine = nearest
+      ? `<p class="fine">Nearest published study within ~5 km: <strong>${esc(
+          labelFlood(nearest.class)
+        )}</strong>${nearest.river_name ? ` · ${esc(nearest.river_name)}` : ''}${
+          nearest.study_name ? ` · ${esc(nearest.study_name)}` : ''
+        }</p>`
+      : '';
+    return `
+      <strong>${esc(flood?.headline || 'No mapped data')}</strong>
+      <p class="flood-lead">
+        ${esc(
+          flood?.note ||
+            'No FHIP flood polygon intersects this parcel. That means no published study coverage here — not a certified clean bill of health.'
+        )}
+      </p>
+      ${nearbyLine}
+      <p class="fine flood-caveat">
+        <strong>No map ≠ no risk.</strong>
+        ${esc(
+          flood?.caveat ||
+            'Many rural Alberta watercourses are unmapped. Confirm with local knowledge and the provincial awareness map before earthworks or low siting.'
+        )}
+      </p>
+      <p class="fine">
+        <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+        · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener">FHIP open data</a>
+      </p>`;
+  }
+
+  if (floodClass === 'unknown' || flood?.available === false) {
+    return `
+      <strong>${esc(flood?.headline || labelFlood(floodClass))}</strong>
+      <p class="flood-lead">${esc(flood?.note || flood?.error || 'Flood status could not be determined.')}</p>
+      <p class="fine flood-caveat">${esc(
+        flood?.caveat || 'Verify at floods.alberta.ca before siting ponds or low plantings.'
+      )}</p>
+      <p class="fine">
+        <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+      </p>`;
+  }
+
+  // Mapped hazard present
+  return `
+    <strong>${esc(labelFlood(floodClass))}</strong>
+    <p class="flood-lead">
+      Mapped study${
+        flood?.primary?.river_name ? ` · ${esc(flood.primary.river_name)}` : ''
+      }${
+        flood?.primary?.study_name ? `<br>${esc(flood.primary.study_name)}` : ''
+      }
+    </p>
+    <p class="fine">${esc(flood?.note || '')}</p>
+    <p class="fine">
+      <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
+      · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener">FHIP open data</a>
+    </p>`;
+}
+
 function landValueSection(lv) {
   if (!lv) {
     return `<section class="report-block"><h2>Land value</h2><p class="fine">Land value context unavailable.</p></section>`;
@@ -2517,6 +3597,18 @@ function landValueSection(lv) {
     metricLabel,
     dataYear: lv.land_value_data_year,
   });
+
+  const samples = (mun?.samples || []).filter(
+    (s) => s.latitude != null && s.longitude != null && Number.isFinite(Number(s.latitude))
+  );
+  const parcel = getParcelLatLngs();
+  const centre = state.report?.location
+    ? { lat: state.report.location.latitude, lng: state.report.location.longitude }
+    : null;
+  const mapId = 'land-value-map-' + Math.random().toString(36).slice(2, 8);
+  if (samples.length || parcel || centre) {
+    setTimeout(() => initLandValueMap(mapId, samples, parcel, centre, refRate), 140);
+  }
 
   return `
     <section class="report-block land-value-block">
@@ -2567,6 +3659,24 @@ function landValueSection(lv) {
       }
 
       ${
+        samples.length || parcel
+          ? `<div style="margin-top:0.85rem">
+              <span class="mono topo-label">Nearby assessments map</span>
+              <p class="fine" style="margin:0.2rem 0 0.35rem">
+                Gold outline = your parcel · Circles = nearby assessed parcels (colour = relative $/acre).
+              </p>
+              <div id="${mapId}" class="report-map minimap-embed" style="height:300px"></div>
+              <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center">
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
+                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
+              </div>
+            </div>`
+          : ''
+      }
+
+      ${
         rural
           ? `<div class="rural-value-card">
               <span class="mono">${
@@ -2603,10 +3713,150 @@ function landValueSection(lv) {
     </section>`;
 }
 
+/**
+ * Map: parcel + nearby municipal assessment samples coloured by $/acre.
+ */
+function initLandValueMap(elId, samples, parcelLatLngs, centre, refRate) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  el.innerHTML = '';
+
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Esri · Municipal open assessment data', maxZoom: 18 }
+  ).addTo(map);
+
+  const rates = samples
+    .map((s) => s.land_value_per_acre ?? s.assessed_total_per_acre)
+    .filter((v) => v != null && v > 0);
+  const rMin = rates.length ? Math.min(...rates) : 0;
+  const rMax = rates.length ? Math.max(...rates) : 1;
+  const colorFor = (rate) => {
+    if (rate == null || !(rMax > rMin)) return '#2a6f97';
+    const t = Math.max(0, Math.min(1, (rate - rMin) / (rMax - rMin)));
+    // blue (low) → gold → orange (high)
+    if (t < 0.5) {
+      const u = t * 2;
+      const r = Math.round(42 + (233 - 42) * u);
+      const g = Math.round(111 + (196 - 111) * u);
+      const b = Math.round(151 + (106 - 151) * u);
+      return `rgb(${r},${g},${b})`;
+    }
+    const u = (t - 0.5) * 2;
+    const r = Math.round(233 + (196 - 233) * u);
+    const g = Math.round(196 + (92 - 196) * u);
+    const b = Math.round(106 + (38 - 106) * u);
+    return `rgb(${r},${g},${b})`;
+  };
+
+  const bounds = [];
+
+  const parcel = parcelLatLngs || getParcelLatLngs();
+  if (parcel?.length >= 3) {
+    const poly = L.polygon(parcel, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.15,
+      weight: 3,
+    }).addTo(map);
+    poly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    bounds.push(poly.getBounds());
+  }
+
+  if (centre?.lat != null && centre?.lng != null) {
+    L.circleMarker([centre.lat, centre.lng], {
+      radius: 8,
+      color: '#fff',
+      weight: 2,
+      fillColor: '#5b3a73',
+      fillOpacity: 1,
+    })
+      .bindPopup(
+        `<strong>Site centre</strong>${
+          refRate != null ? `<br/>Context ${fmtCad(refRate)}/acre` : ''
+        }`
+      )
+      .addTo(map);
+    bounds.push(L.latLngBounds([[centre.lat, centre.lng]]));
+  }
+
+  samples.forEach((s) => {
+    const rate = s.land_value_per_acre ?? s.assessed_total_per_acre;
+    const m = L.circleMarker([s.latitude, s.longitude], {
+      radius: 7,
+      color: '#fff',
+      weight: 1.5,
+      fillColor: colorFor(rate),
+      fillOpacity: 0.9,
+    }).addTo(map);
+    m.bindPopup(
+      `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
+        `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${
+          s.land_separable ? 'land residual' : 'total assessed'
+        }<br/>` +
+        `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
+        `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}<br/>` +
+        `<span class="fine">Assessed value — not sale price</span>`
+    );
+    bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+  });
+
+  try {
+    if (bounds.length) {
+      const b = bounds.reduce((acc, x) => acc.extend(x), L.latLngBounds(bounds[0]));
+      map.fitBounds(b, { padding: [28, 28], maxZoom: 16 });
+    } else if (centre) {
+      map.setView([centre.lat, centre.lng], 13);
+    }
+  } catch { /* ignore */ }
+
+  requestAnimationFrame(() => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  });
+}
+
 function sourceLabel(src) {
   if (src === 'municipal_assessment') return 'Municipal assessment';
   if (src === 'cli_municipality_aggregate') return 'CLI municipality aggregate';
   return 'None';
+}
+
+/** Format product yield (kg) mid at maturity. Accepts yield_on_parcel_kg or {mid_kg}. */
+function fmtProductYieldMid(y, unit = 'kg') {
+  if (!y) return '—';
+  const mid = y.mid_kg ?? y.mid ?? null;
+  if (mid == null) return '—';
+  const u = unit || y.unit || 'kg';
+  return `${fmtQty(mid)} ${esc(u)}/yr`;
+}
+
+/** Format product yield range low–high. */
+function fmtProductYieldRange(y, unit = 'kg') {
+  if (!y) return '—';
+  const lo = y.low_kg ?? y.low ?? null;
+  const hi = y.high_kg ?? y.high ?? null;
+  const mid = y.mid_kg ?? y.mid ?? null;
+  const u = unit || y.unit || 'kg';
+  if (lo != null && hi != null) return `${fmtQty(lo)}–${fmtQty(hi)} ${u}`;
+  if (mid != null) return `~${fmtQty(mid)} ${u}`;
+  return '—';
+}
+
+/** Format cash yield (gross CAD) range. */
+function fmtCashYieldRange(g) {
+  if (!g) return '—';
+  if (g.low != null && g.high != null) return `${fmtMoney(g.low)}–${fmtMoney(g.high)}/yr`;
+  if (g.mid != null) return `~${fmtMoney(g.mid)}/yr`;
+  return '—';
+}
+
+function fmtQty(n) {
+  if (n == null || Number.isNaN(Number(n))) return '—';
+  const v = Number(n);
+  if (v >= 100) return Math.round(v).toLocaleString('en-CA');
+  if (v >= 10) return (Math.round(v * 10) / 10).toLocaleString('en-CA');
+  return (Math.round(v * 10) / 10).toString();
 }
 
 function fmtCad(n) {
@@ -2877,10 +4127,7 @@ function recommendationCard(e) {
     VALUE_LABELS[e.primary_value] || e.primary_value || 'Site benefit';
   const technique =
     e.technique_label || ELEMENT_LABELS[e.element_type] || e.element_type;
-  const headline =
-    e.value_headline ||
-    e.placement_notes ||
-    `Deliver ${String(valueLabel).toLowerCase()} on this parcel.`;
+  const headline = (e.value_headline || '').trim();
   const secondary = (e.secondary_values || [])
     .map((v) => VALUE_LABELS[v] || v)
     .filter(Boolean);
@@ -2906,15 +4153,24 @@ function recommendationCard(e) {
   return `
     <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
       <div class="value-chips">${chips}</div>
-      <p class="value-headline">${esc(headline)}</p>
+      ${headline ? `<p class="value-headline">${esc(headline)}</p>` : ''}
       <div class="el-head">
-        <h3 class="technique-label">${esc(technique)}</h3>
         <span class="badge zone">Zone ${esc(e.zone)}</span>
         ${confBadge(e.confidence)}
         ${e.effort ? `<span class="badge effort">${esc(e.effort)} effort</span>` : ''}
       </div>
       <div class="basis"><span class="basis-label">Why this property</span> ${esc(e.condition_basis || '')}</div>
       ${e.placement_notes ? `<p class="placement-how">${esc(e.placement_notes)}</p>` : ''}
+      ${
+        e.suggested_species?.length
+          ? `<p class="fine plant-species-line"><strong>Species:</strong> ${e.suggested_species.map(esc).join(' · ')}</p>`
+          : ''
+      }
+      ${
+        e.improves_levers?.length
+          ? `<p class="fine"><strong>Improves levers:</strong> ${e.improves_levers.map(esc).join(', ')}</p>`
+          : ''
+      }
       ${e.season_hint ? `<p class="season-hint"><span class="basis-label">Season</span> ${esc(e.season_hint)}</p>` : ''}
       ${serviceLinks ? `<div class="rec-service-links">${serviceLinks}</div>` : ''}
     </article>`;
@@ -2931,13 +4187,20 @@ function renderPlantingPane(plan) {
   if (!el) return;
   if (!plan?.recommended?.length) {
     el.innerHTML = `
-      <div class="panel fade">
-        <span class="mono eyebrow">Planting plan</span>
-        <h1>No suitable plantings</h1>
-        <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage.</p>
-        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+      <div class="panel fade plant-planner-panel">
+        <div class="beta-banner" role="status">
+          <span class="badge beta">Beta</span>
+          <p>
+            <strong>Separate offering — not part of the core site design package.</strong>
+            The planting planner is an early preview. Lists and prices may change; verify every species before you buy or plant.
+          </p>
+        </div>
+        <span class="mono eyebrow">Planting planner</span>
+        <h1>No suitable plantings yet</h1>
+        <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage, or stay with the core site design report.</p>
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Back to site design</button>
       </div>`;
-    $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+    $('btn-back-site')?.addEventListener('click', () => switchReportPane('overview'));
     return;
   }
 
@@ -2945,6 +4208,7 @@ function renderPlantingPane(plan) {
   if (state._plantPlan !== plan) {
     state.plantValueFilter = 'all';
     state._plantPlan = plan;
+    if (plan.goals?.length) state.plantGoals = [...plan.goals];
   }
 
   const areaHa = plan.site_filters?.footprint_ha;
@@ -2968,8 +4232,8 @@ function renderPlantingPane(plan) {
               <th>Value</th>
               <th>Suit.</th>
               <th>Wholesale $/kg</th>
-              <th>Yield / ha</th>
-              <th>Gross / parcel</th>
+              <th>Product yield</th>
+              <th>Cash yield</th>
               <th>Channels</th>
             </tr>
           </thead>
@@ -2978,8 +4242,9 @@ function renderPlantingPane(plan) {
               .map((c) => {
                 const e = c.economics || {};
                 const w = e.price_wholesale_cad_per_kg;
-                const y = e.yield_kg_per_ha;
+                const yPatch = e.yield_on_parcel_kg;
                 const g = e.gross_revenue_cad;
+                const unit = e.unit || 'kg';
                 const vl =
                   VALUE_LABELS[c.primary_value] || c.primary_value || '—';
                 return `<tr>
@@ -2987,14 +4252,8 @@ function renderPlantingPane(plan) {
                   <td class="fine">${esc(vl)}</td>
                   <td>${esc(c.suitability)} (${esc(c.score)})</td>
                   <td>${w ? `${fmtMoney(w.low)}–${fmtMoney(w.high)}` : '—'}</td>
-                  <td>${y ? `${esc(y.low)}–${esc(y.high)} kg` : '—'}</td>
-                  <td class="econ-rev">${
-                    g
-                      ? `${fmtMoney(g.low)}–${fmtMoney(g.high)}`
-                      : e.non_cash_value
-                        ? 'Non-cash'
-                        : '—'
-                  }</td>
+                  <td class="econ-yield">${fmtProductYieldRange(yPatch, unit)}</td>
+                  <td class="econ-rev">${fmtCashYieldRange(g)}</td>
                   <td class="fine">${esc((e.market_channels || []).slice(0, 3).join(', ') || '—')}</td>
                 </tr>`;
               })
@@ -3002,7 +4261,7 @@ function renderPlantingPane(plan) {
           </tbody>
         </table>
       </div>
-      <p class="fine">${esc(plan.economics_disclaimer || '')}</p>
+      <p class="fine">Product yield = kg/yr on the polyculture patch · Cash yield = gross CAD/yr at maturity (before full labour). ${esc(plan.economics_disclaimer || '')}</p>
     </div>`
       : '';
 
@@ -3064,31 +4323,75 @@ function renderPlantingPane(plan) {
     const e = p.economics;
     const valueAdd =
       e?.value_add?.gross_mid_cad
-        ? `<br><span class="fine">Value-add (${esc(
-            e.value_add.product || 'processed'
-          )}): ~${fmtMoney(e.value_add.gross_mid_cad)} if ×${esc(
-            e.value_add.multiplier
-          )} processing step</span>`
+        ? `Value-add (${esc(e.value_add.product || 'processed')}): ~${fmtMoney(e.value_add.gross_mid_cad)} (conservative partial capture)`
         : '';
-    const econLine = e
-      ? e.gross_revenue_cad
-        ? `<p class="plant-econ"><strong>Gross ~${fmtMoney(
-            e.gross_revenue_cad.mid
-          )}/yr</strong> on parcel
-             (${fmtMoney(e.gross_revenue_cad.low)}–${fmtMoney(e.gross_revenue_cad.high)}
-             wholesale ladder · ${esc(e.unit || 'kg')}
-             ${e.establishment_years ? ` · ~${esc(e.establishment_years)} yr establish` : ''}
-             ${e.labour_intensity ? ` · labour ${esc(e.labour_intensity)}` : ''})
-             ${
-               e.market_channels?.length
-                 ? `<br><span class="fine">Markets: ${esc(e.market_channels.join(', '))}</span>`
-                 : ''
-             }
-             ${valueAdd}
-           </p>`
-        : e.non_cash_value
-          ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
-          : ''
+    const est = e?.establishment_cost_cad;
+    const unit = e?.unit || 'kg';
+    const y = e?.yield_on_parcel_kg;
+    const g = e?.gross_revenue_cad;
+
+    // Product yield (physical) + cash yield (CAD) as primary metrics
+    const yieldBlock =
+      y?.mid_kg != null || g?.mid != null
+        ? `<div class="plant-yield-grid summary-grid" style="margin:0.5rem 0 0.35rem">
+            <div class="stat">
+              <span class="k">Product yield</span>
+              <strong>${fmtProductYieldMid(y, unit)}</strong>
+              <span class="fine">${y?.mid_kg != null ? `${fmtProductYieldRange(y, unit)} range · at maturity` : '—'}</span>
+            </div>
+            <div class="stat">
+              <span class="k">Cash yield</span>
+              <strong>${g?.mid != null ? fmtMoney(g.mid) + '/yr' : '—'}</strong>
+              <span class="fine">${fmtCashYieldRange(g)}${g?.mid != null ? ' gross' : ''}</span>
+            </div>
+            ${
+              e?.annual_opex_cad_est != null && g?.mid != null
+                ? `<div class="stat">
+                    <span class="k">Net (after opex est.)</span>
+                    <strong>${fmtMoney(Math.max(0, g.mid - e.annual_opex_cad_est))}/yr</strong>
+                    <span class="fine">opex ~${fmtMoney(e.annual_opex_cad_est)}</span>
+                  </div>`
+                : ''
+            }
+          </div>`
+        : '';
+
+    const econBits = [];
+    if (est?.total != null) {
+      econBits.push(`Est. <strong>${fmtMoney(est.total)}</strong> (~${esc(est.quantity)} plants)`);
+    }
+    if (e?.payback_years != null) econBits.push(`~${esc(e.payback_years)} yr payback`);
+    else if (g?.mid) econBits.push('payback uncertain within horizon');
+    if (e?.npv_cad?.mid != null) {
+      econBits.push(`NPV ${fmtMoney(e.npv_cad.mid)} / ${esc(e.npv_cad.horizon_years)}y`);
+    }
+    const econLine =
+      yieldBlock || econBits.length || e?.non_cash_value
+        ? `${yieldBlock}
+           ${
+             econBits.length
+               ? `<p class="plant-econ fine">${econBits.join(' · ')}</p>`
+               : ''
+           }
+           <p class="fine" style="margin:0.15rem 0 0">
+             Product yield = physical harvest on the polyculture patch (~${esc(Math.round((e?.polyculture_share || 0.05) * 100))}% of parcel).
+             Cash yield = gross CAD at maturity (realization ${esc(e?.realization_factor ?? '—')}) — not full-field monoculture income.
+             ${e?.establishment_years ? `· ~${esc(e.establishment_years)} yr to establish` : ''}
+             ${e?.labour_intensity ? `· labour ${esc(e.labour_intensity)}` : ''}
+           </p>
+           ${e?.market_channels?.length ? `<p class="fine">Markets: ${esc(e.market_channels.join(', '))}</p>` : ''}
+           ${valueAdd ? `<p class="fine">${valueAdd}</p>` : ''}
+           ${
+             !y && !g && e?.non_cash_value
+               ? `<p class="plant-econ fine"><strong>Non-cash:</strong> ${esc(e.non_cash_value)}</p>`
+               : ''
+           }`
+        : '';
+    const leverLine = p.lever_benefits?.length
+      ? `<p class="fine"><strong>Helps levers:</strong> ${p.lever_benefits.map(esc).join(', ')}</p>`
+      : '';
+    const fitLine = p.fit_summary
+      ? `<p class="fine plant-fit">${esc(p.fit_summary)}</p>`
       : '';
     const vlab = VALUE_LABELS[p.primary_value] || p.primary_value;
     const sec = (p.secondary_values || [])
@@ -3101,41 +4404,68 @@ function renderPlantingPane(plan) {
           ${sec.map((s) => `<span class="value-chip secondary">${esc(s)}</span>`).join('')}
         </div>`
       : '';
+    // Compact metrics always visible in the collapsed summary
+    const summaryMetrics = [
+      y?.mid_kg != null ? `${fmtProductYieldMid(y, unit)}` : null,
+      g?.mid != null ? `${fmtMoney(g.mid)}/yr` : null,
+      est?.total != null ? `est. ${fmtMoney(est.total)}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     return `
-      <article class="plant-card" data-suit="${esc(p.suitability)}" data-value="${esc(
+      <article class="plant-card plant-card-collapsible" data-suit="${esc(p.suitability)}" data-value="${esc(
         p.primary_value || ''
       )}">
-        ${chips}
-        ${
-          p.value_headline
-            ? `<p class="value-headline plant-value-headline">${esc(p.value_headline)}</p>`
-            : ''
-        }
-        <div class="plant-head">
-          <h3>${esc(p.common_name)}</h3>
-          <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
-        </div>
-        <div class="basis">${esc(p.scientific_name || '')}${
-          p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
-        }${p.category ? ` · ${esc(p.category)}` : ''}${
-          p.alberta_native ? ' · Alberta native' : ''
-        }${
-          p.alberta_in_range ? ' · USDA: Alberta in range' : ''
-        }</div>
-        ${plantSpecLine(p)}
-        ${
-          p.reasons?.length
-            ? `<p class="plant-ok">${p.reasons.map(esc).join(' · ')}</p>`
-            : ''
-        }
-        ${
-          p.limits?.length
-            ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
-            : ''
-        }
-        ${econLine}
-        ${supplierBlock(p.suppliers)}
-        ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
+        <details class="plant-details">
+          <summary class="plant-card-summary">
+            <div class="plant-summary-main">
+              ${chips}
+              <div class="plant-head">
+                <h3>${esc(p.common_name)}</h3>
+                <span class="badge ${suitBadgeClass(p.suitability)}">${esc(p.suitability)} · ${esc(p.score)}</span>
+              </div>
+              <div class="basis plant-summary-meta">${esc(p.scientific_name || '')}${
+                p.guild_layer ? ` · ${esc(String(p.guild_layer).replace(/_/g, ' '))}` : ''
+              }${p.category ? ` · ${esc(p.category)}` : ''}${
+                p.alberta_native ? ' · Alberta native' : ''
+              }</div>
+              ${
+                summaryMetrics
+                  ? `<p class="plant-summary-metrics fine">${summaryMetrics}</p>`
+                  : ''
+              }
+            </div>
+            <span class="plant-expand-hint" aria-hidden="true">Details</span>
+          </summary>
+          <div class="plant-card-body">
+            ${
+              p.value_headline
+                ? `<p class="value-headline plant-value-headline">${esc(p.value_headline)}</p>`
+                : ''
+            }
+            ${
+              p.alberta_in_range
+                ? `<div class="basis">USDA: Alberta in range</div>`
+                : ''
+            }
+            ${fitLine}
+            ${plantSpecLine(p)}
+            ${leverLine}
+            ${
+              p.reasons?.length
+                ? `<p class="plant-ok">${p.reasons.slice(0, 5).map(esc).join(' · ')}</p>`
+                : ''
+            }
+            ${
+              p.limits?.length
+                ? `<p class="plant-limit">${p.limits.map(esc).join(' · ')}</p>`
+                : ''
+            }
+            ${econLine}
+            ${supplierBlock(p.suppliers)}
+            ${p.notes ? `<p class="fine">${esc(p.notes)}</p>` : ''}
+          </div>
+        </details>
       </article>`;
   }
 
@@ -3150,44 +4480,182 @@ function renderPlantingPane(plan) {
         .join('')
     : '';
 
+  const scp = plan.site_condition_profile;
+  const pe = plan.plan_economics;
+  const availableGoals = plan.available_goals || plan.goals_catalog || DEFAULT_PLANT_GOALS;
+  const activeGoals = state.plantGoals?.length ? state.plantGoals : plan.goals || ['balanced'];
+  const goalChips = availableGoals
+    .map((g) => {
+      const on = activeGoals.includes(g.id);
+      return `<button type="button" class="goal-chip${on ? ' is-active' : ''}" data-plant-goal="${esc(g.id)}" aria-pressed="${on ? 'true' : 'false'}" title="${esc(g.description || g.label)}">${esc(g.short || g.label)}</button>`;
+    })
+    .join('');
+  const goalsBar = `
+    <div class="plant-goals-bar" style="margin:0.85rem 0 0.5rem">
+      <span class="mono topo-label">Goals — what should this planting prioritize?</span>
+      <p class="fine" style="margin:0.25rem 0 0.45rem">
+        Ecological goals can stack (max food + windbreak). Economic modes
+        <strong>Lowest cost</strong>, <strong>Max revenue</strong>, and <strong>Fastest payback</strong> replace each other.
+        Active: <strong>${esc(plan.goals_label || activeGoals.join(' · '))}</strong>
+      </p>
+      <div class="goal-chips" role="group" aria-label="Planting goals">${goalChips}</div>
+      <div class="goal-scenario-row" style="display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;margin-top:0.55rem">
+        <span class="mono" style="font-size:0.72rem">Economics scenario</span>
+        <select id="plant-scenario" class="goal-scenario-select" aria-label="Economics scenario">
+          <option value="market_garden" ${state.plantScenario === 'market_garden' ? 'selected' : ''}>Market garden (wholesale)</option>
+          <option value="home_use" ${state.plantScenario === 'home_use' ? 'selected' : ''}>Home use (avoided retail)</option>
+          <option value="fodder" ${state.plantScenario === 'fodder' ? 'selected' : ''}>Fodder / forage</option>
+        </select>
+        <button type="button" class="btn btn-secondary" id="btn-replan-plants" ${state.plantReplanning ? 'disabled' : ''}>
+          ${state.plantReplanning ? 'Updating…' : 'Apply goals →'}
+        </button>
+      </div>
+      <p class="fine" id="plant-goals-status" style="margin:0.4rem 0 0" hidden></p>
+    </div>`;
+
+  const profileBlock = scp
+    ? `
+    <div class="well-range-card" style="border-left-color:var(--berry);margin:0.85rem 0">
+      <span class="mono">Site condition profile</span>
+      <div class="summary-grid" style="margin-top:0.5rem">
+        <div class="stat"><span class="k">Hardiness</span><strong>${esc(scp.hardiness?.zone || '—')}${scp.hardiness?.effective_zone && scp.hardiness.effective_zone !== scp.hardiness.zone ? ` → ${esc(scp.hardiness.effective_zone)}` : ''}</strong></div>
+        <div class="stat"><span class="k">FFD</span><strong>${esc(scp.hardiness?.frost_free_days ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Texture / drain</span><strong>${esc(scp.soil?.texture || '—')} / ${esc(scp.soil?.drainage || '—')}</strong></div>
+        <div class="stat"><span class="k">Water regime</span><strong>${esc(scp.water?.regime || '—')}</strong></div>
+        <div class="stat"><span class="k">Wind</span><strong>${esc(scp.microclimate?.wind_exposure || '—')}</strong></div>
+        <div class="stat"><span class="k">Succession</span><strong>${esc((scp.vegetation?.successional_stage || '—').replace(/_/g, ' '))}</strong></div>
+      </div>
+      ${scp.fecundity?.weakest?.length ? `
+        <p class="fine" style="margin:0.45rem 0 0">
+          <strong>Weak levers driving soft scores:</strong>
+          ${scp.fecundity.weakest.slice(0, 4).map((w) => `${esc(w.label || w.category)} (${esc(w.score)})`).join(', ')}
+        </p>` : ''}
+      ${scp.goals?.length ? `<p class="fine" style="margin:0.25rem 0 0"><strong>Goals:</strong> ${scp.goals.map(esc).join(', ')}</p>` : ''}
+    </div>`
+    : '';
+
+  const planEconBlock = pe
+    ? `
+    <div class="summary-grid" style="margin:0.75rem 0">
+      <div class="stat"><span class="k">Plan establishment</span><strong>${pe.establishment_total_cad != null ? fmtMoney(pe.establishment_total_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Annual gross (maturity)</span><strong>${pe.annual_gross_mid_at_maturity_cad != null ? fmtMoney(pe.annual_gross_mid_at_maturity_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Plan NPV (${esc(pe.horizon_years)}y)</span><strong>${pe.npv_sum_cad != null ? fmtMoney(pe.npv_sum_cad) : '—'}</strong></div>
+      <div class="stat"><span class="k">Cash models</span><strong>${esc(pe.n_with_cash_model)} / ${esc(pe.n_plants)}</strong></div>
+    </div>
+    <p class="fine">${esc(pe.disclaimer || '')}</p>
+    ${pe.polyculture_competition_factor != null && pe.polyculture_competition_factor < 1
+      ? `<p class="fine">Multi-crop competition factor ${esc(pe.polyculture_competition_factor)} applied so species do not each claim the whole farm.</p>`
+      : ''}`
+    : '';
+
+  const guildBlock = (plan.suggested_guilds || []).length
+    ? `
+    <div style="margin:0.85rem 0 1rem">
+      <span class="mono topo-label">Suggested guilds / polycultures</span>
+      <div class="elements" style="margin-top:0.5rem;display:grid;gap:0.55rem">
+        ${plan.suggested_guilds.map((g) => `
+          <div class="el rec-card" style="padding:0.75rem 0.85rem;border-left-color:var(--ok)">
+            <strong>${esc(g.label)}</strong>
+            <p class="fine" style="margin:0.25rem 0">${esc(g.rationale)}</p>
+            <div class="plant-chips">${(g.members || []).map((m) =>
+              `<span class="plant-chip"><strong>${esc(m.common_name)}</strong> ${esc(m.score)}${m.suggested_quantity ? ` · ×${esc(m.suggested_quantity)}` : ''}</span>`
+            ).join('')}</div>
+          </div>`).join('')}
+      </div>
+    </div>`
+    : '';
+
   el.innerHTML = `
-    <div class="panel fade">
-      <span class="mono eyebrow">Planting plan · crop schema + suppliers</span>
-      <h1>What to plant</h1>
+    <div class="panel fade plant-planner-panel">
+      <div class="beta-banner" role="status">
+        <span class="badge beta">Beta</span>
+        <p>
+          <strong>Separate offering — not part of the core site design package.</strong>
+          Plant Recommendation + Economics Engine: Site Condition Profile → hardiness hard filter → soft scores against weak fecundity levers → establishment cost, payback, and simple NPV.
+          Treat every result as provisional; confirm hardiness, climate fit, and markets before ordering or planting.
+        </p>
+      </div>
+      <span class="mono eyebrow">Planting planner · matching engine + economics</span>
+      <h1>What to plant <span class="badge beta" style="vertical-align:middle;font-size:0.55em">Beta</span></h1>
       <p class="lede">
-        Same value tags as site design (food, N-fix, wind, soil…) plus EcoCrop suitability,
-        farmfit economics, and vendor links.
+        Ranked plants and guilds for this parcel — fit score, lever benefits, establishment cost,
+        gross return, payback, and NPV. Offered on the side while we refine the model.
       </p>
       <p class="fine">${esc(plan.phase_note || '')}</p>
+      ${goalsBar}
+      ${profileBlock}
+      ${planEconBlock}
+      ${plantingInterventionBlock(state.report?.planting_intervention_value)}
+      ${guildBlock}
       <div class="plant-chips">${layers}</div>
       ${valueFilterBar(plantCounts, state.plantValueFilter, allPlants.length).replace(
         'Filter by value',
         'Filter plants by value'
       )}
       ${cashBlock}
+      <div class="plant-list-toolbar" id="plant-list-toolbar">
+        <span class="fine">${filtered.length} plants · collapsed by default</span>
+        <div class="plant-list-toolbar-actions">
+          <button type="button" class="btn-quiet" id="btn-expand-plants">Expand all</button>
+          <button type="button" class="btn-quiet" id="btn-collapse-plants">Collapse all</button>
+        </div>
+      </div>
       <div class="plant-list" id="plant-list">${
         rows ||
         '<p class="fine">No plants in this value filter — try All.</p>'
       }</div>
       <p class="fine" style="margin-top:1rem">
-        Filters: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')},
+        Profile: zone ${esc(plan.site_filters?.plant_hardiness_zone || '—')}
+        ${plan.site_filters?.effective_hardiness_zone && plan.site_filters.effective_hardiness_zone !== plan.site_filters.plant_hardiness_zone
+          ? ` (effective ${esc(plan.site_filters.effective_hardiness_zone)})` : ''},
         ${esc(plan.site_filters?.frost_free_days ?? '—')} FFD,
         ~${esc(plan.site_filters?.annual_precipitation_mm ?? '—')} mm,
         ${esc(plan.site_filters?.texture || '—')} /
         ${esc(plan.site_filters?.drainage_class || '—')},
-        ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha.
+        ${esc(plan.site_filters?.water_regime || '—')} regime,
+        ${esc(areaHa != null ? Number(areaHa).toFixed(2) : '—')} ha,
+        scenario ${esc(plan.site_filters?.scenario || 'market_garden')}.
         Schema:
         <a href="/schema/crop.schema.json" target="_blank" rel="noopener">crop.schema.json</a>.
         Vendor links are search starting points — verify stock and hardiness.
       </p>
       <div class="actions">
-        <button type="button" class="btn btn-secondary" id="btn-back-site">← Site design</button>
+        <button type="button" class="btn btn-secondary" id="btn-back-site">← Back to site design</button>
         <button type="button" class="btn-quiet" id="btn-plant-map">Map</button>
       </div>
     </div>`;
 
-  $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('btn-back-site')?.addEventListener('click', () => switchReportPane('overview'));
   $('btn-plant-map')?.addEventListener('click', showMap);
+
+  // Goal chips — exclusive economic/balanced, stack ecological
+  el.querySelectorAll('[data-plant-goal]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-plant-goal');
+      if (!id) return;
+      state.plantGoals = togglePlantGoal(state.plantGoals || ['balanced'], id, availableGoals);
+      // Refresh chip active state only (apply on button)
+      el.querySelectorAll('[data-plant-goal]').forEach((b) => {
+        const on = state.plantGoals.includes(b.getAttribute('data-plant-goal'));
+        b.classList.toggle('is-active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    });
+  });
+  $('plant-scenario')?.addEventListener('change', (ev) => {
+    state.plantScenario = ev.target.value || 'market_garden';
+    // Live economics re-score when scenario changes
+    replanPlantings();
+  });
+  $('btn-replan-plants')?.addEventListener('click', () => replanPlantings());
+
+  const setAllPlantDetailsOpen = (open) => {
+    el.querySelectorAll('#plant-list details.plant-details').forEach((d) => {
+      d.open = open;
+    });
+  };
+  $('btn-expand-plants')?.addEventListener('click', () => setAllPlantDetailsOpen(true));
+  $('btn-collapse-plants')?.addEventListener('click', () => setAllPlantDetailsOpen(false));
 
   // Plant value filter (reuse chip UI; scope to planting pane)
   const plantBar = el.querySelector('.value-filter-bar');
@@ -3206,8 +4674,374 @@ function renderPlantingPane(plan) {
       host.innerHTML = list.length
         ? list.map(plantCard).join('')
         : '<p class="fine">No plants in this value filter — try All.</p>';
+      // Filtered list stays collapsed by default
+      const toolbar = el.querySelector('#plant-list-toolbar .fine');
+      if (toolbar) toolbar.textContent = `${list.length} plants · collapsed by default`;
     });
   });
+}
+
+/** Compact lever-delta + cash summary inside the beta planting pane */
+function plantingInterventionBlock(iv) {
+  if (!iv?.financialSummary && !iv?.improves_levers?.length) return '';
+  const fin = iv.financialSummary || {};
+  const dOverall = iv.scoreComparison?.deltas?.overall;
+  return `
+    <div class="well-range-card" style="border-left-color:var(--ok);margin:0.75rem 0">
+      <span class="mono">Value of this planting plan (intervention)</span>
+      <div class="summary-grid" style="margin-top:0.45rem">
+        <div class="stat"><span class="k">Upfront</span><strong>${fin.upfrontCost_cad != null ? fmtMoney(fin.upfrontCost_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">Annual gross</span><strong>${fin.annualBenefit_cad != null ? fmtMoney(fin.annualBenefit_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">NPV</span><strong>${fin.npv_cad != null ? fmtMoney(fin.npv_cad) : '—'}</strong></div>
+        <div class="stat"><span class="k">Lever Δ</span><strong>${dOverall != null ? `${dOverall > 0 ? '+' : ''}${esc(dOverall)}` : '—'}</strong></div>
+      </div>
+      ${
+        iv.improves_levers?.length
+          ? `<p class="fine" style="margin:0.4rem 0 0"><strong>Improves:</strong> ${iv.improves_levers
+              .slice(0, 5)
+              .map((L) => `${esc(L.label)} (+${esc(L.delta)})`)
+              .join(' · ')}</p>`
+          : ''
+      }
+      <p class="fine" style="margin:0.3rem 0 0">Carries both fecundity lever deltas and cash-flow projections — feeds value-of-improvements.</p>
+    </div>`;
+}
+
+/** Fallback goal list if plan payload omits available_goals */
+const DEFAULT_PLANT_GOALS = [
+  { id: 'balanced', label: 'Balanced', short: 'Balanced', kind: 'balanced', exclusive: true, description: 'Multi-function fit' },
+  { id: 'max_food', label: 'Max food', short: 'Max food', kind: 'ecological', description: 'Prioritize edible crops' },
+  { id: 'max_nitrogen', label: 'Max nitrogen', short: 'Max N', kind: 'ecological', description: 'Nitrogen-fixers' },
+  { id: 'soil_building', label: 'Soil building', short: 'Soil', kind: 'ecological', description: 'Soil structure & cover' },
+  { id: 'windbreak', label: 'Windbreak', short: 'Wind', kind: 'ecological', description: 'Shelterbelt species' },
+  { id: 'wildlife', label: 'Wildlife', short: 'Wildlife', kind: 'ecological', description: 'Habitat & natives' },
+  { id: 'pollinator', label: 'Pollinators', short: 'Pollinate', kind: 'ecological', description: 'Pollinator plants' },
+  { id: 'medicinal', label: 'Medicinal / herbal', short: 'Herbal', kind: 'ecological', description: 'Medicinal herbs' },
+  { id: 'wetland_buffer', label: 'Wetland buffer', short: 'Wetland', kind: 'ecological', description: 'Wetland-edge species' },
+  { id: 'fodder', label: 'Fodder / forage', short: 'Fodder', kind: 'ecological', description: 'Livestock forage' },
+  { id: 'lowest_cost', label: 'Lowest cost', short: 'Low cost', kind: 'economic', exclusive: true, description: 'Best fit per dollar' },
+  { id: 'max_revenue', label: 'Max revenue', short: 'Max $', kind: 'economic', exclusive: true, description: 'Highest gross revenue' },
+  { id: 'fastest_payback', label: 'Fastest payback', short: 'Payback', kind: 'economic', exclusive: true, description: 'Shortest payback years' },
+];
+
+function togglePlantGoal(current, id, catalog = DEFAULT_PLANT_GOALS) {
+  const byId = Object.fromEntries(catalog.map((g) => [g.id, g]));
+  const def = byId[id];
+  if (!def) return current;
+
+  // Exclusive balanced / economic: select alone
+  if (def.exclusive || def.kind === 'economic' || def.kind === 'balanced') {
+    return [id];
+  }
+
+  // Ecological: remove exclusive modes, toggle this id
+  let next = current.filter((g) => {
+    const d = byId[g];
+    return d && d.kind === 'ecological';
+  });
+  if (next.includes(id)) next = next.filter((g) => g !== id);
+  else next = [...next, id];
+  if (!next.length) next = ['balanced'];
+  return next;
+}
+
+/**
+ * Re-run planting engine with selected goals using site context from last report.
+ */
+async function replanPlantings() {
+  const r = state.report;
+  if (!r) return;
+  const status = $('plant-goals-status');
+  const btn = $('btn-replan-plants');
+  state.plantReplanning = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Updating…';
+  }
+  if (status) {
+    status.hidden = false;
+    status.textContent = 'Re-ranking plants for your goals…';
+  }
+
+  const site = {
+    footprint_ha: r.geometry?.area_ha || r.footprint_ha || r.site_condition_profile?.footprint_ha,
+    climate: r.climate || {
+      plant_hardiness_zone: r.hardiness?.hardiness_zone || r.planting_plan?.site_filters?.plant_hardiness_zone,
+      frost_free_days: r.hardiness?.frost_free_days_estimate || r.planting_plan?.site_filters?.frost_free_days,
+      chinook_exposure: r.climate?.chinook_exposure,
+      prevailing_wind_direction: r.climate?.prevailing_wind_direction || r.wind_rose?.primary_direction,
+    },
+    soil: r.soil || {
+      texture: r.soil_survey?.characteristics?.texture_class || r.planting_plan?.site_filters?.texture,
+      drainage_class: r.soil_survey?.characteristics?.drainage || r.planting_plan?.site_filters?.drainage_class,
+      ph: r.soil_survey?.sample_summary?.mean_ph,
+    },
+    hydrology: r.hydrology || {
+      annual_precipitation_mm: r.planting_plan?.site_filters?.annual_precipitation_mm,
+      wetland_class: r.wetlands?.has_wetland_on_site ? 'wetland' : null,
+    },
+    terrain: r.terrain || {},
+    existing_vegetation: r.existing_vegetation || {
+      successional_stage: r.planting_plan?.site_filters?.successional_stage,
+    },
+  };
+
+  try {
+    const res = await fetch('/api/planting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        site,
+        goals: state.plantGoals || ['balanced'],
+        scenario: state.plantScenario || 'market_garden',
+        fecundity: r.fecundity,
+        hardiness: r.hardiness,
+        soil_survey: r.soil_survey,
+        satellite: r.satellite,
+        wetlands: r.wetlands,
+        wind_rose: r.wind_rose,
+        tree_cover: r.tree_cover,
+        profile: r.site_condition_profile || r.planting_plan?.site_condition_profile,
+        design_elements: r.design_elements,
+        limit: 18,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || `Replan failed (${res.status})`);
+    const plan = data.planting_plan;
+    if (!plan) throw new Error('No planting plan returned');
+    state.report = {
+      ...r,
+      planting_plan: plan,
+      site_condition_profile: plan.site_condition_profile || r.site_condition_profile,
+      planting_intervention_value: data.planting_intervention_value || r.planting_intervention_value,
+      recommended_plantings: data.recommended_plantings || r.recommended_plantings,
+      design_elements: data.design_elements || r.design_elements,
+      recommendations: data.recommendations || r.recommendations,
+    };
+    // Refresh planting markers on unified property map (same drawn parcel)
+    if (state.report.site_map) {
+      state.report.site_map = {
+        ...state.report.site_map,
+        plantings: clientPlacePlantings(plan, getParcelLatLngs()),
+        layers_available: {
+          ...(state.report.site_map.layers_available || {}),
+          plantings: !!(plan.recommended?.length),
+        },
+      };
+    }
+    if (state.report.fecundity && data.planting_intervention_value) {
+      state.report.fecundity = {
+        ...state.report.fecundity,
+        plantingInterventionValue: data.planting_intervention_value,
+      };
+    }
+    state.plantGoals = plan.goals || state.plantGoals;
+    state._plantPlan = null;
+    renderPlantingPane(plan);
+    // Re-mount property maps so planting markers update
+    setTimeout(() => initReportMapEmbed(state.report), 80);
+    if (status) {
+      status.hidden = false;
+      const pe = plan.plan_economics;
+      const iv = data.planting_intervention_value;
+      status.textContent =
+        `Live re-score: ${plan.goals_label || (plan.goals || []).join(' · ')}` +
+        (pe?.establishment_total_cad != null
+          ? ` · est. ${fmtMoney(pe.establishment_total_cad)} · NPV ${fmtMoney(pe.npv_sum_cad)}`
+          : '') +
+        (iv?.scoreComparison?.deltas?.overall != null
+          ? ` · lever Δ ${iv.scoreComparison.deltas.overall > 0 ? '+' : ''}${iv.scoreComparison.deltas.overall}`
+          : '');
+    }
+  } catch (e) {
+    console.error(e);
+    if (status) {
+      status.hidden = false;
+      status.textContent = e.message || 'Could not update planting goals';
+    }
+  } finally {
+    state.plantReplanning = false;
+  }
+}
+
+/**
+ * Full-report / PDF section: Recommended Plantings table + lever links + value summary.
+ * @param {object} table — recommended_plantings payload or planting_plan
+ * @param {object} intervention — planting_intervention_value
+ */
+function recommendedPlantingsSection(table, intervention) {
+  if (!table && !intervention) return '';
+  const rows =
+    table?.rows ||
+    table?.recommended?.map((p) => {
+      const e = p.economics || {};
+      const y = e.yield_on_parcel_kg;
+      const g = e.gross_revenue_cad;
+      return {
+        common_name: p.common_name,
+        scientific_name: p.scientific_name,
+        score: p.score,
+        functions: p.primary_value ? [p.primary_value] : [],
+        quantity: e.suggested_quantity,
+        unit: e.unit || 'kg',
+        product_yield_kg: y
+          ? { low: y.low_kg, mid: y.mid_kg, high: y.high_kg, unit: e.unit || 'kg' }
+          : null,
+        cash_yield_cad: g
+          ? { low: g.low, mid: g.mid, high: g.high }
+          : null,
+        product_yield_mid_kg: y?.mid_kg ?? null,
+        establishment_cost_cad: e.establishment_cost_cad?.total,
+        gross_revenue_mid_cad: g?.mid,
+        payback_years: e.payback_years,
+        improves_levers: p.lever_benefits || p.improves_levers || [],
+      };
+    }) ||
+    intervention?.species ||
+    [];
+  if (!rows.length) return '';
+
+  const fin = intervention?.financialSummary || table?.summary || table?.plan_economics;
+  const improves = intervention?.improves_levers || table?.intervention?.improves || [];
+  const guilds = table?.guilds || intervention?.guilds || [];
+  const goalsLabel = table?.goals_label || intervention?.goals_label || '';
+  const hardiness = table?.hardiness || table?.site_filters?.plant_hardiness_zone;
+  const eff = table?.effective_zone || table?.site_filters?.effective_hardiness_zone;
+
+  const body = rows
+    .slice(0, 14)
+    .map((r) => {
+      const fn = Array.isArray(r.functions) ? r.functions.join(', ') : r.functions || '—';
+      const levers = Array.isArray(r.improves_levers)
+        ? r.improves_levers.join('; ')
+        : r.improves_levers || '—';
+      const unit = r.unit || r.product_yield_kg?.unit || 'kg';
+      const py = r.product_yield_kg
+        ? { low_kg: r.product_yield_kg.low, mid_kg: r.product_yield_kg.mid, high_kg: r.product_yield_kg.high }
+        : r.product_yield_mid_kg != null
+          ? { mid_kg: r.product_yield_mid_kg }
+          : null;
+      const cy = r.cash_yield_cad || (r.gross_revenue_mid_cad != null ? { mid: r.gross_revenue_mid_cad } : null);
+      return `<tr>
+        <td><strong>${esc(r.common_name || r.id || '—')}</strong>${
+          r.scientific_name ? `<br><span class="fine mono">${esc(r.scientific_name)}</span>` : ''
+        }${r.score != null ? `<br><span class="fine">Fit ${esc(r.score)}</span>` : ''}</td>
+        <td class="fine">${esc(fn)}</td>
+        <td>${r.quantity != null ? esc(r.quantity) : '—'}</td>
+        <td>${r.establishment_cost_cad != null ? fmtMoney(r.establishment_cost_cad) : '—'}</td>
+        <td class="econ-yield">${fmtProductYieldMid(py, unit)}<br><span class="fine">${fmtProductYieldRange(py, unit)}</span></td>
+        <td class="econ-rev">${cy?.mid != null ? fmtMoney(cy.mid) : '—'}<br><span class="fine">${fmtCashYieldRange(cy)}</span></td>
+        <td>${r.payback_years != null ? `~${esc(r.payback_years)} yr` : '—'}</td>
+        <td class="fine">${esc(levers)}</td>
+      </tr>`;
+    })
+    .join('');
+
+  const leverCards = improves.length
+    ? `<div class="summary-grid" style="margin-top:0.75rem">
+        ${improves
+          .slice(0, 6)
+          .map(
+            (L) => `
+          <div class="stat">
+            <span class="k">${esc(L.label || L.lever)}</span>
+            <strong>+${esc(L.delta)}</strong>
+            <span class="fine">${esc(L.plants_targeting || '')} plants</span>
+          </div>`
+          )
+          .join('')}
+      </div>`
+    : '';
+
+  const guildHtml = guilds.length
+    ? `<div style="margin-top:0.85rem">
+        <span class="mono topo-label">Suggested guilds</span>
+        <ul class="wildlife-recs" style="margin:0.4rem 0 0;padding-left:1.2rem;font-size:0.9rem;color:var(--ink-soft)">
+          ${guilds
+            .map(
+              (g) =>
+                `<li><strong>${esc(g.label)}</strong> — ${esc(g.rationale || '')}
+                ${(g.members || []).length ? ` <span class="fine">(${(g.members || []).map(esc).join(', ')})</span>` : ''}</li>`
+            )
+            .join('')}
+        </ul>
+      </div>`
+    : '';
+
+  const valueBlock =
+    fin && (fin.upfrontCost_cad != null || fin.establishment_total_cad != null)
+      ? `
+    <div class="summary-grid" style="margin-top:0.75rem">
+      <div class="stat"><span class="k">Establishment</span><strong>${fmtMoney(fin.upfrontCost_cad ?? fin.establishment_total_cad)}</strong></div>
+      <div class="stat"><span class="k">Annual gross (maturity)</span><strong>${
+        fin.annualBenefit_cad != null || fin.annual_gross_mid_at_maturity_cad != null
+          ? fmtMoney(fin.annualBenefit_cad ?? fin.annual_gross_mid_at_maturity_cad)
+          : '—'
+      }</strong></div>
+      <div class="stat"><span class="k">Plan NPV</span><strong>${
+        fin.npv_cad != null || fin.npv_sum_cad != null
+          ? fmtMoney(fin.npv_cad ?? fin.npv_sum_cad)
+          : '—'
+      }</strong></div>
+      <div class="stat"><span class="k">Payback</span><strong>${
+        fin.paybackYears != null ? `~${esc(fin.paybackYears)} yr` : '—'
+      }</strong></div>
+    </div>
+    ${
+      intervention?.scoreComparison?.deltas?.overall != null
+        ? `<p class="fine" style="margin-top:0.45rem">Estimated overall fecundity lever change from this planting plan: <strong>${
+            intervention.scoreComparison.deltas.overall > 0 ? '+' : ''
+          }${esc(intervention.scoreComparison.deltas.overall)}</strong> points (planning-level).</p>`
+        : ''
+    }`
+      : '';
+
+  return `
+    <section class="report-block recommended-plantings-section">
+      <h2>Recommended plantings</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Species ranked by site fit${goalsLabel ? ` · goals: <strong>${esc(goalsLabel)}</strong>` : ''}
+        ${hardiness ? ` · hardiness ${esc(hardiness)}${eff && eff !== hardiness ? ` (effective ${esc(eff)})` : ''}` : ''}.
+        Confidence: hardiness <strong>high</strong> · soil/moisture <strong>medium–high</strong> · yield &amp; price <strong>medium</strong> (ranges).
+        Indicative markers appear on the <strong>Property map</strong> (toggle “Proposed plantings”).
+        <span class="badge beta" style="margin-left:0.35rem">Beta</span>
+      </p>
+      ${valueBlock}
+      ${leverCards ? `<span class="mono topo-label" style="display:block;margin-top:0.75rem">Levers this plan is expected to improve</span>${leverCards}` : ''}
+      <div class="econ-table-wrap" style="margin-top:0.85rem">
+        <table class="econ-table plantings-table">
+          <thead>
+            <tr>
+              <th>Species</th>
+              <th>Function</th>
+              <th>Qty</th>
+              <th>Est. cost</th>
+              <th>Product yield</th>
+              <th>Cash yield</th>
+              <th>Payback</th>
+              <th>Improves</th>
+            </tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>
+      <p class="fine" style="margin-top:0.4rem">
+        <strong>Product yield</strong> = physical harvest (kg/yr) on the polyculture patch at maturity.
+        <strong>Cash yield</strong> = gross CAD/yr at maturity (before full labour). Patch-scale only — not full-field monoculture.
+      </p>
+      ${guildHtml}
+      <p class="fine" style="margin-top:0.65rem">
+        Planning ranges only — not a business plan. Verify stock, hardiness cultivars, and markets before ordering.
+        Full interactive list (goals, live economics): <strong>Planting planner</strong> side offering.
+      </p>
+      ${(intervention?.disclaimers || []).length
+        ? `<ul class="fine" style="margin:0.4rem 0 0;padding-left:1.1rem">${intervention.disclaimers
+            .slice(0, 3)
+            .map((d) => `<li>${esc(d)}</li>`)
+            .join('')}</ul>`
+        : ''}
+    </section>`;
 }
 
 function supplierBlock(sup) {
@@ -3375,13 +5209,14 @@ function initWellsMinimap(elId, wells, centre) {
 
   wells.forEach((w) => {
     all.push([w.lat, w.lng]);
-    const depth = w.depth_m || 0;
-    const t = Math.min(1, depth / 300);
+    const depth = w.completion_depth_m || w.depth_m || 0;
+    const t = Math.min(1, depth / 80);
     const fill = `hsl(24, ${40 + t * 30}%, ${60 - t * 35}%)`;
+    const swlTip = w.static_water_level_m != null ? ` · SWL ${w.static_water_level_m}m` : '';
     L.circleMarker([w.lat, w.lng], {
       radius: 6, fillColor: fill, fillOpacity: 0.85,
       color: '#fff', weight: 1.5,
-    }).addTo(map).bindTooltip(`${w.depth_m}m · ${w.distance_km}km`);
+    }).addTo(map).bindTooltip(`completion ${depth}m${swlTip} · ${w.distance_km}km`);
   });
 
   map.fitBounds(all, { padding: [10, 10] });
@@ -3427,16 +5262,18 @@ function initCrimeMinimap(elId, crimes, centre) {
 
 function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
   if (!wells?.length) return '';
-  const depths = wells.map((w) => w.depth_m).filter((d) => d > 0);
+  // Prefer aquifer completion depths (hydrology) over total drilled
+  const depths = wells
+    .map((w) => w.completion_depth_m ?? w.depth_m)
+    .filter((d) => d > 0);
   if (!depths.length) return '';
 
   const W = 320, H = 130, padX = 24, padY = 22;
   const usableW = W - padX * 2, usableH = H - padY * 2;
-  const min = Math.min(...depths, low || 0);
-  const max = Math.max(...depths, high || 200);
-  const span = max - min || 1;
+  const min = Math.min(...depths, low != null ? low : Infinity, predictedDepth != null ? predictedDepth : Infinity);
+  const max = Math.max(...depths, high != null ? high : 0, predictedDepth != null ? predictedDepth : 0);
+  const span = (max - min) || 1;
 
-  // Histogram bins
   const bins = 14;
   const binW = span / bins;
   const counts = new Array(bins).fill(0);
@@ -3451,28 +5288,36 @@ function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
     const h = Math.max(2, (c / maxC) * usableH);
     const y = padY + usableH - h;
     const fill = i < bins / 3 ? 'var(--h2)' : i < bins * 2 / 3 ? 'var(--h4)' : 'var(--h6)';
-    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / bins - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" opacity="0.7" rx="1"><title>${c} wells · ~${Math.round(min + i * binW)}–${Math.round(min + (i + 1) * binW)}m</title></rect>`;
+    return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(usableW / bins - 1).toFixed(1)}" height="${h.toFixed(1)}" fill="${fill}" opacity="0.7" rx="1"><title>${c} wells · ~${Math.round(min + i * binW)}–${Math.round(min + (i + 1) * binW)}m completion</title></rect>`;
   }).join('');
 
-  // Predicted range overlay
   let rangeOverlay = '';
   if (low != null && high != null) {
     const lx = padX + ((low - min) / span) * usableW;
     const hx = padX + ((high - min) / span) * usableW;
     rangeOverlay = `
       <rect x="${lx.toFixed(1)}" y="${padY}" width="${Math.max(3, (hx - lx)).toFixed(1)}" height="${usableH.toFixed(1)}" fill="rgba(145, 78, 44, 0.18)" stroke="#a8801f" stroke-width="1.5" stroke-dasharray="4 2" rx="2">
-        <title>Predicted range: ${low}–${high}m</title>
-      </rect>
-      <text x="${((lx + hx) / 2).toFixed(1)}" y="${(padY - 4).toFixed(1)}" class="svg-label" text-anchor="middle" fill="#a8801f">${low}–${high}m</text>`;
+        <title>Hydrology confidence band: ${low}–${high}m</title>
+      </rect>`;
+  }
+  let predLine = '';
+  if (predictedDepth != null) {
+    const px = padX + ((predictedDepth - min) / span) * usableW;
+    predLine = `
+      <line x1="${px.toFixed(1)}" y1="${padY}" x2="${px.toFixed(1)}" y2="${(padY + usableH).toFixed(1)}" stroke="#a8801f" stroke-width="2">
+        <title>Recommended completion: ${predictedDepth}m</title>
+      </line>
+      <text x="${px.toFixed(1)}" y="${(padY - 4).toFixed(1)}" class="svg-label" text-anchor="middle" fill="#a8801f">${predictedDepth}m</text>`;
   }
 
   return `
     <div class="well-chart-wrap">
-      <span class="mono topo-label">Nearby well depth distribution (${depths.length} wells)</span>
-      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Well depth distribution histogram">
+      <span class="mono topo-label">Aquifer completion depths (${depths.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Aquifer completion depth histogram">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
         ${bars}
         ${rangeOverlay}
+        ${predLine}
         <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(min)}m</text>
         <text x="${(padX + usableW - 12).toFixed(1)}" y="${(H - 4).toFixed(1)}" class="svg-label">${Math.round(max)}m</text>
       </svg>
@@ -3481,24 +5326,26 @@ function wellDepthDistributionSvg(wells, predictedDepth, low, high) {
 
 function wellDistanceDepthSvg(wells, centre) {
   if (!wells?.length || !centre) return '';
-  const points = wells.filter((w) => w.distance_km != null && w.depth_m > 0);
+  const points = wells.filter((w) => w.distance_km != null && (w.completion_depth_m > 0 || w.depth_m > 0));
   if (!points.length) return '';
 
   const W = 320, H = 150, padX = 30, padY = 22;
   const usableW = W - padX * 2, usableH = H - padY * 2;
   const maxDist = Math.max(...points.map((p) => p.distance_km), 1);
-  const maxDepth = Math.max(...points.map((p) => p.depth_m), 50);
+  const maxDepth = Math.max(...points.map((p) => p.completion_depth_m || p.depth_m), 50);
 
   const dots = points.map((p) => {
+    const depth = p.completion_depth_m || p.depth_m;
     const x = padX + (p.distance_km / maxDist) * usableW;
-    const y = padY + usableH - (p.depth_m / maxDepth) * usableH;
-    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="#5b3a73" opacity="0.7"><title>${p.depth_m}m · ${p.distance_km}km</title></circle>`;
+    const y = padY + usableH - (depth / maxDepth) * usableH;
+    const hasSwl = p.static_water_level_m != null;
+    return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5" fill="${hasSwl ? '#2f6f4e' : '#5b3a73'}" opacity="0.75"><title>completion ${depth}m${hasSwl ? ` · SWL ${p.static_water_level_m}m` : ''} · ${p.distance_km}km</title></circle>`;
   }).join('');
 
   return `
     <div class="well-chart-wrap">
-      <span class="mono topo-label">Distance vs depth (${points.length} wells)</span>
-      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distance vs depth scatter plot">
+      <span class="mono topo-label">Distance vs completion (${points.length} wells)</span>
+      <svg class="well-dist-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Distance vs aquifer completion scatter">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="#c8cec1"/>
         ${dots}
         <text x="${padX}" y="${(H - 4).toFixed(1)}" class="svg-label">0 km</text>
@@ -3516,32 +5363,66 @@ function wellDepthSection(w, centre) {
         <p class="fine">No estimate available for this site.</p>
       </section>`;
   }
-  // Use actual nearby well depths, not predicted range
-  const nearbyWells = w.nearby_wells || [];
-  const depths = nearbyWells.map((nw) => nw.depth_m).filter((d) => d > 0);
-  const shallowNw = depths.length ? Math.min(...depths) : null;
-  const deepNw = depths.length ? Math.max(...depths) : null;
-  depths.sort((a, b) => a - b);
-  const medianNw = depths.length ? depths[Math.floor(depths.length / 2)] : null;
-  const q1Nw = depths.length >= 4 ? depths[Math.floor(depths.length / 4)] : null;
-  const q3Nw = depths.length >= 4 ? depths[Math.floor(depths.length * 3 / 4)] : null;
+
+  const depth = w.estimated_depth_m;
+  const low = w.estimated_depth_range_m?.low_m;
+  const high = w.estimated_depth_range_m?.high_m;
   const swl = w.estimated_static_water_level_m;
+  const aquiferTop = w.estimated_aquifer_top_m;
+  // Mid-value drill cost: ≈ 92×D_ft + 4600 CAD (+15% formula), min ~$11,500
+  const depthFt = depth != null ? Math.round(depth * 3.28084 * 10) / 10 : null;
+  const wellCostMid =
+    depthFt != null ? Math.max(11500, Math.round(92 * depthFt + 4600)) : null;
+  const wellCostLow =
+    low != null
+      ? Math.max(11500, Math.round(92 * (low * 3.28084) + 4600))
+      : wellCostMid != null
+        ? Math.round(wellCostMid * 0.88)
+        : null;
+  const wellCostHigh =
+    high != null
+      ? Math.max(11500, Math.round(92 * (high * 3.28084) + 4600))
+      : wellCostMid != null
+        ? Math.round(wellCostMid * 1.22)
+        : null;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
     well_control_sparse: 'Sparse nearby well control',
-    no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock model only',
+    no_nearby_wells_bedrock_model_only: 'No nearby wells — bedrock / WAM model only',
   }[w.confidence] || w.confidence;
 
-  const distChart = wellDepthDistributionSvg(w.nearby_wells, medianNw, shallowNw, deepNw);
+  const basis = (w.hydrology_basis || w._meta?.hydro_signals)
+    ? (w.hydrology_basis || []).slice(0, 4)
+    : [];
+  const basisLine = basis.length
+    ? basis.map((b) => esc(b)).join(' · ')
+    : 'Nearby pump tests, screen intervals, and water-bearing lithology (IDW)';
+
+  const distChart = wellDepthDistributionSvg(w.nearby_wells, depth, low, high);
   const scatterChart = wellDistanceDepthSvg(w.nearby_wells, centre);
 
-  // Enriched data cards
   const yieldSum = w.yield_summary;
   const pumpSum = w.pump_test_summary;
   const chemSum = w.chemistry_summary;
   const lithSum = w.lithology_summary;
 
   const enrichCards = [];
+  if (swl != null) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Static water level</span>
+        <strong>${fmt(swl, 'm')} bgs</strong>
+        <p class="fine">IDW from nearby pump tests${aquiferTop != null && aquiferTop !== swl ? ` · aquifer top ~${fmt(aquiferTop, 'm')}` : ''}</p>
+      </article>`);
+  }
+  if (w.target_hydrostratigraphic_unit) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Target unit</span>
+        <strong style="font-size:1rem">${esc(w.target_hydrostratigraphic_unit)}</strong>
+        <p class="fine">${esc(confLabel)}</p>
+      </article>`);
+  }
   if (yieldSum?.count) {
     enrichCards.push(`
       <article class="prox-card">
@@ -3574,6 +5455,14 @@ function wellDepthSection(w, centre) {
         <p class="fine">${esc(lithSum.top_materials.slice(0, 3).join(', '))}</p>
       </article>`);
   }
+  if (w.screen_control_count) {
+    enrichCards.push(`
+      <article class="prox-card">
+        <span class="mono">Screen control</span>
+        <strong>${w.screen_control_count} wells</strong>
+        <p class="fine">Screen-bottom intervals used for completion depth</p>
+      </article>`);
+  }
   if (w.geophysics_available) {
     enrichCards.push(`
       <article class="prox-card">
@@ -3586,27 +5475,38 @@ function wellDepthSection(w, centre) {
     <section class="report-block well-depth-block">
       <h2>Predicted well depth</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Interpolated from nearby drilled records (primary) with bedrock topography as a covariate —
-        not a topography-only guess. Always shown as a <strong>range</strong>.
+        Based on <strong>subsurface hydrology</strong> — static water level, screen intervals, and water-bearing
+        lithology from nearby AWWI records (with Wet Areas Mapping depth-to-water as a shallow covariate).
+        Not the min–max of total drilled depths.
       </p>
 
       <div class="well-range-card">
-        <span class="mono">Nearby well depths</span>
+        <span class="mono">Recommended aquifer completion</span>
         <div class="well-range-value">
-          ${fmt(shallowNw, 'm')} <span class="well-range-sep">–</span> ${fmt(deepNw, 'm')}
+          ${fmt(depth, 'm')}${depthFt != null ? ` <span class="fine" style="font-size:1rem;font-weight:500">(~${esc(depthFt)} ft)</span>` : ''}
         </div>
         <p class="fine">
-          Median ${fmt(medianNw, 'm')}${q1Nw != null && q3Nw != null ? ` · IQR ${fmt(q1Nw, 'm')}–${fmt(q3Nw, 'm')}` : ''}
-          · ${depths.length} nearby wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
-          ${swl != null ? ` · static water level ~${fmt(swl, 'm')}` : ''}
+          Confidence band ${fmt(low, 'm')}–${fmt(high, 'm')}
+          ${swl != null ? ` · static water level ~${fmt(swl, 'm')} bgs` : ''}
+          · ${esc(w.nearby_well_count ?? 0)} wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
         </p>
+        ${
+          wellCostMid != null
+            ? `<p class="fine" style="margin-top:0.45rem">
+                <strong>Planning drill cost (mid):</strong> ${fmtCad(wellCostMid)}
+                ${wellCostLow != null && wellCostHigh != null ? ` · band ${fmtCad(wellCostLow)}–${fmtCad(wellCostHigh)}` : ''}
+                <br/>Formula: ≈ 92 × depth(ft) + 4,600 CAD (+15% mid; min ~$11,500). Ballpark only — geology, access, and scope change the quote.
+              </p>`
+            : ''
+        }
+        <p class="fine" style="margin-top:0.35rem">${basisLine}</p>
       </div>
 
       <div class="summary-grid">
-        <div class="stat"><span class="k">Nearby wells used</span><strong>${esc(w.nearby_well_count ?? '—')}</strong></div>
-        <div class="stat"><span class="k">Search radius</span><strong>${fmt(w.nearby_well_search_radius_km, 'km')}</strong></div>
-        <div class="stat"><span class="k">Median depth</span><strong>${fmt(medianNw, 'm')}</strong></div>
-        <div class="stat"><span class="k">Min / Max</span><strong>${fmt(shallowNw, 'm')} – ${fmt(deepNw, 'm')}</strong></div>
+        <div class="stat"><span class="k">Completion depth</span><strong>${fmt(depth, 'm')}</strong></div>
+        <div class="stat"><span class="k">Depth (ft)</span><strong>${depthFt != null ? esc(depthFt) : '—'}</strong></div>
+        <div class="stat"><span class="k">Drill cost (mid)</span><strong>${wellCostMid != null ? fmtCad(wellCostMid) : '—'}</strong></div>
+        <div class="stat"><span class="k">Static water level</span><strong>${fmt(swl, 'm')}</strong></div>
       </div>
 
       ${wellsMinimap(w, centre)}
@@ -3622,7 +5522,7 @@ function wellDepthSection(w, centre) {
         <strong>Required — consult a licensed driller</strong>
         <p>${esc(
           w.disclaimer ||
-            'This is an estimate range only, not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
+            'Hydrology-based estimate only — not a guaranteed drilled depth. Consult a local licensed water-well driller for a site-specific quote before any construction decision.'
         )}</p>
       </div>
     </section>`;
@@ -3631,6 +5531,7 @@ function wellDepthSection(w, centre) {
 function provincialContoursMap(contours, centre) {
   if (!contours || !contours.features?.length) return '';
   const id = 'prov-contours-' + Math.random().toString(36).slice(2, 8);
+  const parcel = getParcelLatLngs();
   setTimeout(() => {
     const el = document.getElementById(id);
     if (!el) return;
@@ -3639,29 +5540,53 @@ function provincialContoursMap(contours, centre) {
     L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
       attribution: '&copy; Esri', maxZoom: 18,
     }).addTo(map);
-    const all = [[centre.latitude, centre.longitude]];
+    const boundsGroup = [];
+    if (parcel?.length >= 3) {
+      const poly = L.polygon(parcel, {
+        color: '#a8801f',
+        fillColor: '#a8801f',
+        fillOpacity: 0.12,
+        weight: 3,
+      }).addTo(map);
+      poly.bindPopup('<strong>Your parcel</strong>');
+      boundsGroup.push(poly);
+    }
     contours.features.forEach((f) => {
-      if (f.geometry.type === 'LineString') {
+      if (f.geometry?.type === 'LineString') {
         const coords = f.geometry.coordinates.map(([lng, lat]) => [lat, lng]);
         const isIndex = f.properties?.contour_type === 'index';
-        L.polyline(coords, {
+        const line = L.polyline(coords, {
           color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.35)',
           weight: isIndex ? 2 : 1,
           opacity: isIndex ? 0.9 : 0.6,
         }).addTo(map);
-        const mid = coords[Math.floor(coords.length / 2)];
-        all.push(mid);
+        boundsGroup.push(line);
       }
     });
-    L.circleMarker([centre.latitude, centre.longitude], { radius: 6, fillColor: '#a8801f', fillOpacity: 1, color: '#16211b', weight: 2 }).addTo(map);
-    try { map.fitBounds(all, { padding: [15, 15] }); } catch {}
+    if (centre?.latitude != null) {
+      L.circleMarker([centre.latitude, centre.longitude], {
+        radius: 6,
+        fillColor: '#a8801f',
+        fillOpacity: 1,
+        color: '#16211b',
+        weight: 2,
+      }).addTo(map);
+    }
+    try {
+      if (boundsGroup.length) {
+        map.fitBounds(L.featureGroup(boundsGroup).getBounds(), { padding: [15, 15] });
+      } else if (centre?.latitude != null) {
+        map.setView([centre.latitude, centre.longitude], 14);
+      }
+    } catch { /* ignore */ }
   }, 150);
   return `
     <section class="report-block">
       <h2>Provincial elevation contours</h2>
       <p class="fine" style="margin-top:-0.35rem">
         Live ArcGIS contour polylines (Alberta Provincial Elevation MapServer).
-        Bold lines are index contours (every 5th interval).
+        Bold lines are index contours (every 5th interval). Gold outline = your parcel.
+        The same contours also appear on the unified <strong>Property map</strong>.
       </p>
       <div id="${id}" class="report-map minimap-embed" style="height:280px"></div>
     </section>`;
@@ -3732,7 +5657,11 @@ function windRoseSvg(windRose) {
     const tx = cx + Math.cos(a) * (maxR + 14);
     const ty = cy + Math.sin(a) * (maxR + 14);
     const isMain = ['N','E','S','W'].includes(d);
-    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="${isMain ? '10px' : '7px'}" font-weight="${isMain ? 'bold' : 'normal'}" fill="var(--ink-soft)">${d}</text>`;
+    const isPrimary = windRose.primary_direction === d;
+    const isSecondary = windRose.secondary_direction === d;
+    const fill = isPrimary ? 'var(--berry)' : isSecondary ? '#2a6f97' : 'var(--ink-soft)';
+    const weight = isPrimary || isMain ? 'bold' : 'normal';
+    return `<text x="${tx.toFixed(1)}" y="${(ty + 3).toFixed(1)}" text-anchor="middle" class="svg-label" font-size="${isMain || isPrimary ? '10px' : '7px'}" font-weight="${weight}" fill="${fill}">${d}</text>`;
   }).join('');
 
   // Scale label
@@ -3744,10 +5673,14 @@ function windRoseSvg(windRose) {
     return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.72rem;margin-right:0.5rem"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:${color}"></span>${esc(s.name || `Bin ${i+1}`)}</span>`;
   }).join('');
 
+  const locLabel = windRose.distance_km != null && windRose.distance_km > 0
+    ? `${esc(windRose.station_name)} (${esc(windRose.distance_km)} km away)`
+    : esc(windRose.station_name || 'NASA POWER');
+
   return `
     <div style="margin-top:0.85rem">
-      <span class="mono topo-label">Wind rose — ${esc(windRose.station_name)} (${esc(windRose.distance_km)} km away)</span>
-      <svg class="wind-butterfly" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind rose from ACIS">
+      <span class="mono topo-label">Wind rose — ${locLabel}</span>
+      <svg class="wind-butterfly" viewBox="0 0 ${W} ${H}" role="img" aria-label="Wind rose from NASA POWER">
         <rect x="0" y="0" width="${W}" height="${H}" fill="#fff" stroke="var(--line)" rx="8"/>
         ${ringsHtml}
         ${barsHtml}
@@ -3757,18 +5690,37 @@ function windRoseSvg(windRose) {
       </svg>
       <div style="display:flex;flex-wrap:wrap;align-items:center;gap:0.2rem;margin-top:0.35rem">${legendItems}</div>
       <p class="fine" style="margin-top:0.35rem">
-        Source: <a href="${esc(windRose.source_url || 'https://acis.alberta.ca/wind-rose.jsp')}" target="_blank" rel="noopener">ACIS</a>
+        Source: <a href="${esc(windRose.source_url || 'https://power.larc.nasa.gov/')}" target="_blank" rel="noopener">${esc(windRose.source || 'NASA POWER')}</a>
         · ${esc(windRose.start_date)} to ${esc(windRose.end_date)}
-        · Station ${esc(windRose.station_id)}
+        ${windRose.n_obs ? ` · ${esc(windRose.n_obs.toLocaleString?.() || windRose.n_obs)} hourly obs` : ''}
+        ${windRose.mean_speed_ms != null ? ` · mean ${esc(windRose.mean_speed_ms)} m/s` : ''}
       </p>
     </div>`;
 }
 
+/** Map 16-point compass label to nearest of 8 for simple compass diagram. */
+function coarsenWindDir(dir) {
+  if (!dir) return 'NW';
+  const map = {
+    N: 'N', NNE: 'NE', NE: 'NE', ENE: 'E', E: 'E', ESE: 'SE', SE: 'SE', SSE: 'S',
+    S: 'S', SSW: 'SW', SW: 'SW', WSW: 'W', W: 'W', WNW: 'NW', NW: 'NW', NNW: 'N',
+  };
+  return map[String(dir).toUpperCase()] || 'NW';
+}
+
 function windSection(climate, r, windRose) {
-  const windDir = climate?.prevailing_wind_direction || r?.climate?.prevailing_wind_direction || 'NW';
+  const primary =
+    windRose?.primary_direction ||
+    climate?.prevailing_wind_direction ||
+    r?.climate?.prevailing_wind_direction ||
+    'NW';
+  const secondary = windRose?.secondary_direction || climate?.secondary_wind_direction || null;
+  const windDir = coarsenWindDir(primary);
+  const secDir = secondary ? coarsenWindDir(secondary) : null;
   const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-  const dirIdx = dirs.indexOf(windDir.toUpperCase());
+  const dirIdx = dirs.indexOf(windDir);
   const idx = dirIdx >= 0 ? dirIdx : 7;
+  const shelter = windRose?.shelterbelt || null;
 
   const w = 260, h = 260, cx = w / 2, cy = h / 2, cr = 110;
   const dirAngle = (idx / 8) * 360 - 90;
@@ -3783,6 +5735,17 @@ function windSection(climate, r, windRose) {
   const sbx2 = cx - Math.cos(sbRad) * cr * 0.6;
   const sby2 = cy - Math.sin(sbRad) * cr * 0.6;
 
+  let secArrow = '';
+  if (secDir && dirs.includes(secDir)) {
+    const sIdx = dirs.indexOf(secDir);
+    const sAngle = (sIdx / 8) * 360 - 90;
+    const sRad = (sAngle * Math.PI) / 180;
+    const sx = cx + Math.cos(sRad) * arrowLen * 0.55;
+    const sy = cy + Math.sin(sRad) * arrowLen * 0.55;
+    secArrow = `<line x1="${cx}" y1="${cy}" x2="${sx.toFixed(1)}" y2="${sy.toFixed(1)}" stroke="#7ec8e3" stroke-width="2" stroke-linecap="round" opacity="0.9"/>
+      <text x="${(cx + Math.cos(sRad) * cr * 0.68).toFixed(1)}" y="${(cy + Math.sin(sRad) * cr * 0.68).toFixed(1)}" class="svg-label" fill="#2a6f97" font-size="7px">2°</text>`;
+  }
+
   const compassSvg = `
     <svg class="wind-butterfly" viewBox="0 0 ${w} ${h}" role="img" aria-label="Wind direction and shelterbelt orientation">
       <rect x="0" y="0" width="${w}" height="${h}" fill="#fff" stroke="var(--line)" rx="8"/>
@@ -3792,8 +5755,11 @@ function windSection(climate, r, windRose) {
         const a = ((i / 8) * 360 - 90) * Math.PI / 180;
         const tx = cx + Math.cos(a) * (cr + 12);
         const ty = cy + Math.sin(a) * (cr + 12);
-        return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${d === windDir.toUpperCase() ? 'bold' : 'normal'}" fill="${d === windDir.toUpperCase() ? 'var(--berry)' : 'var(--ink-soft)'}">${esc(d)}</text>`;
+        const isP = d === windDir;
+        const isS = d === secDir;
+        return `<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" text-anchor="middle" dominant-baseline="central" class="svg-label" font-weight="${isP ? 'bold' : 'normal'}" fill="${isP ? 'var(--berry)' : isS ? '#2a6f97' : 'var(--ink-soft)'}">${esc(d)}</text>`;
       }).join('')}
+      ${secArrow}
       <line x1="${cx}" y1="${cy}" x2="${ax.toFixed(1)}" y2="${ay.toFixed(1)}" stroke="#2a6f97" stroke-width="3" stroke-linecap="round"/>
       <polygon points="${(ax + Math.cos(arrowRad + 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad + 2.5) * 14).toFixed(1)} ${(ax + Math.cos(arrowRad - 2.5) * 14).toFixed(1)} ${(ay + Math.sin(arrowRad - 2.5) * 14).toFixed(1)} ${ax.toFixed(1)} ${ay.toFixed(1)}" fill="#2a6f97"/>
       <line x1="${sbx1.toFixed(1)}" y1="${sby1.toFixed(1)}" x2="${sbx2.toFixed(1)}" y2="${sby2.toFixed(1)}" stroke="var(--ok)" stroke-width="3" stroke-dasharray="6 3" stroke-linecap="round"/>
@@ -3801,37 +5767,63 @@ function windSection(climate, r, windRose) {
     </svg>`;
 
   const roseHtml = windRoseSvg(windRose);
+  const primaryPct = windRose?.primary_frequency_pct != null ? ` (${windRose.primary_frequency_pct}%)` : '';
+  const secondaryPct = windRose?.secondary_frequency_pct != null ? ` (${windRose.secondary_frequency_pct}%)` : '';
+  const axisLabel = shelter?.primary_axis || `${dirs[(idx + 2) % 8]}–${dirs[(idx + 6) % 8]}`;
 
   return `
     <section class="report-block wind-section">
       <h2>Wind & shelterbelt</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Prevailing wind: <strong>${esc(windDir)}</strong>.
-        Blue arrow = dominant wind direction. Green dashed line = optimal shelterbelt orientation (perpendicular to wind).
+        Primary wind: <strong>${esc(primary)}</strong>${esc(primaryPct)}
+        ${secondary ? ` · Secondary: <strong>${esc(secondary)}</strong>${esc(secondaryPct)}` : ''}.
+        ${windRose?.available ? 'From <strong>NASA POWER</strong> hourly 10&nbsp;m wind.' : ''}
+        Blue arrow = primary · light arrow = secondary · green dashed = main shelterbelt axis.
       </p>
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:1rem;align-items:start;margin-top:0.75rem">
+      <div class="split-2col">
         <div>${compassSvg}</div>
         <div>
           <div class="well-range-card" style="border-left-color:#2a6f97;margin-bottom:0.5rem">
-            <span class="mono">Shelterbelt placement</span>
+            <span class="mono">Shelterbelt envelope</span>
             <p class="fine" style="margin:0.3rem 0 0">
-              Orient the shelterbelt <strong>perpendicular</strong> to the prevailing wind (green line).
-              For <strong>${esc(windDir)}</strong> wind, plant the shelterbelt roughly
-              <strong>${esc(dirs[(idx + 2) % 8])}–${esc(dirs[(idx + 6) % 8])}</strong>.
+              ${shelter?.note
+                ? esc(shelter.note)
+                : `Orient the main belt along <strong>${esc(axisLabel)}</strong> (perpendicular to ${esc(primary)}).`}
             </p>
+            ${shelter?.secondary_axis ? `
+              <p class="fine" style="margin:0.35rem 0 0">
+                Secondary axis: <strong>${esc(shelter.secondary_axis)}</strong>
+                ${shelter.multi_directional ? ' · multi-directional site — consider L/U layout' : ''}
+              </p>
+            ` : ''}
+          </div>
+          <div class="summary-grid" style="margin-bottom:0.5rem">
+            <div class="stat"><span class="k">Primary</span><strong>${esc(primary)}${primaryPct ? esc(primaryPct) : ''}</strong></div>
+            <div class="stat"><span class="k">Secondary</span><strong>${secondary ? `${esc(secondary)}${secondaryPct ? esc(secondaryPct) : ''}` : '—'}</strong></div>
+            <div class="stat"><span class="k">Mean speed</span><strong>${windRose?.mean_speed_ms != null ? `${esc(windRose.mean_speed_ms)} m/s` : '—'}</strong></div>
+            <div class="stat"><span class="k">Belt axis</span><strong>${esc(axisLabel)}</strong></div>
           </div>
           <p class="fine">
             A shelterbelt reduces wind speed 50–80% for a downwind distance of 5–10× its height (H).
-            For a 10m tall poplar belt, the protected zone extends 50–100m leeward.
-            Multi-row belts with fast-growing pioneers (poplar, caragana) + slower evergreens (spruce)
-            provide year-round wind protection.
+            For a 10&nbsp;m tall poplar belt, the protected zone extends 50–100&nbsp;m leeward.
+            Alberta prairie multi-row pattern (windward → leeward):
+            conifer (Colorado or white spruce, lodgepole pine) →
+            deciduous backbone (hybrid/balsam poplar, green ash, Manitoba maple, resistant elm) →
+            shrub hedge (caragana, lilac, saskatoon, chokecherry).
           </p>
           <p class="fine" style="margin-top:0.5rem">
-            <strong>Recommendation:</strong> ${climate?.chinook_exposure ? 'Chinook-prone area — use dense multi-row shelterbelt for snow management and wind protection.' : 'Standard 3–5 row shelterbelt with deciduous + conifer mix recommended.'}
+            <strong>Recommendation:</strong> ${
+              climate?.chinook_exposure
+                ? 'Chinook-prone area — dense multi-row belt with spruce on the windward side for year-round snow and wind control.'
+                : 'Use the Alberta prairie palette above; diversify deciduous rows so one pest (e.g. emerald ash borer) cannot clear the belt.'
+            }
           </p>
         </div>
       </div>
       ${roseHtml}
+      ${!windRose?.available && windRose?.error ? `
+        <p class="fine" style="margin-top:0.5rem;color:var(--caution)">Wind rose unavailable: ${esc(windRose.error)}</p>
+      ` : ''}
     </section>`;
 }
 
@@ -3875,44 +5867,1251 @@ function biodiversitySection(bio) {
     </section>`;
 }
 
-function wetAreasSection(wam) {
-  if (!wam) return '';
-  const dtw = wam.depth_to_water;
-  const streams = wam.predicted_streams;
-
-  let dtwHtml = '';
-  if (dtw?.available && dtw.category) {
-    const sev = dtw.category.severity || 'none';
-    const sevColor = sev === 'high' ? 'var(--danger)' : sev === 'moderate' ? 'var(--caution)' : sev === 'low' ? 'var(--ok)' : 'var(--ink-soft)';
-    dtwHtml = `
-      <div class="well-range-card" style="border-left-color:${sevColor};margin-bottom:0.75rem">
-        <span class="mono">Depth-to-water (Wet Areas Mapping)</span>
-        <div class="well-range-value" style="font-size:clamp(1.2rem, 2.5vw, 1.6rem);color:${sevColor}">
-          ${esc(dtw.category.label)}
-        </div>
-        <p class="fine">
-          Raw value: ${esc(dtw.raw_value)} · approx depth ${esc(dtw.category.depth_m)}
-          · Government of Alberta (open data)
-        </p>
-      </div>`;
+function soilSurveySection(ss) {
+  // Always show recommended lab tests; show inventory block when available
+  const labHtml = recommendedSoilTestsSection(ss?.recommended_lab_tests);
+  if (!ss || !ss.available) {
+    if (ss?.error && !labHtml) {
+      return `
+        <section class="report-block">
+          <h2>Soil survey &amp; tests</h2>
+          <p class="fine">Soil inventory unavailable: ${esc(ss.error)}</p>
+        </section>`;
+    }
+    return labHtml || '';
   }
+
+  const ls = ss.land_system;
+  const ag = ss.agrasid;
+  const zoneInfo = ss.soil_zone_info;
+  const orderInfo = ss.soil_order_info;
+  const chars = ss.characteristics || {};
+  const sum = ss.sample_summary || {};
+
+  const zoneColor = {
+    'Brown': '#c9a35b',
+    'Dark Brown': '#8b6914',
+    'Black': '#2d2d2d',
+    'Dark Gray': '#5a5a5a',
+    'Gray': '#888888',
+  }[ls?.soil_zone] || '#7a6b5a';
+
+  const qualityColor = {
+    excellent: 'var(--ok)',
+    good: 'var(--ok)',
+    moderate: 'var(--gold)',
+    poor: 'var(--danger)',
+    variable: 'var(--caution)',
+    unknown: 'var(--ink-soft)',
+  }[orderInfo?.quality] || 'var(--ink-soft)';
+
+  const charsRows = Object.entries(chars)
+    .filter(([_, v]) => v != null)
+    .map(([k, v]) => `<tr><td class="mono">${esc(k.replace(/_/g, ' '))}</td><td><strong>${esc(v)}</strong></td></tr>`)
+    .join('');
+
+  const zoneNotes = (zoneInfo?.permaculture_notes || [])
+    .map(n => `<li>${esc(n)}</li>`)
+    .join('');
 
   return `
     <section class="report-block">
-      <h2>Wet areas — depth to water</h2>
+      <h2>Soil survey &amp; sample tests</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Government of Alberta Wet Areas Mapping — classified depth-to-water estimates.
-        Toggle the overlay on the satellite map via the layer control (top-right).
+        Alberta Agriculture soil inventory plus mapped SoilGrids sample points (texture, pH, SOC screening).
+        ${ls?.land_system_name ? `Land system: <strong>${esc(ls.land_system_name)}</strong>` : ''}
+        ${ls?.soil_zone ? ` · Soil zone: <strong style="color:${zoneColor}">${esc(ls.soil_zone)}</strong>` : ''}
+        ${ls?.ag_climate_zone ? ` · Ag climate: ${esc(ls.ag_climate_zone)}` : ''}
       </p>
 
-      ${dtwHtml || '<p class="fine">Depth-to-water not available at this location.</p>'}
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Land system</span><strong>${esc(ls?.land_system_symbol || '—')}</strong></div>
+        <div class="stat"><span class="k">Soil zone</span><strong style="color:${zoneColor}">${esc(ls?.soil_zone || '—')}</strong></div>
+        <div class="stat"><span class="k">Soil order</span><strong style="color:${qualityColor}">${esc(ls?.soil_order_primary || '—')}</strong></div>
+        <div class="stat"><span class="k">Texture (model)</span><strong>${esc(chars.texture_class || sum.texture_class || '—')}</strong></div>
+        <div class="stat"><span class="k">pH (model)</span><strong>${chars.ph_h2o_mean != null ? esc(chars.ph_h2o_mean) : sum.mean_ph != null ? esc(sum.mean_ph) : '—'}</strong></div>
+        <div class="stat"><span class="k">SOC model</span><strong>${chars.soc_g_kg_regional_mean != null ? `${esc(chars.soc_g_kg_regional_mean)} g/kg` : sum.mean_soc_g_kg != null ? `${esc(sum.mean_soc_g_kg)} g/kg` : '—'}</strong></div>
+        <div class="stat"><span class="k">Surface forms</span><strong>${esc((ls?.surface_forms || []).join(', ') || '—')}</strong></div>
+        <div class="stat"><span class="k">Major components</span><strong>${esc((ls?.major_components || []).join(', ') || '—')}</strong></div>
+        <div class="stat"><span class="k">Sample points</span><strong>${esc(ss.soil_samples?.length || 0)}</strong></div>
+      </div>
 
-      ${streams?.count != null ? `
-        <div class="summary-grid" style="margin-top:0.5rem">
-          <div class="stat"><span class="k">Predicted streams</span><strong>${esc(streams.count)}</strong></div>
+      ${ag ? `
+        <div class="well-range-card" style="border-left-color:${zoneColor};margin-top:0.75rem">
+          <span class="mono">AGRASID polygon</span>
+          <div class="well-range-value" style="font-size:clamp(1rem, 2vw, 1.3rem)">
+            ${esc(ag.municipality || '—')}
+          </div>
+          <p class="fine">
+            SLC unit: ${esc(ag.slc_unit || '—')}
+            ${ag.land_capability_code ? ` · Land capability: ${esc(ag.land_capability_code)}${ag.land_capability_modifier || ''}` : ''}
+          </p>
         </div>
       ` : ''}
+
+      ${orderInfo ? `
+        <div class="flag" data-severity="${orderInfo.quality === 'excellent' || orderInfo.quality === 'good' ? 'info' : orderInfo.quality === 'poor' ? 'caution' : 'info'}" style="margin-top:0.75rem">
+          <strong>Soil quality: ${esc(orderInfo.quality)}</strong>
+          <p>${esc(orderInfo.note)}</p>
+        </div>
+      ` : ''}
+
+      ${zoneInfo ? `
+        <div style="margin-top:0.75rem">
+          <span class="mono topo-label">Soil zone characteristics — ${esc(zoneInfo.name)}</span>
+          <div class="summary-grid" style="margin-top:0.4rem">
+            <div class="stat"><span class="k">Precipitation</span><strong>${esc(zoneInfo.precipitation_range_mm || '—')} mm</strong></div>
+            <div class="stat"><span class="k">Typical texture</span><strong>${esc(zoneInfo.typical_texture || '—')}</strong></div>
+            <div class="stat"><span class="k">Organic matter</span><strong>${esc(zoneInfo.organic_matter_level || '—')}</strong></div>
+            <div class="stat"><span class="k">Growing season</span><strong>${esc(zoneInfo.growing_season || '—')}</strong></div>
+          </div>
+          ${zoneNotes ? `<ul class="wildlife-recs" style="margin:0.5rem 0 0;padding-left:1.2rem;font-size:0.92rem;color:var(--ink-soft);line-height:1.6">${zoneNotes}</ul>` : ''}
+        </div>
+      ` : ''}
+
+      ${charsRows ? `
+        <div class="econ-table-wrap" style="margin-top:0.75rem">
+          <table class="econ-table">
+            <thead><tr><th>Property</th><th>Mapped / inferred value</th></tr></thead>
+            <tbody>${charsRows}</tbody>
+          </table>
+        </div>
+      ` : ''}
+
+      ${soilSamplesMapBlock(ss)}
+
+      <p class="fine" style="margin-top:0.6rem">
+        Source: <a href="${esc(ss.source_url)}" target="_blank" rel="noopener">${esc(ss.source || ss.source_url)}</a>
+        · ${ss.soil_samples?.length ? `${esc(ss.soil_samples.length)} SoilGrids sample points · ` : ''}
+        <strong>Not laboratory values</strong> — screening only. Open Government Licence — Alberta / ISRIC
+      </p>
+    </section>
+    ${labHtml}`;
+}
+
+/**
+ * Recommended laboratory / field soil tests (restored EE soil-testing toolbox).
+ */
+function recommendedSoilTestsSection(lab) {
+  if (!lab?.available && !lab?.tests?.length) return '';
+  const tests = lab.tests || [];
+  const cards = tests
+    .map(
+      (t) => `
+      <article class="prox-card" style="border-left:3px solid ${t.priority === 1 ? 'var(--ok)' : 'var(--line)'}">
+        <span class="mono">${t.priority === 1 ? 'Priority' : 'Optional'} · ${esc(t.method || 'Lab / field')}</span>
+        <strong>${esc(t.name)}</strong>
+        <p class="fine" style="margin:0.35rem 0 0">${esc(t.why || '')}</p>
+        ${
+          t.measures?.length
+            ? `<p class="fine" style="margin:0.3rem 0 0"><strong>Measures:</strong> ${t.measures.map(esc).join(' · ')}</p>`
+            : ''
+        }
+      </article>`
+    )
+    .join('');
+
+  return `
+    <section class="report-block">
+      <h2>${esc(lab.title || 'Recommended soil tests')}</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(
+          lab.intro ||
+            'Laboratory and field tests that complete the remote soil map — high-confidence baseline for plantings, earthworks, and soil-carbon claims.'
+        )}
+      </p>
+      ${
+        lab.sample_protocol
+          ? `<div class="flag" data-severity="info" style="margin:0.65rem 0">
+        <strong>How to sample</strong>
+        <p>${esc(lab.sample_protocol)}</p>
+      </div>`
+          : ''
+      }
+      <div class="prox-grid" style="margin-top:0.65rem">${cards}</div>
+      ${
+        lab.labs_note
+          ? `<p class="fine" style="margin-top:0.65rem">${esc(lab.labs_note)}</p>`
+          : ''
+      }
     </section>`;
+}
+
+/**
+ * Map soil sample points (SoilGrids) coloured by texture / SOC.
+ */
+function soilSamplesMapBlock(ss) {
+  const samples = ss?.soil_samples || [];
+  if (!samples.length) return '';
+  const sum = ss.sample_summary || {};
+  const id = 'soil-samples-' + Math.random().toString(36).slice(2, 8);
+
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el || typeof L === 'undefined') return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri', maxZoom: 18,
+    }).addTo(map);
+
+    const socVals = samples.map((s) => s.soc_g_kg).filter((v) => v != null);
+    const socMin = socVals.length ? Math.min(...socVals) : 0;
+    const socMax = socVals.length ? Math.max(...socVals) : 1;
+    const colorFor = (soc) => {
+      if (soc == null) return '#888';
+      const t = socMax > socMin ? (soc - socMin) / (socMax - socMin) : 0.5;
+      // brown (low C) → dark green (higher C)
+      const r = Math.round(139 + (34 - 139) * t);
+      const g = Math.round(90 + (120 - 90) * t);
+      const b = Math.round(43 + (40 - 43) * t);
+      return `rgb(${r},${g},${b})`;
+    };
+
+    const bounds = [];
+    samples.forEach((s) => {
+      if (s.lat == null || s.lng == null) return;
+      bounds.push([s.lat, s.lng]);
+      const color = colorFor(s.soc_g_kg);
+      const m = L.circleMarker([s.lat, s.lng], {
+        radius: 9,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: color,
+        fillOpacity: 0.9,
+      }).addTo(map);
+      m.bindPopup(
+        `<strong>${esc(s.role || s.id || 'sample')}</strong><br>` +
+        `Texture: ${esc(s.texture_class || '—')}<br>` +
+        `Clay/Sand/Silt: ${fmt(s.clay_pct)} / ${fmt(s.sand_pct)} / ${fmt(s.silt_pct)} %<br>` +
+        `pH: ${fmt(s.ph_h2o)} · SOC: ${fmt(s.soc_g_kg)} g/kg<br>` +
+        `<span class="fine">SoilGrids ~250 m · screening only</span>`
+      );
+    });
+    if (bounds.length) {
+      try { map.fitBounds(bounds, { padding: [28, 28], maxZoom: 15 }); } catch { /* ignore */ }
+    }
+  }, 140);
+
+  const sampleRows = samples.slice(0, 12).map((s) => `
+    <tr>
+      <td class="mono">${esc(s.role || s.id)}</td>
+      <td>${esc(s.texture_class || '—')}</td>
+      <td>${fmt(s.clay_pct)}</td>
+      <td>${fmt(s.sand_pct)}</td>
+      <td>${fmt(s.ph_h2o)}</td>
+      <td>${fmt(s.soc_g_kg)}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="margin-top:1rem">
+      <span class="mono topo-label">Mapped soil samples — characteristics grid</span>
+      <p class="fine" style="margin:0.25rem 0 0.4rem">
+        ${esc(sum.n_samples || samples.length)} SoilGrids points across the parcel
+        ${sum.texture_class ? ` · modal texture <strong>${esc(sum.texture_class)}</strong>` : ''}
+        ${sum.mean_soc_g_kg != null ? ` · mean SOC ~${esc(sum.mean_soc_g_kg)} g/kg` : ''}
+        ${sum.mean_ph != null ? ` · mean pH ${esc(sum.mean_ph)}` : ''}.
+        Markers coloured by relative SOC (brown → green). <strong>Not lab values</strong> — regional model (~250&nbsp;m).
+      </p>
+      <div id="${id}" class="report-map minimap-embed" style="height:280px;margin-top:0.35rem"></div>
+      <div class="econ-table-wrap" style="margin-top:0.65rem">
+        <table class="econ-table">
+          <thead><tr><th>Point</th><th>Texture</th><th>Clay %</th><th>Sand %</th><th>pH</th><th>SOC g/kg</th></tr></thead>
+          <tbody>${sampleRows}</tbody>
+        </table>
+      </div>
+      ${ss.sample_note ? `<p class="fine" style="margin-top:0.4rem">${esc(ss.sample_note)}</p>` : ''}
+    </div>`;
+}
+
+/**
+ * Small water / seeps detection (S2 NDWI-MNDWI + S1 + TWI + inventory).
+ * Strict confidence language — never regulatory wetlands.
+ */
+/**
+ * Water Collection Budget — full water budget (roof + swale + pond).
+ */
+function waterCollectionSection(wc) {
+  if (!wc || !wc.available) return '';
+  const roofScenarios = wc.roof_scenarios || [];
+  const swaleCapture = wc.swale_capture || {};
+  const pondStorage = wc.pond_storage || {};
+  const monthlyBudget = wc.monthly_budget || {};
+  const primaryRoof = roofScenarios.find(s => s.id === 'house_barn') || roofScenarios[0];
+  const monthEntries = Object.entries(monthlyBudget);
+  const maxL = Math.max(...monthEntries.map(([, v]) => v.total_litres), 1);
+  const monthBars = monthEntries.map(([m, v]) => {
+    const pct = Math.round((v.total_litres / maxL) * 100);
+    const roofPct = Math.round((v.roof_litres / maxL) * 100);
+    const swalePct = Math.round((v.swale_litres / maxL) * 100);
+    return `<div class="precip-month" title="${m}: ${v.total_litres.toLocaleString()} L total (${v.precip_mm} mm rain)">
+      <span class="precip-bar" style="height:${Math.max(4, pct)}%;background:linear-gradient(to top, var(--ok) ${swalePct}%, #2a6f97 ${swalePct}%, #2a6f97 ${swalePct + roofPct}%)"></span>
+      <span class="precip-label mono">${m}</span>
+    </div>`;
+  }).join('');
+  const dryMonths = (wc.dry_months || []).join(', ');
+  const wetMonths = (wc.wet_months || []).join(', ');
+  const roofCards = roofScenarios.map(sc => `
+    <div class="stat">
+      <span class="k">${esc(sc.label)}</span>
+      <strong>${(sc.annual_litres / 1000).toFixed(1)} m³</strong>
+      <span class="fine">${sc.annual_litres.toLocaleString()} L · ${sc.annual_ibc_totes} IBC totes · tank ≥${(sc.recommended_tank_litres / 1000).toFixed(0)} m³</span>
+    </div>`).join('');
+  return `
+    <section class="report-block water-collection-block">
+      <h2>Water collection budget</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Full water budget combining roof catchment, swale capture, and pond storage.
+        Based on NASA POWER precipitation × parcel geometry × standard catchment coefficients.
+      </p>
+      <div class="well-range-card" style="border-left-color:#2a6f97;margin-top:0.65rem">
+        <span class="mono">Total annual collection (house+barn + earthworks)</span>
+        <div class="well-range-value" style="font-size:clamp(1.3rem,3vw,1.8rem);color:#2a6f97">
+          ${(wc.total_annual_m3).toLocaleString()} m³
+          <span style="font-size:0.8rem;color:var(--ink-soft);margin-left:0.5rem">(${wc.total_annual_litres.toLocaleString()} L · ${wc.total_annual_gallons.toLocaleString()} gal)</span>
+        </div>
+        <p class="fine">Annual precip: ${wc.annual_precipitation_mm} mm · Parcel: ${wc.parcel_area_m2.toLocaleString()} m² · Runoff coeff: ${wc.runoff_coefficient} · Tank: ${(wc.recommended_tank_litres / 1000).toFixed(0)} m³</p>
+      </div>
+      <div class="summary-grid" style="margin-top:0.65rem">
+        <div class="stat"><span class="k">Roof catchment</span><strong>${primaryRoof ? (primaryRoof.annual_litres / 1000).toFixed(1) + ' m³' : '—'}</strong><span class="fine">${primaryRoof ? primaryRoof.label : ''} · 85% eff.</span></div>
+        <div class="stat"><span class="k">Swale capture</span><strong>${swaleCapture.recommended ? (swaleCapture.annual_litres / 1000).toFixed(1) + ' m³' : 'N/A'}</strong><span class="fine">${swaleCapture.recommended ? swaleCapture.swale_meters + ' m swale' : swaleCapture.note || 'No swales'}</span></div>
+        <div class="stat"><span class="k">Pond storage</span><strong>${pondStorage.recommended ? pondStorage.estimated_volume_m3 + ' m³' : 'N/A'}</strong><span class="fine">${pondStorage.recommended ? pondStorage.note : pondStorage.note || 'No ponds'}</span></div>
+        <div class="stat"><span class="k">Parcel runoff</span><strong>${(wc.parcel_runoff_litres / 1000).toFixed(0)} m³</strong><span class="fine">Total water leaving annually</span></div>
+      </div>
+      <div class="summary-grid" style="margin-top:0.35rem">
+        <div class="stat"><span class="k">Driest months</span><strong>${dryMonths || '—'}</strong></div>
+        <div class="stat"><span class="k">Wettest months</span><strong>${wetMonths || '—'}</strong></div>
+      </div>
+      <span class="mono topo-label" style="margin-top:0.85rem;display:block">Monthly collection (house+barn + swales)</span>
+      <div class="precip-chart" style="margin-top:0.45rem" aria-label="Monthly water collection">${monthBars}</div>
+      <p class="fine" style="margin-top:0.3rem"><span style="display:inline-block;width:10px;height:10px;background:var(--ok);vertical-align:middle;margin-right:3px"></span> Swale · <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;vertical-align:middle;margin-right:3px"></span> Roof</p>
+      <details class="inner-details" style="margin-top:0.85rem">
+        <summary>Roof catchment scenarios</summary>
+        <div class="summary-grid" style="margin-top:0.5rem">${roofCards}</div>
+        <p class="fine" style="margin-top:0.35rem">85% collection efficiency. Tank sized for 3-month dry-season buffer.</p>
+      </details>
+      <p class="fine" style="margin-top:0.65rem">${esc(wc.disclaimer || '')}</p>
+    </section>`;
+}
+
+function mineralsSection(m) {
+  if (!m || !m.available) return '';
+  const occ = m.all_occurrences || [];
+  const topComm = m.top_commodities || [];
+  const bedrock = m.bedrock_context || {};
+  const metallic = m.metallic || [];
+  const industrial = m.industrial || [];
+  const prospective = m.prospective_areas || [];
+  const centre = state.report?.location
+    ? { latitude: state.report.location.latitude, longitude: state.report.location.longitude }
+    : null;
+
+  // Map placeholder — init after DOM insert
+  const mapId = 'minerals-map-' + Math.random().toString(36).slice(2, 8);
+  if (occ.length && centre) {
+    setTimeout(() => initMineralsMap(mapId, occ, centre), 140);
+  }
+
+  const occRows = occ.slice(0, 10).map((o) => `
+    <tr>
+      <td>${esc(o.name || '—')}</td>
+      <td class="fine">${esc(o.commodity || '—')}</td>
+      <td class="fine">${esc(o.geo_age || '—')}</td>
+      <td class="fine">${esc(o.geo_unit || '—')}</td>
+      <td class="fine">${o.distance_m != null ? fmtDistance(o.distance_m) : '—'}</td>
+    </tr>
+  `).join('');
+
+  const commChips = topComm.map((c) =>
+    `<span class="chip">${esc(c.name)} <span class="chip-count">${c.count}</span></span>`
+  ).join('');
+
+  return `
+    <section class="report-block minerals-block">
+      <h2>Geology & minerals</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Alberta Geological Survey mineral occurrence inventory and bedrock geology context for the surrounding area.
+      </p>
+
+      ${bedrock.dominant_age || bedrock.dominant_unit ? `
+      <div class="metric-row" style="margin-bottom:0.6rem">
+        ${bedrock.dominant_age ? `<span class="metric"><span class="metric-label">Dominant age</span><span class="metric-value">${esc(bedrock.dominant_age)}</span></span>` : ''}
+        ${bedrock.dominant_unit ? `<span class="metric"><span class="metric-label">Dominant geology</span><span class="metric-value">${esc(bedrock.dominant_unit)}</span></span>` : ''}
+        ${bedrock.dominant_region ? `<span class="metric"><span class="metric-label">Region</span><span class="metric-value">${esc(bedrock.dominant_region)}</span></span>` : ''}
+      </div>
+      ` : ''}
+
+      ${topComm.length ? `
+      <div style="margin-bottom:0.5rem">
+        <span class="fine" style="margin-right:0.35rem">Commodities:</span>
+        ${commChips}
+      </div>
+      ` : ''}
+
+      ${occ.length ? `
+      <details class="inner-details">
+        <summary>Nearby mineral occurrences (${m.unique_count || occ.length})</summary>
+        <div class="econ-table-wrap">
+          <table class="econ-table">
+            <thead>
+              <tr><th>Name</th><th>Commodity</th><th>Age</th><th>Unit</th><th>Distance</th></tr>
+            </thead>
+            <tbody>${occRows}</tbody>
+          </table>
+        </div>
+      </details>
+      ` : ''}
+
+      ${metallic.length ? `
+      <details class="inner-details">
+        <summary>Metallic mineral occurrences (${metallic.length})</summary>
+        <div class="fine">
+          <ul>${metallic.slice(0, 8).map((o) => `
+            <li><strong>${esc(o.name || 'Unknown')}</strong> — ${esc(o.commodity || '—')}
+            ${o.deposit_type ? ` · ${esc(o.deposit_type)}` : ''}
+            ${o.ore_minerals ? ` · Ore: ${esc(o.ore_minerals)}` : ''}
+            ${o.geo_age ? ` · ${esc(o.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      ${industrial.length ? `
+      <details class="inner-details">
+        <summary>Industrial minerals (${industrial.length})</summary>
+        <div class="fine">
+          <ul>${industrial.slice(0, 8).map((o) => `
+            <li><strong>${esc(o.name || 'Unknown')}</strong> — ${esc(o.commodity || '—')}${o.geo_age ? ` · ${esc(o.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      ${prospective.length ? `
+      <details class="inner-details">
+        <summary>Prospective exploration areas (${prospective.length})</summary>
+        <div class="fine">
+          <ul>${prospective.map((p) => `
+            <li><strong>${esc(p.name || 'Unknown')}</strong>${p.commodity ? ` — ${esc(p.commodity)}` : ''}${p.geo_age ? ` · ${esc(p.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      <p class="fine" style="margin-top:0.5rem">
+        Source: ${esc(m.source || 'AER')} · ${m.search_radius_km || 15} km search radius.
+        ${m.source_urls?.length ? ` · <a href="${esc(m.source_urls[0])}" target="_blank" rel="noopener">DIG 2025-0009</a>` : ''}
+      </p>
+      <p class="fine">${esc(m.disclaimer || '')}</p>
+    </section>
+  `;
+}
+
+function initMineralsMap(elId, occurrences, centre) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined' || !occurrences?.length) return;
+  destroyLeafletOn(el);
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · AER Mineral Occurrences',
+    maxZoom: 18,
+  }).addTo(map);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    opacity: 0.5, maxZoom: 18,
+  }).addTo(map);
+
+  const boundsGroup = [];
+
+  // Parcel outline
+  const parcel = getParcelLatLngs();
+  if (parcel?.length >= 3) {
+    const poly = L.polygon(parcel, {
+      color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.12, weight: 3,
+    }).addTo(map);
+    poly.bindPopup('<strong>Your parcel</strong>');
+    boundsGroup.push(poly);
+  }
+
+  // Site centre
+  L.circleMarker([centre.latitude, centre.longitude], {
+    radius: 8, color: '#fff', weight: 2, fillColor: '#5b3a73', fillOpacity: 1,
+  }).addTo(map).bindTooltip('Site centre');
+
+  // Mineral occurrences
+  const commColors = {};
+  let colorIdx = 0;
+  const palette = ['#e9c46a', '#2a6f97', '#c23e2e', '#2f6f4e', '#8c5a1d', '#5b3a73', '#c45c26', '#3d9dc9'];
+
+  occurrences.forEach((o) => {
+    if (o.latitude == null || o.longitude == null || !Number.isFinite(o.latitude) || !Number.isFinite(o.longitude)) return;
+    const comm = o.commodity || 'Unknown';
+    if (!commColors[comm]) {
+      commColors[comm] = palette[colorIdx % palette.length];
+      colorIdx++;
+    }
+    const fill = commColors[comm];
+    const distLabel = o.distance_m != null ? fmtDistance(o.distance_m) : '—';
+
+    L.circleMarker([o.latitude, o.longitude], {
+      radius: 6, color: '#fff', weight: 1.5, fillColor: fill, fillOpacity: 0.85,
+    }).addTo(map)
+      .bindPopup(
+        `<strong>${esc(o.name || 'Occurrence')}</strong><br/>` +
+        `Commodity: ${esc(o.commodity || '—')}<br/>` +
+        `Age: ${esc(o.geo_age || '—')}<br/>` +
+        `Unit: ${esc(o.geo_unit || '—')}<br/>` +
+        `Distance: ${esc(distLabel)}` +
+        (o.deposit_type ? `<br/>Type: ${esc(o.deposit_type)}` : '') +
+        (o.ore_minerals ? `<br/>Ore: ${esc(o.ore_minerals)}` : '') +
+        `<br/><span class="fine">AER DIG 2025-0009</span>`
+      );
+    boundsGroup.push(L.latLngBounds([[o.latitude, o.longitude]]));
+  });
+
+  try {
+    if (boundsGroup.length) {
+      map.fitBounds(
+        boundsGroup.reduce((acc, x) => acc.extend(x), L.latLngBounds(boundsGroup[0])),
+        { padding: [28, 28], maxZoom: 16 }
+      );
+    } else {
+      map.setView([centre.latitude, centre.longitude], 12);
+    }
+  } catch { /* ignore */ }
+
+  requestAnimationFrame(() => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  });
+}
+
+function smallWaterSection(sw) {
+  if (!sw || (!sw.available && !sw.summary?.has_any_water && !sw.open_water_features?.length && !sw.possible_small_water_or_seeps?.length)) {
+    return '';
+  }
+  const sum = sw.summary || {};
+  const open = sw.open_water_features || [];
+  const poss = sw.possible_small_water_or_seeps || [];
+  const mapId = 'small-water-map-' + Math.random().toString(36).slice(2, 8);
+  const fc = sw.feature_collection;
+  const parcel = getParcelLatLngs();
+  if (fc?.features?.length || parcel) {
+    scheduleLeafletWhenVisible(mapId, () =>
+      initSmallWaterMap(mapId, fc, sw.map_layers, parcel)
+    );
+  }
+
+  const openRows = open
+    .slice(0, 8)
+    .map(
+      (f) => `
+    <tr>
+      <td>${esc(f.type || 'open_water')}</td>
+      <td>${f.area_m2 != null ? `${esc(f.area_m2)} m²` : '—'}</td>
+      <td><strong>${esc(f.confidence || '—')}</strong></td>
+      <td class="fine">${esc(f.source || '—')}</td>
+    </tr>`
+    )
+    .join('');
+
+  const possRows = poss
+    .slice(0, 8)
+    .map(
+      (f) => `
+    <tr>
+      <td>${esc(f.type || 'possible')}</td>
+      <td>${f.area_m2 != null ? `${esc(f.area_m2)} m²` : '—'}</td>
+      <td><strong>${esc(f.confidence || 'low-medium')}</strong></td>
+      <td class="fine">${esc(f.note || f.source || 'Verify on site walk')}</td>
+    </tr>`
+    )
+    .join('');
+
+  const dr = sw.metadata?.date_range;
+  const dateLabel = dr?.start && dr?.end ? `${dr.start} → ${dr.end}` : '—';
+  const confirmedBanner =
+    open.length || sum.has_confirmed_water
+      ? `<div class="flag" data-severity="info" style="margin-top:0.75rem">
+          <strong>Confirmed water features detected</strong>
+          <p>Inventory and/or multi-pixel optical open-water signatures on/near the parcel.
+          Screening only — not a permanent-water guarantee or Alberta Wetland Policy delineation.</p>
+        </div>`
+      : '';
+  const possibleBanner =
+    poss.length || sum.has_possible_small_water
+      ? `<div class="flag" data-severity="caution" style="margin-top:0.75rem">
+          <strong>Possible small water sources or seeps detected (low-medium confidence)</strong>
+          <p>Site walk recommended to verify. May be seasonal pools, seeps, or false positives.
+          Never treat pixel detections as regulatory wetland boundaries.</p>
+        </div>`
+      : '';
+
+  return `
+    <section class="report-block small-water-block">
+      <h2>Small water sources</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Multi-source stack: Alberta wetland inventory + Sentinel-2 NDWI/MNDWI + Sentinel-1 wetness + optional DEM wetness.
+        Detects ponds, dugouts, wet depressions, and possible seeps beyond mapped wetlands.
+        <strong>Screening only — not permanent water and not a regulatory wetland delineation.</strong>
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Any water signal</span><strong>${sum.has_any_water ? 'Yes' : 'No'}</strong></div>
+        <div class="stat"><span class="k">Confirmed area</span><strong>${sum.total_confirmed_area_m2 != null ? `${esc(sum.total_confirmed_area_m2)} m²` : '—'}</strong></div>
+        <div class="stat"><span class="k">Possible seeps</span><strong>${sum.total_possible_area_m2 != null ? `${esc(sum.total_possible_area_m2)} m²` : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest</span><strong>${sum.nearest_water_distance_m != null ? (sum.nearest_water_distance_m === 0 ? 'on parcel' : `${esc(sum.nearest_water_distance_m)} m`) : '—'}</strong></div>
+        <div class="stat"><span class="k">Density score</span><strong>${sum.water_density_score != null ? esc(sum.water_density_score) : '—'}</strong></div>
+        <div class="stat"><span class="k">AOI MNDWI</span><strong>${sum.aoi_mndwi != null ? esc(sum.aoi_mndwi) : '—'}</strong></div>
+      </div>
+      ${confirmedBanner}
+      ${possibleBanner}
+      ${
+        openRows
+          ? `<div class="econ-table-wrap" style="margin-top:0.75rem">
+              <span class="mono topo-label">Confirmed / high–medium open water</span>
+              <table class="econ-table"><thead><tr><th>Type</th><th>Area</th><th>Confidence</th><th>Source</th></tr></thead>
+              <tbody>${openRows}</tbody></table>
+            </div>`
+          : ''
+      }
+      ${
+        possRows
+          ? `<div class="econ-table-wrap" style="margin-top:0.65rem">
+              <span class="mono topo-label">Possible small water or seeps</span>
+              <table class="econ-table"><thead><tr><th>Type</th><th>Area</th><th>Confidence</th><th>Note</th></tr></thead>
+              <tbody>${possRows}</tbody></table>
+            </div>`
+          : ''
+      }
+      ${fc?.features?.length || parcel ? `<div id="${mapId}" class="report-map minimap-embed" style="height:260px;margin-top:0.75rem"></div>
+        <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>Confirmed / mapped</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(233,196,106,0.5);border:2px dashed #c45c26;vertical-align:middle;margin-right:4px"></span>Possible seeps (verify)</span>
+          <span class="fine">MNDWI heatmap optional (blue = wetter)</span>
+        </div>` : ''}
+      <p class="fine" style="margin-top:0.5rem">
+        Sources: ${esc((sw.metadata?.sources || []).join(' · ') || '—')}
+        · Date range: ${esc(dateLabel)}
+        · Buffer ${esc(sw.metadata?.aoi_buffer_m ?? 100)} m
+        · ${esc(sw.metadata?.resolution_m ?? 10)} m optical
+        ${(sw.metadata?.fallbacks || []).length ? ` · Fallbacks: ${esc(sw.metadata.fallbacks.join('; '))}` : ''}
+      </p>
+      <p class="fine"><strong>Attribution:</strong> Copernicus Sentinel (ESA) via Microsoft Planetary Computer; Alberta Merged Wetland Inventory (Open Government Licence — Alberta).</p>
+      ${sw.disclaimer ? `<p class="fine">${esc(sw.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+function initSmallWaterMap(elId, featureCollection, mapLayers, parcelLatLngs) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  destroyLeafletOn(el);
+  let map;
+  try {
+    map = L.map(el, { zoomControl: true, attributionControl: true });
+  } catch (e) {
+    console.warn('small-water map failed', e);
+    el.innerHTML = '<p class="fine">Water map could not load.</p>';
+    return;
+  }
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+  const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · Copernicus · AMWI · Alberta provincial contours',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const overlays = {};
+  const boundsGroup = [];
+
+  addHrdemWmsToMap(map, state.report);
+  addProvincialContoursToMap(map, state.report);
+
+  // Parcel boundary (same drawn coords as property map)
+  const parcelRing = parcelLatLngs || getParcelLatLngs();
+  let parcelPoly = null;
+  if (parcelRing?.length >= 3) {
+    parcelPoly = L.polygon(parcelRing, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+    }).addTo(map);
+    parcelPoly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    boundsGroup.push(parcelPoly);
+    overlays['Your parcel'] = parcelPoly;
+  }
+
+  const mndwi = (mapLayers || []).find((l) => l.id === 'mndwi' && l.url);
+  if (mndwi?.url) {
+    fetch(mndwi.url)
+      .then((r) => r.json())
+      .then((tj) => {
+        if (tj?.tiles?.[0]) {
+          const heat = L.tileLayer(tj.tiles[0], {
+            opacity: mndwi.opacity ?? 0.45,
+            maxZoom: 18,
+            attribution: mndwi.source || 'Sentinel-2 MNDWI',
+          });
+          heat.addTo(map);
+          overlays['MNDWI wetness (screening)'] = heat;
+          L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+        }
+      })
+      .catch(() => {});
+  }
+
+  const confirmed = L.layerGroup();
+  const possible = L.layerGroup();
+  if (featureCollection?.features?.length) {
+    L.geoJSON(featureCollection, {
+      style: (f) => {
+        const conf = f.properties?.confidence || '';
+        const isPoss = f.properties?.class === 'possible' || /low/i.test(conf);
+        // Solid teal = confirmed/mapped; dashed amber = possible seeps
+        return {
+          color: isPoss ? '#c45c26' : '#0b6e4f',
+          weight: isPoss ? 2 : 2.5,
+          fillColor: isPoss ? '#e9c46a' : '#2a9d8f',
+          fillOpacity: isPoss ? 0.35 : 0.5,
+          dashArray: isPoss ? '6 4' : null,
+        };
+      },
+      onEachFeature: (f, lyr) => {
+        const p = f.properties || {};
+        const isPoss = p.class === 'possible' || /low/i.test(p.confidence || '');
+        const verify = isPoss
+          ? '<br/><em>Field verification recommended — not permanent water</em>'
+          : '<br/><span class="fine">Screening only — not regulatory delineation</span>';
+        lyr.bindPopup(
+          `<strong>${esc(p.type || 'water')}</strong><br/>` +
+            `Area: ${p.area_m2 != null ? esc(p.area_m2) + ' m²' : '—'}<br/>` +
+            `Source: ${esc(p.source || '—')}<br/>` +
+            `Confidence: <strong>${esc(p.confidence || '—')}</strong>` +
+            verify
+        );
+        if (isPoss) lyr.addTo(possible);
+        else lyr.addTo(confirmed);
+      },
+    });
+  }
+  confirmed.addTo(map);
+  possible.addTo(map);
+  overlays['Confirmed / mapped water'] = confirmed;
+  overlays['Possible seeps (verify)'] = possible;
+  if (confirmed.getLayers().length) boundsGroup.push(confirmed);
+  if (possible.getLayers().length) boundsGroup.push(possible);
+
+  if (!mndwi?.url) {
+    L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+  }
+
+  if (parcelPoly) parcelPoly.bringToFront();
+
+  try {
+    if (boundsGroup.length) {
+      const all = L.featureGroup(
+        boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x]))
+      );
+      const b = all.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [16, 16], maxZoom: 17 });
+    }
+  } catch { /* ignore */ }
+}
+
+/** Parcel ring as Leaflet [lat,lng][] from report or live draw state. */
+function getParcelLatLngs() {
+  // Prefer the coordinates captured when the user drew the parcel — reused for all maps
+  const ring =
+    state.report?.geometry?.coordinates?.[0] ||
+    state.report?.site_map?.parcel?.coordinates?.[0] ||
+    (Array.isArray(state.paths) && state.paths.length >= 3 ? state.paths : null);
+  if (!Array.isArray(ring) || ring.length < 3) return null;
+  const latlngs = ring
+    .filter((p) => Array.isArray(p) && p.length >= 2)
+    .map(([lng, lat]) => [Number(lat), Number(lng)])
+    .filter(([lat, lng]) => Number.isFinite(lat) && Number.isFinite(lng));
+  if (latlngs.length < 3) return null;
+  const a = latlngs[0];
+  const b = latlngs[latlngs.length - 1];
+  if (a[0] !== b[0] || a[1] !== b[1]) latlngs.push([...a]);
+  return latlngs;
+}
+
+function wetlandsSection(w) {
+  if (!w) return '';
+  const onSite = !!w.has_wetland_on_site;
+  const types = (w.wetland_types || []).join(', ') || '—';
+  const area = w.wetland_area_ha != null ? `${w.wetland_area_ha} ha` : '—';
+  const near =
+    w.nearest_wetland_distance_m != null
+      ? w.nearest_wetland_distance_m === 0
+        ? 'on parcel'
+        : `${w.nearest_wetland_distance_m} m`
+      : '—';
+  const conf = w.confidence || (onSite ? 'high' : '—');
+  const mapId = 'wetlands-map-' + Math.random().toString(36).slice(2, 8);
+  const fc = w.wetland_polygons;
+  const parcel = getParcelLatLngs();
+  const showMap = !!(fc?.features?.length || parcel);
+  // Init when the accordion becomes visible (Leaflet needs non-zero size)
+  if (showMap) {
+    scheduleLeafletWhenVisible(mapId, () =>
+      initWetlandsMap(mapId, fc, w.query_bbox, parcel)
+    );
+  }
+  return `
+    <section class="report-block wetlands-block">
+      <h2>Wetlands (inventory)</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Alberta Merged Wetland Inventory polygons for screening water, microclimate, and fauna levers.
+        Gold outline = <strong>your parcel</strong>. Teal fill = mapped wetlands. Purple lines = provincial contours.
+        <strong>Not a formal Wetland Policy delineation</strong> — field assessment required before earthworks or Water Act decisions.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">On site</span><strong>${onSite ? 'Yes' : 'No'}</strong></div>
+        <div class="stat"><span class="k">Area (mapped)</span><strong>${esc(area)}</strong></div>
+        <div class="stat"><span class="k">Types</span><strong style="font-size:0.95rem">${esc(types)}</strong></div>
+        <div class="stat"><span class="k">Nearest</span><strong>${esc(near)}</strong></div>
+      </div>
+      ${
+        onSite
+          ? `<div class="flag" data-severity="caution" style="margin-top:0.75rem">
+              <strong>Protect / buffer existing wetland</strong>
+              <p>Mapped wetland intersects this parcel. Prefer enhancement with native wetland species over earthworks. Confirm Alberta Water Act / Wetland Policy requirements before any fill, drain, or excavation.</p>
+            </div>`
+          : `<p class="fine" style="margin-top:0.65rem">No AMWI wetland polygon on the parcel. Pond candidates still depend on topography, soils, and catchment — not inventory absence alone.</p>`
+      }
+      ${
+        showMap
+          ? `<div id="${mapId}" class="report-map minimap-embed" style="height:280px;margin-top:0.75rem;min-height:280px"></div>
+        <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>AMWI wetland</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:2px;background:#5b3a73;vertical-align:middle;margin-right:4px"></span>Provincial contour</span>
+        </div>`
+          : ''
+      }
+      <p class="fine" style="margin-top:0.5rem">
+        Confidence: <strong>${esc(conf)}</strong>
+        · Source: ${esc(w.source || 'AMWI')}
+        ${w.source_url ? ` · <a href="${esc(w.source_url)}" target="_blank" rel="noopener">layer</a>` : ''}
+        · Features: ${esc(w.feature_count ?? 0)}
+        ${w.error ? ` · Lookup note: ${esc(w.error)}` : ''}
+      </p>
+      ${w.disclaimer ? `<p class="fine">${esc(w.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+/**
+ * Leaflet containers inside collapsed <details> have 0 size — init only when visible.
+ * Supports multiple maps per accordion (each registers its own init).
+ */
+function scheduleLeafletWhenVisible(elId, initFn) {
+  const tryInit = () => {
+    const el = document.getElementById(elId);
+    if (!el) return false;
+    const details = el.closest('details');
+    if (details && !details.open) return false;
+    if (el.offsetWidth < 40 || el.offsetHeight < 40) return false;
+    if (el.dataset.leafletReady === '1') {
+      // Already built — just reflow
+      try {
+        el._eeLeafletMap?.invalidateSize?.({ animate: false });
+      } catch { /* ignore */ }
+      return true;
+    }
+    el.dataset.leafletReady = '1';
+    try {
+      initFn();
+    } catch (e) {
+      console.warn('map init failed', elId, e);
+      el.dataset.leafletReady = '0';
+      return false;
+    }
+    setTimeout(() => {
+      try {
+        el._eeLeafletMap?.invalidateSize?.({ animate: false });
+      } catch { /* ignore */ }
+    }, 200);
+    return true;
+  };
+
+  if (tryInit()) return;
+
+  const bindDetails = () => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const details = el.closest('details');
+    if (!details) return;
+    if (!details._eeMapInits) details._eeMapInits = [];
+    details._eeMapInits.push(tryInit);
+    if (!details._eeMapBound) {
+      details._eeMapBound = true;
+      details.addEventListener('toggle', () => {
+        if (!details.open) return;
+        setTimeout(() => {
+          (details._eeMapInits || []).forEach((fn) => {
+            try {
+              fn();
+            } catch { /* ignore */ }
+          });
+        }, 60);
+      });
+    }
+  };
+  setTimeout(bindDetails, 0);
+  setTimeout(tryInit, 250);
+  setTimeout(tryInit, 1000);
+}
+
+/** Alberta provincial contours FeatureCollection from report. */
+function getProvincialContoursFc(report) {
+  const r = report || state.report;
+  const p =
+    r?.elevation_overlays?.contours ||
+    r?.site_map?.contours?.provincial ||
+    r?._provincial_contours ||
+    null;
+  if (p?.features?.length) return p;
+  return null;
+}
+
+function getHrdemOverlay(report) {
+  const r = report || state.report;
+  return (
+    r?.elevation_overlays?.hrdem ||
+    r?.hrdem ||
+    r?.analysis?.hrdem ||
+    null
+  );
+}
+
+/** Draw provincial contours on a Leaflet map; returns layer or null. */
+function addProvincialContoursToMap(map, report, fcOverride) {
+  const fc = fcOverride || getProvincialContoursFc(report);
+  if (!fc?.features?.length || !map) return null;
+  // High-contrast lines on satellite basemap (light purple / white edge feel)
+  return L.geoJSON(fc, {
+    style: (f) => {
+      const isIndex =
+        f.properties?.contour_type === 'index' ||
+        /INDEX/i.test(String(f.properties?.feature_type || ''));
+      return {
+        color: isIndex ? '#f3e8ff' : '#c4b5fd',
+        weight: isIndex ? 2.4 : 1.4,
+        opacity: isIndex ? 0.95 : 0.8,
+        fill: false,
+      };
+    },
+    onEachFeature: (f, lyr) => {
+      const z = f.properties?.elevation_m ?? f.properties?.ELEVATION;
+      if (z != null) lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
+    },
+  }).addTo(map);
+}
+
+/**
+ * If the report has no contour GeoJSON (timeout / miss), fetch Alberta Titan
+ * contours client-side for the parcel bbox and add them to the map.
+ */
+async function ensureProvincialContoursOnMap(map, report, latlngs, overlays, parcelLayer) {
+  if (!map || !latlngs?.length) return 0;
+  if (getProvincialContoursFc(report)?.features?.length) {
+    return getProvincialContoursFc(report).features.length;
+  }
+  const b = L.latLngBounds(latlngs);
+  const bbox = {
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  };
+  // Pad slightly so edge contours appear
+  const padLng = Math.max((bbox.east - bbox.west) * 0.08, 0.0004);
+  const padLat = Math.max((bbox.north - bbox.south) * 0.08, 0.0003);
+  bbox.west -= padLng;
+  bbox.east += padLng;
+  bbox.south -= padLat;
+  bbox.north += padLat;
+
+  const fc = await fetchProvincialContoursClient(bbox, 1500);
+  if (!fc?.features?.length) return 0;
+
+  // Cache on report so wetlands / other maps reuse
+  if (report) {
+    report._provincial_contours = fc;
+    if (!report.elevation_overlays) report.elevation_overlays = {};
+    report.elevation_overlays.contours = fc;
+    if (state.report === report || !state.report) {
+      state.report = report;
+    } else {
+      state.report._provincial_contours = fc;
+      state.report.elevation_overlays = {
+        ...(state.report.elevation_overlays || {}),
+        contours: fc,
+      };
+    }
+  }
+
+  const layer = addProvincialContoursToMap(map, report, fc);
+  if (layer && overlays) overlays['Provincial contours'] = layer;
+  if (parcelLayer) {
+    try {
+      parcelLayer.bringToFront();
+    } catch { /* ignore */ }
+  }
+  return fc.features.length;
+}
+
+/** Client-side query of Alberta provincial contours (Titan MapServer). */
+async function fetchProvincialContoursClient(bbox, limit = 1200) {
+  const base =
+    'https://geospatial.alberta.ca/titan/rest/services/elevation/provincial_elevation/MapServer';
+  const envelope = JSON.stringify({
+    xmin: bbox.west,
+    ymin: bbox.south,
+    xmax: bbox.east,
+    ymax: bbox.north,
+    spatialReference: { wkid: 4326 },
+  });
+  const features = [];
+  // 4 = index, 5 = intermediate (same as server)
+  for (const layerId of [4, 5]) {
+    if (features.length >= limit) break;
+    const params = new URLSearchParams({
+      geometry: envelope,
+      geometryType: 'esriGeometryEnvelope',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: 'true',
+      outSR: '4326',
+      f: 'json',
+      resultRecordCount: String(limit - features.length),
+      where: '1=1',
+    });
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(`${base}/${layerId}/query?${params}`, {
+        signal: ctrl.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.error || !data.features?.length) continue;
+      for (const feat of data.features) {
+        const paths = feat.geometry?.paths;
+        if (!paths?.length) continue;
+        const attrs = feat.attributes || {};
+        const elevRaw = attrs.TEXT ?? attrs.ELEVATION ?? null;
+        const elev =
+          elevRaw != null && elevRaw !== '' && !Number.isNaN(Number(elevRaw))
+            ? Number(elevRaw)
+            : null;
+        const isIndex =
+          layerId === 4 || /INDEX/i.test(String(attrs.FEATURE_TYPE || ''));
+        for (const path of paths) {
+          if (!path || path.length < 2) continue;
+          features.push({
+            type: 'Feature',
+            properties: {
+              elevation_m: elev,
+              contour_type: isIndex ? 'index' : 'intermediate',
+              feature_type: attrs.FEATURE_TYPE || null,
+              source: 'Alberta provincial elevation (client)',
+            },
+            geometry: { type: 'LineString', coordinates: path },
+          });
+          if (features.length >= limit) break;
+        }
+        if (features.length >= limit) break;
+      }
+    } catch (e) {
+      console.warn('contour layer', layerId, e.message);
+    }
+  }
+  return {
+    type: 'FeatureCollection',
+    features,
+    source: 'Alberta Provincial Elevation MapServer (client fetch)',
+    altalis_map_url: 'https://www.altalis.com/map;id=118',
+  };
+}
+
+/**
+ * HRDEM Mosaic WMS hillshade (NRCan) when STAC reports coverage for the AOI.
+ * https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b
+ */
+function addHrdemWmsToMap(map, report) {
+  const hrdem = getHrdemOverlay(report);
+  if (!map || !hrdem?.available || !hrdem?.wms?.url) {
+    // Coverage flag without full wms config — still try default WMS if available
+    if (!hrdem?.available) return null;
+  }
+  if (typeof L === 'undefined' || !L.tileLayer?.wms) return null;
+
+  const cfg = hrdem.wms || {
+    url: 'https://datacube.services.geo.ca/ows/elevation',
+    layers: 'dtm-hillshade',
+    format: 'image/png',
+    transparent: true,
+    version: '1.3.0',
+    opacity: 0.55,
+    attribution:
+      'HRDEM Mosaic © His Majesty the King in Right of Canada (NRCan)',
+  };
+
+  try {
+    const layer = L.tileLayer.wms(cfg.url, {
+      layers: cfg.layers || 'dtm-hillshade',
+      format: cfg.format || 'image/png',
+      transparent: cfg.transparent !== false,
+      version: cfg.version || '1.3.0',
+      opacity: cfg.opacity ?? 0.55,
+      attribution: cfg.attribution || 'HRDEM NRCan',
+      // CRS handled by Leaflet default (EPSG:3857 tiles via WMS 1.3)
+    });
+    layer.addTo(map);
+    return layer;
+  } catch (e) {
+    console.warn('HRDEM WMS failed', e);
+    return null;
+  }
+}
+
+function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined') return;
+  destroyLeafletOn(el);
+  let map;
+  try {
+    map = L.map(el, { zoomControl: true, attributionControl: true });
+  } catch (e) {
+    console.warn('wetlands map failed', e);
+    el.innerHTML = '<p class="fine">Wetlands map could not load.</p>';
+    return;
+  }
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · AMWI (OGL-A) · Alberta provincial contours',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const boundsGroup = [];
+
+  addHrdemWmsToMap(map, state.report);
+  addProvincialContoursToMap(map, state.report);
+
+  let parcelPoly = null;
+  const parcelRing = parcelLatLngs || getParcelLatLngs();
+  if (parcelRing?.length >= 3) {
+    parcelPoly = L.polygon(parcelRing, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+    }).addTo(map);
+    parcelPoly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    boundsGroup.push(parcelPoly);
+  }
+
+  // Normalize GeoJSON — AMWI may store MultiRing as Polygon with multi outer rings
+  let fc = null;
+  if (featureCollection?.features?.length) {
+    const fixed = featureCollection.features
+      .map((f) => normalizeWetlandFeature(f))
+      .filter(Boolean);
+    if (fixed.length) fc = { type: 'FeatureCollection', features: fixed };
+  }
+
+  if (fc) {
+    const layer = L.geoJSON(fc, {
+      style: {
+        color: '#0b6e4f',
+        weight: 2,
+        fillColor: '#2a9d8f',
+        fillOpacity: 0.45,
+      },
+      onEachFeature: (f, lyr) => {
+        const p = f.properties || {};
+        lyr.bindPopup(
+          `<strong>${esc(p.type || 'wetland')}</strong><br/>` +
+            `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
+            `CWCS: ${esc(p.cwcs_class || '—')}<br/>` +
+            `${p.on_parcel ? '<em>Intersects parcel</em><br/>' : ''}` +
+            `<span class="fine">AMWI inventory · screening only</span>`
+        );
+      },
+    }).addTo(map);
+    boundsGroup.push(layer);
+  } else if (!parcelRing) {
+    el.innerHTML =
+      '<p class="fine" style="padding:0.75rem">No wetland polygons or parcel boundary to display.</p>';
+    return;
+  }
+
+  if (parcelPoly) parcelPoly.bringToFront();
+
+  try {
+    if (boundsGroup.length) {
+      const fg = L.featureGroup(
+        boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x]))
+      );
+      const b = fg.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [20, 20], maxZoom: 17 });
+    } else if (bbox?.south != null) {
+      map.fitBounds(
+        [
+          [bbox.south, bbox.west],
+          [bbox.north, bbox.east],
+        ],
+        { padding: [16, 16] }
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
+  setTimeout(() => {
+    try {
+      map.invalidateSize({ animate: false });
+    } catch { /* ignore */ }
+  }, 100);
+}
+
+/** Ensure wetland GeoJSON rings are valid Leaflet polygons. */
+function normalizeWetlandFeature(f) {
+  if (!f?.geometry) return null;
+  const g = f.geometry;
+  let coords = g.coordinates;
+  if (!coords) return null;
+  // Polygon: [ ring ] or accidentally multi outer rings without MultiPolygon type
+  if (g.type === 'Polygon') {
+    if (!Array.isArray(coords[0])) return null;
+    // If first element looks like a point [lng,lat], wrap
+    if (typeof coords[0][0] === 'number') {
+      coords = [coords];
+    }
+    // Drop rings that are too short
+    coords = coords.filter((ring) => Array.isArray(ring) && ring.length >= 3);
+    if (!coords.length) return null;
+    return {
+      type: 'Feature',
+      properties: f.properties || {},
+      geometry: { type: 'Polygon', coordinates: coords },
+    };
+  }
+  if (g.type === 'MultiPolygon') {
+    return f;
+  }
+  return f;
 }
 
 function landSalesMinimap(lv, centre) {
@@ -3944,28 +7143,616 @@ function landSalesMinimap(lv, centre) {
   return `<div id="${id}" class="report-map minimap-embed" style="height:220px;margin-top:0.6rem"></div>`;
 }
 
-function quoteSection(q) {
-  if (!q || !q.items?.length) return '';
+/**
+ * Value-first conversion step: choose interventions → email for full report →
+ * itemized estimate → inquiry to info@expandingedge.ca
+ */
+function nextStepsSection(r, idSuffix = 'main') {
+  const menu = r?.action_menu;
+  const items = menu?.items || buildClientActionMenuFallback(r);
+  if (!items.length) return '';
+
+  // Initialize selection from defaults once per report
+  if (!Array.isArray(state.selectedInterventions)) {
+    state.selectedInterventions = items.filter((i) => i.default_selected).map((i) => i.id);
+  }
+  const selected = new Set(state.selectedInterventions);
+  const unlocked = !!state.reportUnlocked;
+  const rootId = `next-steps-${idSuffix}`;
+
+  const groupOrder = [
+    { id: 'planting_shelter', label: 'Planting & shelterbelts' },
+    { id: 'water', label: 'Water' },
+    { id: 'optional', label: 'Optional extras' },
+  ];
+  const byGroup = {};
+  for (const it of items) {
+    const g = it.group || 'other';
+    if (!byGroup[g]) byGroup[g] = [];
+    byGroup[g].push(it);
+  }
+
+  const groupsHtml = groupOrder
+    .map((g) => {
+      const list = byGroup[g.id] || [];
+      if (!list.length) return '';
+      const cards = list
+        .map((it) => {
+          const on = selected.has(it.id);
+          const price = it.price?.amount_cad != null ? fmtCad(it.price.amount_cad) : 'Quote on walk';
+          const plants =
+            it.plant_highlights?.length
+              ? `<p class="fine">Species fit: ${it.plant_highlights.map(esc).join(', ')}</p>`
+              : '';
+          return `
+          <label class="intervention-card${on ? ' is-selected' : ''}${it.optional ? ' is-optional' : ''}" data-intervention-id="${esc(it.id)}">
+            <input type="checkbox" class="intervention-check" data-intervention="${esc(it.id)}" ${on ? 'checked' : ''} />
+            <div class="intervention-card-body">
+              <div class="intervention-card-top">
+                <span class="mono intervention-cat">${esc(it.category || g.id)}</span>
+                ${it.optional ? '<span class="pkg-badge">Optional</span>' : ''}
+                <span class="intervention-price mono">${price}</span>
+              </div>
+              <strong class="intervention-label">${esc(it.label)}</strong>
+              <p class="fine">${esc(it.blurb || '')}</p>
+              <p class="fine intervention-why"><strong>Why here:</strong> ${esc(it.reason || '')}</p>
+              ${plants}
+            </div>
+          </label>`;
+        })
+        .join('');
+      return `
+        <div class="intervention-group">
+          <h3 class="intervention-group-title">${esc(g.label)}</h3>
+          <div class="intervention-list">${cards}</div>
+        </div>`;
+    })
+    .join('');
+
+  const flow = (r.service_packages?.flow || [
+    { step: 1, label: 'Your site insights', description: 'Free analysis' },
+    { step: 2, label: 'Choose interventions', description: 'Select what you want' },
+    { step: 3, label: 'Full report', description: 'Download with email' },
+    { step: 4, label: 'Estimate & inquire', description: 'Talk to Expanding Edge' },
+  ])
+    .map(
+      (s, i) => `
+    <div class="flow-step${i === 1 ? ' flow-step-active' : ''}">
+      <span class="mono flow-step-n">${esc(s.step || i + 1)}</span>
+      <strong>${esc(s.label)}</strong>
+      <p class="fine">${esc(s.description || '')}</p>
+    </div>`
+    )
+    .join('');
+
+  const notes = [];
+  if (menu?.well_on_site) notes.push('A well appears to be on or next to this parcel — well drilling is not offered by default.');
+  if (menu?.water_on_site) notes.push('Surface water is present — pond and swale packages are omitted.');
+  if (!menu?.well_on_site) notes.push('No well detected on the parcel — a groundwater well is offered.');
+  if (!menu?.water_on_site) notes.push('No surface water on the parcel — swales and pond storage are offered.');
+  notes.push('Outbuilding is available but off by default.');
+
+  return `
+    <section class="report-block next-steps-block" id="${rootId}" data-next-steps>
+      <span class="mono eyebrow">Next step · receive more value</span>
+      <h2>Build your plan</h2>
+      <p class="fine" style="margin-top:-0.25rem">
+        You’ve seen what the land can support. Now choose the interventions you want Expanding Edge to price and discuss.
+        Select or unselect freely — nothing is a commitment.
+      </p>
+      <div class="flow-steps">${flow}</div>
+      ${menu?.summary ? `<p class="fine" style="margin:0.65rem 0">${esc(menu.summary)}</p>` : ''}
+      ${notes.length ? `<ul class="fine next-steps-notes">${notes.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+
+      <div class="intervention-picker">
+        ${groupsHtml}
+      </div>
+
+      <!-- Step: email for full report -->
+      <div class="next-step-panel report-unlock-panel">
+        <h3>Get your full report</h3>
+        <p class="fine">
+          Enter your email to download the complete site analysis (map, water, soils, plantings, and your selections).
+          We’ll only use this to send your report and follow up if you inquire.
+        </p>
+        <div class="report-unlock-form">
+          <label class="sr-only" for="report-email-input-${esc(idSuffix)}">Email</label>
+          <input type="email" id="report-email-input-${esc(idSuffix)}" class="report-email-input" data-report-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" ${unlocked ? 'readonly' : ''} autocomplete="email" />
+          <button type="button" class="btn" data-unlock-report ${unlocked ? 'disabled' : ''}>
+            ${unlocked ? 'Report unlocked' : 'Unlock full report'}
+          </button>
+          <button type="button" class="btn btn-secondary" data-download-report ${unlocked ? '' : 'disabled'} title="${unlocked ? 'Download PDF' : 'Enter email first'}">
+            Download PDF
+          </button>
+        </div>
+        <p class="fine report-unlock-status" ${unlocked ? '' : 'hidden'}>
+          ${unlocked ? `Unlocked for ${esc(state.reportEmail)}. Download anytime.` : ''}
+        </p>
+      </div>
+
+      <!-- Step: live estimate from selection -->
+      <div class="next-step-panel estimate-panel">
+        <h3>Itemized planning estimate</h3>
+        <p class="fine">Updates as you select options. Planning-level only — not a firm quote.</p>
+        <div class="live-estimate" data-live-estimate>${renderLiveEstimateHtml(items, selected)}</div>
+      </div>
+
+      <!-- Step: inquiry -->
+      <div class="next-step-panel inquiry-panel">
+        <h3>Make an inquiry</h3>
+        <p class="fine">
+          Send your selected interventions and site report summary to
+          <strong>info@expandingedge.ca</strong>. We’ll follow up to schedule a site walk.
+        </p>
+        <div class="inquiry-form">
+          <label>
+            <span class="mono">Your name</span>
+            <input type="text" class="report-email-input" data-inquiry-name placeholder="Name" autocomplete="name" />
+          </label>
+          <label>
+            <span class="mono">Email</span>
+            <input type="email" class="report-email-input" data-inquiry-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" autocomplete="email" />
+          </label>
+          <label>
+            <span class="mono">Phone (optional)</span>
+            <input type="tel" class="report-email-input" data-inquiry-phone placeholder="(780) …" autocomplete="tel" />
+          </label>
+          <label class="inquiry-message-label">
+            <span class="mono">Message (optional)</span>
+            <textarea class="inquiry-message" data-inquiry-message rows="3" placeholder="Goals, timeline, access notes…"></textarea>
+          </label>
+          <button type="button" class="btn" data-send-inquiry>Send inquiry with my selections</button>
+          <p class="fine inquiry-status" data-inquiry-status hidden></p>
+        </div>
+      </div>
+    </section>`;
+}
+
+function buildClientActionMenuFallback(r) {
+  // Older cached reports without action_menu — minimal list from packages
+  const pkgs = r?.service_packages?.packages || [];
+  return pkgs
+    .filter((p) => p.id !== 'off_grid_garage' || true)
+    .slice(0, 10)
+    .map((p) => ({
+      id: p.id,
+      category: p.category,
+      label: p.label,
+      blurb: p.blurb,
+      reason: p.reason,
+      price: p.price,
+      default_selected: p.id !== 'off_grid_garage' && !!p.featured,
+      group:
+        p.category === 'water'
+          ? 'water'
+          : p.id === 'off_grid_garage' || p.category === 'energy'
+            ? 'optional'
+            : 'planting_shelter',
+      optional: p.id === 'off_grid_garage' || p.category === 'energy',
+    }));
+}
+
+function renderLiveEstimateHtml(items, selectedSet) {
+  const chosen = items.filter((i) => selectedSet.has(i.id));
+  if (!chosen.length) {
+    return `<p class="fine">Select at least one option above to see a planning estimate.</p>`;
+  }
+  let subtotal = 0;
+  let rangeLow = 0;
+  let rangeHigh = 0;
+  const blocks = chosen
+    .map((it) => {
+      const p = it.price || {};
+      const mid = p.amount_cad || 0;
+      subtotal += mid;
+      rangeLow += p.range_low_cad ?? mid;
+      rangeHigh += p.range_high_cad ?? mid;
+      const lines = (p.line_items || [])
+        .map(
+          (l) => `
+        <div class="quote-line">
+          <span>${esc(l.label)}</span>
+          <span class="mono">${fmtCad(l.cost_cad ?? l.cost)}</span>
+        </div>`
+        )
+        .join('');
+      return `
+      <div class="quote-item">
+        <div class="quote-item-head">
+          <span class="quote-item-name">${esc(it.label)}</span>
+          <span class="quote-item-size mono">${
+            it.size != null ? `${esc(it.size)} ${esc(it.unit || '')}` : 'package'
+          }</span>
+        </div>
+        <div class="quote-item-lines">
+          ${lines || `<div class="quote-line"><span>${esc(p.label || 'Planning estimate')}</span><span class="mono">${fmtCad(mid)}</span></div>`}
+          ${
+            p.materials_cost_cad
+              ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency${
+                  p.materials_pct != null ? ` (${Math.round(p.materials_pct * 100)}%)` : ''
+                }</span><span class="mono">${fmtCad(p.materials_cost_cad)}</span></div>`
+              : ''
+          }
+          ${
+            p.travel_cost_cad
+              ? `<div class="quote-line quote-line-sub"><span>Mobilization / demobilization + travel</span><span class="mono">${fmtCad(p.travel_cost_cad)}</span></div>`
+              : ''
+          }
+        </div>
+        <div class="quote-item-total">
+          <span>Subtotal</span>
+          <span class="mono">${fmtCad(mid)}</span>
+        </div>
+        <p class="fine quote-item-range">likely range ${fmtCad(p.range_low_cad ?? mid)} – ${fmtCad(p.range_high_cad ?? mid)}${
+          p.field_days ? ` · ≈ ${esc(p.field_days)} field day${p.field_days === 1 ? '' : 's'}` : ''
+        }</p>
+      </div>`;
+    })
+    .join('');
+
+  return `
+    <div class="quote-items">${blocks}</div>
+    <div class="quote-total-card">
+      <span class="mono">Estimated total (${chosen.length} item${chosen.length === 1 ? '' : 's'})</span>
+      <div class="quote-total-value">${fmtCad(subtotal)}</div>
+      <p class="fine">likely range ${fmtCad(rangeLow)} – ${fmtCad(rangeHigh)}</p>
+    </div>
+    <p class="fine" style="margin-top:0.65rem">
+      Planning-level estimate only. Final scope, site conditions, and materials are confirmed on a site walk before quoting.
+    </p>`;
+}
+
+function bindNextStepsInteractions(r) {
+  const roots = document.querySelectorAll('[data-next-steps]');
+  if (!roots.length) return;
+  const menu = r?.action_menu;
+  const items = menu?.items || buildClientActionMenuFallback(r);
+
+  const refreshAllEstimates = () => {
+    const selected = new Set(state.selectedInterventions || []);
+    document.querySelectorAll('[data-next-steps]').forEach((root) => {
+      const host = root.querySelector('[data-live-estimate]');
+      if (host) host.innerHTML = renderLiveEstimateHtml(items, selected);
+      root.querySelectorAll('.intervention-card').forEach((card) => {
+        const id = card.getAttribute('data-intervention-id');
+        card.classList.toggle('is-selected', selected.has(id));
+        const cb = card.querySelector('input.intervention-check');
+        if (cb) cb.checked = selected.has(id);
+      });
+    });
+  };
+
+  roots.forEach((root) => {
+    if (root.dataset.bound === '1') return;
+    root.dataset.bound = '1';
+
+    root.querySelectorAll('input.intervention-check').forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const id = cb.getAttribute('data-intervention');
+        if (!id) return;
+        const set = new Set(state.selectedInterventions || []);
+        if (cb.checked) set.add(id);
+        else set.delete(id);
+        state.selectedInterventions = [...set];
+        refreshAllEstimates();
+      });
+    });
+
+    root.querySelectorAll('.intervention-card').forEach((card) => {
+      card.addEventListener('click', (ev) => {
+        if (ev.target.closest('input, a, button')) return;
+        const cb = card.querySelector('input.intervention-check');
+        if (!cb) return;
+        cb.checked = !cb.checked;
+        cb.dispatchEvent(new Event('change'));
+      });
+    });
+
+    const unlockBtn = root.querySelector('[data-unlock-report]');
+    const downloadBtn = root.querySelector('[data-download-report]');
+    const emailInput = root.querySelector('[data-report-email]');
+    const unlockStatus = root.querySelector('.report-unlock-status');
+
+    unlockBtn?.addEventListener('click', async () => {
+      const email = String(emailInput?.value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (unlockStatus) {
+          unlockStatus.hidden = false;
+          unlockStatus.textContent = 'Please enter a valid email address.';
+        }
+        return;
+      }
+      unlockBtn.disabled = true;
+      unlockBtn.textContent = 'Unlocking…';
+
+      const markUnlocked = () => {
+        state.reportEmail = email;
+        state.reportUnlocked = true;
+        document.querySelectorAll('[data-next-steps]').forEach((el) => {
+          el.querySelectorAll('[data-download-report]').forEach((b) => {
+            b.disabled = false;
+          });
+          el.querySelectorAll('[data-report-email]').forEach((inp) => {
+            inp.value = email;
+            inp.readOnly = true;
+          });
+          el.querySelectorAll('[data-unlock-report]').forEach((b) => {
+            b.disabled = true;
+            b.textContent = 'Report unlocked';
+          });
+          el.querySelectorAll('.report-unlock-status').forEach((s) => {
+            s.hidden = false;
+            s.textContent = `Unlocked for ${email}. You can download the PDF now.`;
+          });
+          el.querySelectorAll('[data-inquiry-email]').forEach((inp) => {
+            if (!inp.value) inp.value = email;
+          });
+        });
+      };
+
+      try {
+        // Cap wait so a slow host never feels like a hung "sign-in"
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch('/api/lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            site_name: r.site_name,
+            source: 'full_report_download',
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not unlock report');
+        markUnlocked();
+      } catch (e) {
+        // Still unlock locally if the request timed out — email is for lead capture only
+        if (e?.name === 'AbortError') {
+          markUnlocked();
+          // Best-effort background retry without blocking UI
+          fetch('/api/lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              site_name: r.site_name,
+              source: 'full_report_download_retry',
+            }),
+          }).catch(() => {});
+          return;
+        }
+        unlockBtn.disabled = false;
+        unlockBtn.textContent = 'Unlock full report';
+        if (unlockStatus) {
+          unlockStatus.hidden = false;
+          unlockStatus.textContent = e.message || 'Unlock failed';
+        }
+      }
+    });
+
+    downloadBtn?.addEventListener('click', () => {
+      if (!state.reportUnlocked) return;
+      if (typeof downloadFullPdf === 'function') downloadFullPdf();
+      else window.print();
+    });
+
+    root.querySelector('[data-send-inquiry]')?.addEventListener('click', async () => {
+      const status = root.querySelector('[data-inquiry-status]');
+      const email = String(
+        root.querySelector('[data-inquiry-email]')?.value || state.reportEmail || ''
+      ).trim();
+      const name = String(root.querySelector('[data-inquiry-name]')?.value || '').trim();
+      const phone = String(root.querySelector('[data-inquiry-phone]')?.value || '').trim();
+      const message = String(root.querySelector('[data-inquiry-message]')?.value || '').trim();
+      const selectedIds = new Set(state.selectedInterventions || []);
+      const selectedItems = items
+        .filter((i) => selectedIds.has(i.id))
+        .map((i) => ({
+          id: i.id,
+          label: i.label,
+          price_cad: i.price?.amount_cad ?? null,
+          category: i.category,
+        }));
+      if (!selectedItems.length) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Select at least one intervention above.';
+        }
+        return;
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = 'Enter a valid email so we can reply.';
+        }
+        return;
+      }
+      const subtotal = selectedItems.reduce((s, i) => s + (i.price_cad || 0), 0);
+      const btn = root.querySelector('[data-send-inquiry]');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+      }
+      try {
+        const report_summary = {
+          site_name: r.site_name,
+          area_ha: r.geometry?.area_ha,
+          location: {
+            nearest_town: r.location?.nearest_town,
+            municipality: r.location?.municipality,
+            lat: r.location?.latitude,
+            lng: r.location?.longitude,
+          },
+          elevation_m: r.topology?.elevation_m,
+          hardiness: r.climate?.plant_hardiness_zone || r.hardiness?.hardiness_zone,
+          wetlands_on_site: r.wetlands?.has_wetland_on_site,
+          small_water: r.small_water?.summary,
+          well_depth_m: r.predicted_well_depth?.estimated_depth_m,
+          plant_highlights: (r.planting_plan?.recommended || [])
+            .slice(0, 8)
+            .map((p) => p.common_name)
+            .filter(Boolean),
+          selected: selectedItems,
+          estimate_subtotal_cad: subtotal,
+        };
+        const res = await fetch('/api/inquiry', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            name,
+            phone,
+            message,
+            selected_items: selectedItems,
+            estimate_subtotal_cad: subtotal,
+            site_name: r.site_name,
+            location: r.location?.nearest_town || r.location?.municipality,
+            area_ha: r.geometry?.area_ha,
+            report_summary,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Inquiry failed');
+        if (status) {
+          status.hidden = false;
+          status.textContent = data.message || 'Inquiry sent.';
+        }
+        // Only open a local mail draft if Resend did not deliver
+        if (!data.emailed && data.mailto) {
+          setTimeout(() => {
+            try {
+              window.location.href = data.mailto;
+            } catch { /* ignore */ }
+          }, 200);
+        }
+      } catch (e) {
+        if (status) {
+          status.hidden = false;
+          status.textContent = e.message || 'Could not send inquiry';
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Send inquiry with my selections';
+        }
+      }
+    });
+  });
+}
+
+/** @deprecated pillar cards — superseded by nextStepsSection harmonized list */
+function servicePackagesSection(sp) {
+  // Keep a slim version for pillar package slices (food/water tabs)
+  if (!sp?.packages?.length) return '';
+  const pillars = PILLAR_ORDER.map((pid) => {
+    const list = (sp.by_category?.[pid] || []).filter((p) => p.id !== 'off_grid_garage' || pid === 'shelter');
+    if (!list.length) return '';
+    const meta = PILLAR_META[pid] || { label: pid, client: '' };
+    // Garage not featured
+    const cards = list
+      .map((p) => {
+        const price = p.price;
+        const priceLine =
+          price?.amount_cad != null
+            ? `<div class="pkg-price">${fmtCad(price.amount_cad)}${
+                price.range_low_cad != null && price.range_high_cad != null
+                  ? `<span class="fine"> · ${fmtCad(price.range_low_cad)}–${fmtCad(price.range_high_cad)}</span>`
+                  : ''
+              }</div>`
+            : '<div class="pkg-price fine">Quote on site walk</div>';
+        return `
+          <article class="pkg-card${p.id === 'off_grid_garage' ? '' : p.featured ? ' pkg-card-featured' : ''}" data-category="${esc(p.category)}">
+            <div class="pkg-card-top">
+              <span class="mono pkg-cat">${esc(p.category_label || meta.label)}</span>
+              ${p.id === 'off_grid_garage' ? '<span class="pkg-badge">Optional</span>' : ''}
+            </div>
+            <h3>${esc(p.label)}</h3>
+            <p class="fine">${esc(p.blurb)}</p>
+            ${priceLine}
+            <p class="fine pkg-reason"><strong>Why here:</strong> ${esc(p.reason || '')}</p>
+            <p class="fine" style="margin-top:0.45rem">Select this in <strong>Your plan</strong> to include it in your estimate and inquiry.</p>
+          </article>`;
+      })
+      .join('');
+    return `
+      <div class="pkg-pillar" id="pkg-${esc(pid)}">
+        <div class="pkg-pillar-head">
+          <h3>${esc(meta.label)}</h3>
+          <p class="fine">${esc(meta.client)}</p>
+        </div>
+        <div class="pkg-grid">${cards}</div>
+      </div>`;
+  }).join('');
+
+  return `
+    <section class="report-block service-packages-block">
+      <h2>Matching packages</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Context for this pillar. Use <strong>Your plan</strong> to select options, price them, and inquire.
+        ${sp.summary_sentence ? esc(sp.summary_sentence) : ''}
+      </p>
+      ${pillars}
+    </section>`;
+}
+
+function quoteSection(q, packages) {
+  const pkgItems =
+    packages?.packages
+      ?.filter((p) => p.price?.amount_cad != null && p.featured)
+      .map((p) => ({
+        serviceName: p.label,
+        size: 1,
+        unit: 'package',
+        lineItems: [{ label: p.price.label || p.label, cost: p.price.amount_cad }],
+        materialsCost: 0,
+        materialsPct: 0,
+        travelCost: 0,
+        subtotal: p.price.amount_cad,
+        rangeLow: p.price.range_low_cad ?? p.price.amount_cad,
+        rangeHigh: p.price.range_high_cad ?? p.price.amount_cad,
+        fieldDays: p.price.field_days || 0,
+        valueProps: p.claims_note
+          ? [{ confidence: 'moderate', headline: p.blurb, caveat: p.claims_note }]
+          : [],
+        category: p.category,
+      })) || [];
+
+  const fieldItems = q?.items || [];
+  // Prefer package view when we have service_packages; still show field lines
+  const items = [...pkgItems];
+  for (const it of fieldItems) {
+    // Avoid double-counting names already featured as packages
+    if (items.some((x) => x.serviceName === it.serviceName)) continue;
+    items.push(it);
+  }
+  if (!items.length) return '';
+
+  const subtotal = items.reduce((s, i) => s + (i.subtotal || 0), 0);
+  const rangeLow = items.reduce((s, i) => s + (i.rangeLow || i.subtotal || 0), 0);
+  const rangeHigh = items.reduce((s, i) => s + (i.rangeHigh || i.subtotal || 0), 0);
 
   return `
     <section class="report-block quote-block">
       <h2>Estimated investment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Rough planning-level cost built from published day rates for the recommendations above —
-        not a firm quote. Final scope, site conditions, and materials are always confirmed on a site walk.
+        Planning-level costs for recommended service packages and field work —
+        not a firm quote. Final scope is confirmed on a site walk.
       </p>
 
       <div class="quote-items">
-        ${q.items
+        ${items
           .map(
             (it) => `
           <div class="quote-item">
             <div class="quote-item-head">
-              <span class="quote-item-name">${esc(it.serviceName)}</span>
-              <span class="quote-item-size mono">${esc(it.size)} ${esc(it.unit === 'flat' ? '' : it.unit)}</span>
+              <span class="quote-item-name">${esc(it.serviceName)}${it.category ? ` <span class="mono" style="font-size:0.7rem;opacity:0.75">${esc(it.category)}</span>` : ''}</span>
+              <span class="quote-item-size mono">${esc(it.size)} ${esc(it.unit === 'flat' || it.unit === 'package' ? (it.unit === 'package' ? 'pkg' : '') : it.unit)}</span>
             </div>
             <div class="quote-item-lines">
-              ${it.lineItems
+              ${(it.lineItems || [])
                 .map(
                   (l) => `
                 <div class="quote-line">
@@ -3974,14 +7761,14 @@ function quoteSection(q) {
                 </div>`
                 )
                 .join('')}
-              ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round(it.materialsPct * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
-              <div class="quote-line quote-line-sub"><span>Mob/demob + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>
+              ${it.materialsCost ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency (${Math.round((it.materialsPct || 0) * 100)}%)</span><span class="mono">${fmtCad(it.materialsCost)}</span></div>` : ''}
+              ${it.travelCost ? `<div class="quote-line quote-line-sub"><span>Mobilization / demobilization + travel</span><span class="mono">${fmtCad(it.travelCost)}</span></div>` : ''}
             </div>
             <div class="quote-item-total">
               <span>Subtotal</span>
               <span class="mono">${fmtCad(it.subtotal)}</span>
             </div>
-            <p class="fine quote-item-range">likely range ${fmtCad(it.rangeLow)} – ${fmtCad(it.rangeHigh)} · ≈ ${it.fieldDays} field day${it.fieldDays === 1 ? '' : 's'}</p>
+            <p class="fine quote-item-range">likely range ${fmtCad(it.rangeLow)} – ${fmtCad(it.rangeHigh)}${it.fieldDays ? ` · ≈ ${it.fieldDays} field day${it.fieldDays === 1 ? '' : 's'}` : ''}</p>
             ${
               it.valueProps?.length
                 ? it.valueProps
@@ -3998,14 +7785,17 @@ function quoteSection(q) {
       </div>
 
       <div class="quote-total-card">
-        <span class="mono">Estimated total (${q.itemCount} item${q.itemCount === 1 ? '' : 's'}, ≈ ${q.totalFieldDays} field day${q.totalFieldDays === 1 ? '' : 's'})</span>
-        <div class="quote-total-value">${fmtCad(q.subtotal)}</div>
-        <p class="fine">likely range ${fmtCad(q.rangeLow)} – ${fmtCad(q.rangeHigh)}</p>
+        <span class="mono">Estimated total (${items.length} item${items.length === 1 ? '' : 's'})</span>
+        <div class="quote-total-value">${fmtCad(subtotal)}</div>
+        <p class="fine">likely range ${fmtCad(rangeLow)} – ${fmtCad(rangeHigh)}</p>
       </div>
 
       <div class="flag" data-severity="info" style="margin-top:1rem">
         <strong>Planning estimate only</strong>
-        <p>${esc(q.disclaimer)}</p>
+        <p>${esc(
+          q?.disclaimer ||
+            'Planning-level estimates only. Final scope, site conditions, and materials are confirmed on a site walk before quoting.'
+        )}</p>
       </div>
     </section>`;
 }
@@ -4169,7 +7959,7 @@ async function downloadFullPdf() {
     // Title page
     const titlePage = document.createElement('div');
     const r = state.report || {};
-    titlePage.style.cssText = 'text-align: center; padding: 60px 20px 40px; page-break-after: always;';
+    titlePage.style.cssText = 'text-align: center; padding: 40px 20px 20px;';
     titlePage.innerHTML = `
       <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Expanding Edge Permaculture</div>
       <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
@@ -4196,7 +7986,7 @@ async function downloadFullPdf() {
     await html2pdf()
       .set({
         ...pdfOpts(fname),
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        pagebreak: { mode: ['css', 'legacy'] },
       })
       .from(wrapper)
       .save();
@@ -4218,12 +8008,13 @@ function fecunditySection(fec) {
   const overall = fec.overallScore;
   const completeness = fec.dataCompleteness;
   const cats = fec.categories || [];
+  const sat = fec.satellite || null;
+  const reg = fec.regional_context?.soil_organic_carbon || sat?.regional_soc || null;
 
   // Radar-style SVG
   const W = 280, H = 280, cx = W / 2, cy = H / 2, maxR = 110;
   const n = cats.length;
   const catScores = cats.map((c) => c.score ?? 0);
-  const catLabels = cats.map((c) => c.label.split('—')[0].trim());
 
   const pts = catScores.map((v, i) => {
     const a = ((i / n) * 360 - 90) * Math.PI / 180;
@@ -4255,6 +8046,9 @@ function fecunditySection(fec) {
     const recs = (c.recommendations || []).map((r) =>
       `<span class="plant-chip gate-chip on" style="font-size:0.6rem"><strong>${esc(r.serviceId)}</strong> ${esc(r.rationale)}</span>`
     ).join('');
+    const indLine = (c.indicatorScores || [])
+      .map((i) => `${esc(i.key)} ${esc(i.score)}`)
+      .join(' · ');
     return `
       <div class="el rec-card" style="border-left-color:${barColor};padding:0.75rem 0.85rem">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem">
@@ -4265,20 +8059,127 @@ function fecunditySection(fec) {
           <div style="background:${barColor};height:100%;width:${barW}%;border-radius:3px;transition:width 0.3s"></div>
         </div>
         <p class="fine" style="margin:0">${esc(c.narrative)}</p>
-        <p class="fine" style="margin:0.2rem 0 0;font-size:0.72rem"><strong>Basis:</strong> ${esc(c.dataBasis.join('; '))}</p>
+        ${indLine ? `<p class="fine" style="margin:0.25rem 0 0;font-size:0.7rem"><strong>Indicators:</strong> ${indLine}</p>` : ''}
+        <p class="fine" style="margin:0.2rem 0 0;font-size:0.72rem"><strong>Basis:</strong> ${esc((c.dataBasis || []).join('; '))}</p>
         ${recs ? `<div class="plant-chips" style="margin-top:0.3rem">${recs}</div>` : ''}
       </div>`;
   }).join('');
+
+  // Satellite / open-Canada vegetation index cards
+  const idxCard = (label, idx) => {
+    if (!idx || (idx.median == null && idx.mean == null)) return '';
+    const primary = idx.median != null ? idx.median : idx.mean;
+    return `
+      <article class="prox-card">
+        <span class="mono">${esc(label)}</span>
+        <strong>${esc(primary)}${idx.unit ? ` <span class="fine">${esc(idx.unit)}</span>` : ''}</strong>
+        <p class="fine">
+          ${idx.min != null && idx.max != null ? `range ${fmt(idx.min)}–${fmt(idx.max)} · ` : ''}
+          ${idx.p10 != null ? `p10–p90 ${fmt(idx.p10)}–${fmt(idx.p90)} · ` : ''}
+          ${idx.resolution_m != null ? `${esc(idx.resolution_m)} m · ` : ''}
+          ${esc(idx.confidence || '—')}
+          ${idx.date ? ` · ${esc(idx.date)}` : ''}
+          ${idx.source ? ` · ${esc(idx.source)}` : ''}
+        </p>
+      </article>`;
+  };
+
+  const nrcan = sat?.nrcan_vegetation || null;
+  const lai = sat?.lai || nrcan?.lai || null;
+  const fcover = sat?.fcover || nrcan?.fcover || null;
+  const fapar = sat?.fapar || nrcan?.fapar || null;
+  const avi = sat?.avi || nrcan?.avi || null;
+  const resM =
+    nrcan?.collection === 'monthly-vegetation-parameters-20m-v1' ||
+    (nrcan && nrcan.resolution_m === 20)
+      ? 20
+      : nrcan?.resolution_m || 100;
+
+  const satBlock = sat?.available
+    ? `
+      <p class="fine" style="margin-top:0.75rem">
+        Primary vegetation indices from
+        <a href="https://open.canada.ca/data/en/dataset/033ac0b8-653c-43b2-a843-171fa1c9ace4" target="_blank" rel="noopener">NRCan Canada-wide LAI / fCOVER / fAPAR</a>
+        (Sentinel-2 biophysical products)
+        with
+        <a href="https://open.canada.ca/data/en/dataset/64b0e73a-da5f-4f7f-bca1-b656b6e86c94" target="_blank" rel="noopener">Alberta Vegetation Inventory (AVI) Crown</a>
+        as structural inventory reference.
+      </p>
+      <div class="summary-grid" style="margin-top:0.85rem">
+        <div class="stat"><span class="k">Green cover</span><strong>${sat.ndviCoverPct != null ? `${esc(sat.ndviCoverPct)}%` : '—'}</strong></div>
+        <div class="stat"><span class="k">LAI</span><strong>${lai?.mean != null ? esc(lai.mean) : '—'}</strong></div>
+        <div class="stat"><span class="k">fCOVER</span><strong>${fcover?.mean != null ? esc(fcover.mean) : '—'}</strong></div>
+        <div class="stat"><span class="k">Vigor</span><strong>${esc(sat.vegetation_vigor || nrcan?.vegetation_vigor || '—')}</strong></div>
+      </div>
+      <div class="prox-grid" style="margin-top:0.75rem">
+        ${idxCard(`LAI (NRCan · ~${resM} m)`, lai ? { ...lai, resolution_m: resM } : null)}
+        ${idxCard(`fCOVER (NRCan · ~${resM} m)`, fcover ? { ...fcover, resolution_m: resM } : null)}
+        ${idxCard(`fAPAR (NRCan · ~${resM} m)`, fapar ? { ...fapar, resolution_m: resM } : null)}
+        ${idxCard('NDVI (Sentinel-2 supplementary)', sat.ndvi)}
+        ${idxCard('NDMI moisture', sat.ndmi)}
+      </div>
+      ${
+        avi
+          ? `<div class="flag" data-severity="info" style="margin-top:0.75rem">
+        <strong>Alberta Vegetation Inventory (AVI) Crown</strong>
+        <p>${esc(avi.note || '')}</p>
+        <p class="fine" style="margin:0.35rem 0 0">
+          ${avi.natural_subregion?.name ? `Natural subregion: <strong>${esc(avi.natural_subregion.name)}</strong>${avi.natural_subregion.natural_region ? ` (${esc(avi.natural_subregion.natural_region)})` : ''}. ` : ''}
+          ${avi.likely_relevant ? 'Forested / parkland setting — AVI standards are relevant for stand structure review. ' : ''}
+          <a href="${esc(avi.dataset_url || 'https://open.canada.ca/data/en/dataset/64b0e73a-da5f-4f7f-bca1-b656b6e86c94')}" target="_blank" rel="noopener">Dataset</a>
+          ${avi.standards_url ? ` · <a href="${esc(avi.standards_url)}" target="_blank" rel="noopener">Inventory standards</a>` : ''}
+        </p>
+      </div>`
+          : ''
+      }
+      ${satelliteMapEmbed(sat)}
+    `
+    : '';
+
+  const socBanner = reg
+    ? `
+      <div class="flag" data-severity="caution" style="margin-top:0.85rem">
+        <strong>Regional SOC context only — ${esc(reg.confidence || 'low-moderate')} confidence</strong>
+        <p>
+          Mean ~${esc(reg.mean_g_kg)} g/kg
+          ${reg.min_g_kg != null && reg.max_g_kg != null ? ` (range ${esc(reg.min_g_kg)}–${esc(reg.max_g_kg)})` : ''}
+          · ${esc(reg.source || 'SoilGrids')} · ~${esc(reg.resolution_m || 250)} m resolution.
+          ${esc(reg.note || 'Not a property-scale measurement.')}
+          <strong>No numeric SOC claim without laboratory (or calibrated drone + lab) verification.</strong>
+        </p>
+      </div>`
+    : '';
+
+  const wfs = fec.waterFeatureSummary;
+  const waterSummaryBanner = wfs?.lines?.length
+    ? `
+      <div class="flag" data-severity="${wfs.field_verification_recommended ? 'caution' : 'info'}" style="margin-top:0.85rem">
+        <strong>Water features (lever input)</strong>
+        <p>${wfs.lines.map((l) => esc(l)).join(' ')}</p>
+        ${
+          wfs.nearest_m != null || wfs.confirmed_area_m2 != null
+            ? `<p class="fine" style="margin-top:0.35rem">
+                ${wfs.nearest_m != null ? `Nearest: ${wfs.nearest_m === 0 ? 'on parcel' : wfs.nearest_m + ' m'}` : ''}
+                ${wfs.confirmed_area_m2 != null ? ` · Confirmed ~${esc(wfs.confirmed_area_m2)} m²` : ''}
+                ${wfs.possible_area_m2 != null && wfs.possible_area_m2 > 0 ? ` · Possible ~${esc(wfs.possible_area_m2)} m²` : ''}
+              </p>`
+            : ''
+        }
+      </div>`
+    : '';
 
   return `
     <section class="report-block">
       <h2>Land fecundity assessment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Seven levers that drive land productivity, scored from available site and regional data.
-        Every indicator is optional — missing data drops out rather than penalizing the score.
+        Six levers scored from live site data: topography, wetlands, soil survey, wind, wildlife,
+        and <strong>satellite plant health</strong> (NRCan LAI / fCOVER / fAPAR${sat?.ndvi ? ' + Sentinel-2 NDVI' : ''}).
+        Missing indicators drop out rather than penalizing the score.
+        ${fec.indicatorsAnswered != null ? ` · <strong>${esc(fec.indicatorsAnswered)}</strong>/${esc(fec.indicatorsTotal || '—')} indicators answered` : ''}
+        ${fec.plantHealthScore != null ? ` · plant-health subscore <strong>${esc(fec.plantHealthScore)}</strong>/100` : ''}
       </p>
 
-      <div style="display:grid;grid-template-columns:280px 1fr;gap:1.2rem;align-items:start;margin-top:0.75rem">
+      <div class="split-2col">
         <div>
           <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Fecundity radar chart" style="max-width:280px">
             <rect x="0" y="0" width="${W}" height="${H}" fill="#f7f8f3" stroke="var(--line)" rx="8"/>
@@ -4294,7 +8195,9 @@ function fecunditySection(fec) {
             <div class="well-range-value" style="color:${scoreColor}">${overall != null ? `${overall}/100` : '—'}</div>
             <p class="fine">
               ${overall != null ? scoreBandLocal(overall).tone : 'Insufficient data for overall score.'}
-              · Data completeness: <strong>${completeness}%</strong> of possible indicators
+              · Data completeness: <strong>${completeness}%</strong>
+              ${fec.plantHealthScore != null ? ` · satellite plant health <strong>${esc(fec.plantHealthScore)}</strong>/100` : ''}
+              ${sat?.available || fec.siteDataUsed?.plant_health?.laiMean != null ? ' · LAI/fCOVER wired into score' : ''}
             </p>
           </div>
           ${fec.weakestCategories?.length ? `
@@ -4310,15 +8213,165 @@ function fecunditySection(fec) {
         </div>
       </div>
 
+      ${satBlock}
+      ${socBanner}
+      ${waterSummaryBanner}
+
       <div class="elements" style="margin-top:1rem;display:grid;gap:0.65rem">
         ${catCards}
       </div>
 
       <div class="flag" data-severity="info" style="margin-top:1rem">
         <strong>Remote assessment — site walk recommended</strong>
-        <p>This fecundity score is inferred from topography, soil survey, canopy cover, land-cover class, and regional wildlife observations. A direct site walk with soil tests, penetrometer readings, and field observations will significantly improve accuracy. No measured indicators were collected for this remote report.</p>
+        <p>${esc(
+          fec.disclaimer ||
+            'Satellite vegetation indices improve vegetative levers but do not replace soil tests for carbon or biology. A site walk with lab tests remains the high-confidence path.'
+        )}</p>
+        ${fec.attribution ? `<p class="fine" style="margin-top:0.35rem">${esc(fec.attribution)}</p>` : ''}
       </div>
     </section>`;
+}
+
+/**
+ * Satellite supporting imagery: NRCan LAI/fCOVER WMS + optional NDVI + SOC points.
+ */
+function satelliteMapEmbed(sat) {
+  const layers = sat?.map_layers || [];
+  const ndviLayer = layers.find((l) => l.id === 'ndvi' && l.url);
+  const laiWms = layers.find((l) => l.id === 'nrcan_lai' && l.type === 'wms');
+  const fcoverWms = layers.find((l) => l.id === 'nrcan_fcover' && l.type === 'wms');
+  const socLayer = layers.find((l) => l.id === 'regional_soc');
+  const socPts =
+    socLayer?.sample_points ||
+    sat?.regional_soc?.sample_points ||
+    [];
+  const bbox = sat?.aoi?.bbox;
+  if (!bbox && !socPts.length) return '';
+  if (!ndviLayer && !laiWms && !fcoverWms && !socPts.length) return '';
+
+  const id = 'sat-veg-soc-' + Math.random().toString(36).slice(2, 8);
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (!el || typeof L === 'undefined') return;
+    el.innerHTML = '';
+    const map = L.map(el, { zoomControl: true, attributionControl: true });
+    const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      attribution: 'Esri · NRCan vegetation', maxZoom: 18,
+    }).addTo(map);
+
+    const overlays = {};
+    let controlAdded = false;
+    const ensureControl = () => {
+      if (controlAdded || !Object.keys(overlays).length) return;
+      L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+      controlAdded = true;
+    };
+
+    // NRCan LAI / fCOVER WMS (primary open Canada layers)
+    if (typeof L.tileLayer.wms === 'function') {
+      [laiWms, fcoverWms].filter(Boolean).forEach((cfg, i) => {
+        try {
+          const lyr = L.tileLayer.wms(cfg.url, {
+            layers: cfg.layers,
+            format: cfg.format || 'image/png',
+            transparent: cfg.transparent !== false,
+            version: cfg.version || '1.3.0',
+            opacity: cfg.opacity ?? 0.65,
+            attribution: cfg.attribution || 'NRCan',
+          });
+          if (i === 0) lyr.addTo(map);
+          overlays[cfg.label || cfg.id] = lyr;
+        } catch (e) {
+          console.warn('NRCan WMS layer failed', e);
+        }
+      });
+      ensureControl();
+    }
+
+    if (ndviLayer?.url) {
+      fetch(ndviLayer.url)
+        .then((r) => r.json())
+        .then((tj) => {
+          if (tj?.tiles?.[0]) {
+            const ndvi = L.tileLayer(tj.tiles[0], {
+              opacity: ndviLayer.opacity ?? 0.55,
+              maxZoom: 18,
+              attribution: ndviLayer.source || 'Sentinel-2',
+            });
+            if (!laiWms && !fcoverWms) ndvi.addTo(map);
+            overlays['NDVI (Sentinel-2)'] = ndvi;
+            ensureControl();
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (socPts.length) {
+      const vals = socPts.map((p) => p.soc_g_kg).filter((v) => v != null);
+      const lo = vals.length ? Math.min(...vals) : 0;
+      const hi = vals.length ? Math.max(...vals) : 1;
+      const grp = L.layerGroup();
+      socPts.forEach((p) => {
+        if (p.lat == null || p.lon == null) return;
+        const t = hi > lo && p.soc_g_kg != null ? (p.soc_g_kg - lo) / (hi - lo) : 0.5;
+        const r = Math.round(160 + (20 - 160) * t);
+        const g = Math.round(100 + (140 - 100) * t);
+        const b = Math.round(40 + (50 - 40) * t);
+        L.circleMarker([p.lat, p.lon], {
+          radius: 8,
+          color: '#fff',
+          weight: 1.5,
+          fillColor: `rgb(${r},${g},${b})`,
+          fillOpacity: 0.9,
+        })
+          .bindPopup(
+            `<strong>SOC sample</strong><br>${fmt(p.soc_g_kg)} g/kg<br>` +
+            `<span class="fine">SoilGrids ~250 m · regional context only</span>`
+          )
+          .addTo(grp);
+      });
+      grp.addTo(map);
+      overlays['SOC samples (context)'] = grp;
+      ensureControl();
+    }
+
+    if (bbox) {
+      try {
+        map.fitBounds(
+          [[bbox.south, bbox.west], [bbox.north, bbox.east]],
+          { padding: [12, 12] }
+        );
+      } catch { /* ignore */ }
+    } else if (socPts.length) {
+      try {
+        map.fitBounds(
+          socPts.filter((p) => p.lat != null).map((p) => [p.lat, p.lon]),
+          { padding: [24, 24], maxZoom: 14 }
+        );
+      } catch { /* ignore */ }
+    }
+  }, 120);
+
+  const titleBits = [];
+  if (laiWms) titleBits.push('NRCan LAI');
+  if (fcoverWms) titleBits.push('NRCan fCOVER');
+  if (ndviLayer) titleBits.push(`NDVI · ${ndviLayer.date || 'latest'} · ${ndviLayer.resolution_m || 10} m`);
+  if (socPts.length) titleBits.push(`SOC samples (${socPts.length}) · ~250 m context`);
+
+  return `
+    <div style="margin-top:0.85rem">
+      <span class="mono topo-label">Satellite vegetation &amp; soil carbon · ${esc(titleBits.join(' · ') || 'imagery')}</span>
+      <div id="${id}" class="report-map minimap-embed" style="height:280px;margin-top:0.35rem"></div>
+      <p class="fine">
+        ${laiWms ? esc(laiWms.legend_note || 'LAI = leaf area index') + ' · ' : ''}
+        ${fcoverWms ? esc(fcoverWms.legend_note || 'fCOVER = green cover fraction') + ' · ' : ''}
+        ${ndviLayer ? esc(ndviLayer.legend_note || 'NDVI = supplementary vigor') + ' · ' : ''}
+        ${socPts.length ? 'SOC markers = SoilGrids model estimates (not lab). ' : ''}
+        Toggle layers top-right.
+        Primary: <a href="https://open.canada.ca/data/en/dataset/033ac0b8-653c-43b2-a843-171fa1c9ace4" target="_blank" rel="noopener">NRCan vegetation</a>
+        · SOC: SoilGrids / ISRIC.
+      </p>
+    </div>`;
 }
 
 function scoreBandLocal(score) {
@@ -4328,152 +8381,492 @@ function scoreBandLocal(score) {
   return { label: 'Needs significant improvement', color: 'var(--danger)', tone: 'One of the biggest constraints on what the land can produce.' };
 }
 
-function renderSectionPanes(r, ctx) {
-  const { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags } = ctx;
-  const b = (html, el) => { if (el) el.innerHTML = html; };
+function pillarPackageSlice(sp, category) {
+  if (!sp) return '';
+  const slim = {
+    ...sp,
+    packages: (sp.packages || []).filter((p) => p.category === category),
+    by_category: { [category]: sp.by_category?.[category] || [] },
+    featured: (sp.featured || []).filter((p) => p.category === category),
+    totals: null,
+    flow: sp.flow,
+    summary_sentence: null,
+  };
+  return servicePackagesSection(slim);
+}
 
-  // Overview: summary + map + score
-  const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
-  b(`
-    <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
-      <h1>${esc(r.site_name || 'Your parcel')}</h1>
-      <div class="score-row">
-        <span class="score">${allEls.length}</span>
-        <span class="score-of">recommendations for this parcel</span>
+/**
+ * Accordion section for findings — collapsed by default; open in PDF mode.
+ */
+function findingsAccordion(id, title, blurb, bodyHtml, opts = {}) {
+  if (!bodyHtml || !String(bodyHtml).trim()) return '';
+  const open = opts.open || opts.forPdf ? ' open' : '';
+  return `
+    <details class="findings-accordion" id="${esc(id)}"${open}>
+      <summary class="findings-accordion-summary">
+        <span class="findings-accordion-title">${esc(title)}</span>
+        ${blurb ? `<span class="fine findings-accordion-blurb">${esc(blurb)}</span>` : ''}
+        <span class="findings-accordion-hint mono" aria-hidden="true">Expand</span>
+      </summary>
+      <div class="findings-accordion-body">
+        ${bodyHtml}
       </div>
+    </details>`;
+}
+
+/**
+ * Findings organized for landowners:
+ * Land · Security · Economy · Water · Wildlife · Energy · Vegetation & food
+ * Recommendations deferred to the end.
+ */
+function buildFindingsHtml(r, ctx, opts = {}) {
+  const {
+    topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar,
+    landValue, hardiness, flood, zoning, allEls, els,
+  } = ctx;
+  const forPdf = !!opts.forPdf;
+  const acc = (id, title, blurb, body) =>
+    findingsAccordion(id, title, blurb, body, { forPdf });
+
+  // ── Land: legal description, distance / access, soils, topo, hardiness ──
+  const landBody = [
+    atsSection(r.ats, r.parcel_address),
+    accessSection(r.access, city?.name, city?.distance_km),
+    distanceContextSection(px, water, city, settlement),
+    topologySection(topo, a),
+    soilSurveySection(r.soil_survey || a.soil_survey),
+    hardinessFloodZoningSection(hardiness, flood, zoning, r),
+    temperatureSection(r.temperature || a.temperature),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Security: EPS city list + crime stats (RCMP iframe map removed per user request) ──
+  const securityBody = [
+    crimeSectionStandalone(crime, px),
+    nearestCrimesSection(nearestCrimes, centre),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Economy: demographics, land prices ──
+  const economyBody = [
+    demographicsSection(r.demographics),
+    landValueSection(landValue),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Water: precip (NASA), wells, wetlands, seeps, water collection budget ──
+  const waterBody = [
+    precipitationSection(r.precipitation || r.climate),
+    waterCollectionSection(r.water_collection),
+    wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
+    wetlandsSection(r.wetlands || r.fecundity?.wetlands),
+    smallWaterSection(r.small_water),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Wildlife ──
+  const wildlifeBody = [
+    wildlifeSection(r.wildlife || a.wildlife),
+    biodiversitySection(r.biodiversity),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Energy: solar (+ wind as energy climate) ──
+  const energyBody = [
+    solarSection(solar),
+    windSection(r.climate, r, r.wind_rose),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Vegetation & food (assessment, not shopping list) ──
+  const vegBody = [
+    treeCoverSection(r.tree_cover),
+    fecunditySection(r.fecundity),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Recommendations last ──
+  const topRecs = (els || allEls || []).slice(0, 12);
+  const recCards = topRecs.length
+    ? forPdf
+      ? `<ul>${topRecs
+          .map(
+            (e) =>
+              `<li><strong>${esc(e.element_type || e.technique || 'Item')}</strong> — ${esc(
+                e.condition_basis || e.value_headline || ''
+              )}</li>`
+          )
+          .join('')}</ul>`
+      : `<div class="elements">${topRecs.map((e) => recommendationCard(e)).join('')}</div>`
+    : '<p class="fine">No placement recommendations matched this parcel profile.</p>';
+
+  const recBody = `
+    <section class="report-block">
+      <h2>Placement recommendations</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Technique-level ideas from site measurements. Choose what to pursue in <strong>Your plan</strong>.
+      </p>
+      ${recCards}
+      ${siteDriversSection(ctx.siteDrivers) || ''}
+    </section>
+    ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
+    ${
+      !forPdf
+        ? `<div class="plant-cta panel side-offer-cta-panel" style="margin-top:1rem;padding:0.95rem 1.1rem">
+            <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
+            <h3 style="margin:0.2rem 0">Planting planner</h3>
+            <p class="fine" style="margin:0 0 0.65rem">Re-score goals and economics in the beta planner.</p>
+            <button type="button" class="btn btn-secondary" data-open-plant-beta onclick="window.__eeNav&&window.__eeNav('plant')">Open planting planner →</button>
+          </div>`
+        : ''
+    }
+
+  `;
+
+  const flagsHtml = ctx.flags?.length
+    ? `<div class="flags">${ctx.flags
+        .map(
+          (f) => `
+      <div class="flag" data-severity="${esc(f.severity)}">
+        <strong>${esc(severityLabel(f.severity))}</strong>
+        <p>${esc(f.message)}</p>
+      </div>`
+        )
+        .join('')}</div>`
+    : '';
+
+  return `
+    ${flagsHtml}
+    <p class="fine findings-toc">
+      Expand a theme to review the supporting cards. Recommendations are last.
+    </p>
+    ${acc('findings-land', 'Land', 'Legal description, distance, soils, terrain, hardiness', landBody)}
+    ${acc('findings-security', 'Security', 'Crime context near the parcel', securityBody)}
+    ${acc('findings-economy', 'Economy', 'Demographics and land prices', economyBody)}
+    ${acc('findings-water', 'Water', 'Precipitation, wells, wetlands, seeps', waterBody)}
+    ${acc('findings-wildlife', 'Wildlife', 'Habitat and biodiversity signals', wildlifeBody)}
+    ${acc('findings-energy', 'Energy', 'Solar resource and wind', energyBody)}
+    ${acc('findings-vegetation', 'Vegetation & food', 'Canopy and land productivity (assessment)', vegBody)}
+    ${acc('findings-minerals', 'Geology & minerals', 'Bedrock geology and mineral occurrences', [mineralsSection(r.minerals)].filter(Boolean).join(''))}
+    ${acc('findings-recommendations', 'Recommendations', 'Placement ideas and plant fits — after the evidence', recBody)}
+  `;
+}
+
+/** Distance / nearest places without crime (crime lives under Security). */
+function distanceContextSection(px, water, city, settlement) {
+  if (!water && !city && !settlement) return '';
+  return `
+    <section class="report-block">
+      <h2>Distance &amp; context</h2>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Nearest water</span><strong>${
+          water ? fmtDistance(water.distance_m) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Nearest settlement</span><strong>${
+          settlement
+            ? `${esc(settlement.name)} · ${fmt(settlement.distance_km, 'km')}`
+            : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${
+          city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'
+        }</strong></div>
+      </div>
+      ${
+        water?.feature_name || water?.feature_type
+          ? `<p class="fine" style="margin-top:0.5rem">Water feature: ${esc(
+              water.feature_name || water.feature_type || '—'
+            )}</p>`
+          : ''
+      }
+    </section>`;
+}
+
+function crimeSectionStandalone(crime, px) {
+  const c = crime || px?.crime_risk;
+  // Jurisdiction CSI / stats are optional; RCMP map is primary
+  if (!c) return '';
+  return `
+    <section class="report-block">
+      <h2>Jurisdiction crime context</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Statistics Canada / police-service level context (when available) — not a parcel risk rating.
+        For current incident mapping, use the RCMP area crime map above.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Classification</span><strong>${esc(
+          c.rural_or_urban_classification || c.band || c.level || '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Crime Severity Index</span><strong>${
+          c.crime_severity_index != null ? esc(c.crime_severity_index) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Data year</span><strong>${esc(c.data_year || '—')}</strong></div>
+        <div class="stat"><span class="k">Reporting area</span><strong style="font-size:0.9rem">${esc(
+          c.reporting_jurisdiction || c.area_name || c.municipality || '—'
+        )}</strong></div>
+      </div>
+      ${c.summary ? `<p class="fine" style="margin-top:0.55rem">${esc(c.summary)}</p>` : ''}
+      ${c.note || c.disclaimer ? `<p class="fine">${esc(c.note || c.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+/**
+ * NASA POWER precipitation + GPM PPS archive attribution.
+ */
+function precipitationSection(precip) {
+  // Accept full precipitation object or climate fallback
+  const p =
+    precip && (precip.mean_annual_mm != null || precip.monthly_mm || precip.available != null)
+      ? precip
+      : precip?.annual_precipitation_mm != null
+        ? {
+            available: true,
+            mean_annual_mm: precip.annual_precipitation_mm,
+            source: precip.precipitation_source || 'Site climate',
+            monthly_mm: null,
+            gpm_pps: {
+              archive_url: 'https://arthurhouhttps.pps.eosdis.nasa.gov/',
+              registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
+            },
+          }
+        : null;
+
+  if (!p) {
+    return `
+      <section class="report-block">
+        <h2>Precipitation</h2>
+        <p class="fine">Precipitation series not available for this point yet.</p>
+        <p class="fine">
+          Research archive:
+          <a href="https://arthurhouhttps.pps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA GPM PPS (arthurhouhttps)</a>
+        </p>
+      </section>`;
+  }
+
+  const months = p.monthly_mm || p.monthly || null;
+  const monthBars = months
+    ? Object.entries(months)
+        .map(([k, v]) => {
+          const max = Math.max(...Object.values(months).map(Number), 1);
+          const pct = Math.round((Number(v) / max) * 100);
+          return `<div class="precip-month" title="${esc(k)}: ${esc(v)} mm">
+            <span class="precip-bar" style="height:${Math.max(8, pct)}%"></span>
+            <span class="precip-label mono">${esc(String(k).slice(0, 3))}</span>
+          </div>`;
+        })
+        .join('')
+    : '';
+
+  const years = (p.annual_by_year || [])
+    .slice(-6)
+    .map((y) => `<span class="plant-chip">${esc(y.year)}: <strong>${esc(y.mm)}</strong> mm</span>`)
+    .join('');
+
+  const pps = p.gpm_pps || {};
+
+  return `
+    <section class="report-block">
+      <h2>Precipitation</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        NASA POWER bias-corrected precipitation at the parcel centroid (planning screen).
+        Full GPM IMERG research products live in the
+        <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">PPS archive (arthurhouhttps.pps.eosdis.nasa.gov)</a>.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Mean annual</span><strong>${
+          p.mean_annual_mm != null ? `${esc(p.mean_annual_mm)} mm` : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Series</span><strong style="font-size:0.9rem">${esc(
+          p.years?.start && p.years?.end
+            ? `${p.years.start}–${p.years.end}`
+            : p.years?.note || '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Source</span><strong style="font-size:0.85rem">${esc(
+          p.source || 'NASA'
+        )}</strong></div>
+      </div>
+      ${
+        monthBars
+          ? `<div class="precip-chart" style="margin-top:0.75rem" aria-label="Mean monthly precipitation">${monthBars}</div>
+             <p class="fine" style="margin-top:0.35rem">Mean monthly pattern (mm)</p>`
+          : ''
+      }
+      ${years ? `<div class="plant-chips" style="margin-top:0.55rem">${years}</div>` : ''}
+      <p class="fine" style="margin-top:0.65rem">
+        ${esc(p.methodology_note || '')}
+        ${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">NASA POWER</a>` : ''}
+      </p>
+      ${
+        pps.authenticated || pps.authenticated_probe
+          ? `<div class="flag" data-severity="info" style="margin-top:0.65rem">
+              <strong>GPM PPS archive connected</strong>
+              <p>
+                Authenticated to
+                <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">arthurhouhttps.pps.eosdis.nasa.gov</a>
+                ${pps.account ? ` as <span class="mono">${esc(pps.account)}</span>` : ''}.
+                ${esc(pps.note || '')}
+                ${
+                  pps.sample_directory
+                    ? `<br/><span class="fine">Sample dir: <a href="${esc(pps.sample_directory)}" target="_blank" rel="noopener">${esc(pps.sample_directory)}</a></span>`
+                    : ''
+                }
+              </p>
+            </div>`
+          : `<p class="fine" style="margin-top:0.45rem">
+              PPS:
+              <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">research archive</a>
+              ${pps.note ? ` — ${esc(pps.note)}` : ''}
+              ${
+                pps.registration_url
+                  ? ` · <a href="${esc(pps.registration_url)}" target="_blank" rel="noopener">register</a>`
+                  : ''
+              }
+            </p>`
+      }
+    </section>`;
+}
+
+function renderSectionPanes(r, ctx) {
+  const {
+    topo, a, px, water, city, settlement, centre, solar, landValue,
+    hardiness, recommendations, flags, allEls,
+  } = ctx;
+  const b = (html, el) => {
+    if (el) el.innerHTML = html;
+  };
+
+  const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  const menuN = r.action_menu?.default_selected_ids?.length || r.action_menu?.items?.length || 0;
+
+  // 1) Overview = map + facts + findings (one continuous page — no separate Findings tab)
+  let findingsHtml = '';
+  try {
+    findingsHtml = buildFindingsHtml(r, ctx);
+  } catch (e) {
+    console.error('findings render failed', e);
+    findingsHtml = `<p class="fine">Findings could not be fully rendered (${esc(e.message)}). Your plan is still available.</p>`;
+  }
+
+  b(
+    `
+    <div class="panel fade">
+      <span class="mono eyebrow">Your site</span>
+      <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
         ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-        ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
-        ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
         ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
       ${recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
-        <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
-        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
+        <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
       </div>
-      ${mapEmbedSection()}
-      ${flags.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
-    </div>
-  `, $('report-overview'));
-
-  // Topography: topo + temperature + hardiness/flood/zoning + wind + solar
-  b(`
-    ${topologySection(topo, a)}
-    ${temperatureSection(r.temperature || a.temperature)}
-    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-    ${windSection(r.climate, r, r.wind_rose)}
-    ${solarSection(solar)}
-    ${landValueSection(landValue)}
-  `, $('report-topo'));
-
-  // Water: wells + wet areas + provincial contours
-  b(`
-    ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
-    ${wetAreasSection(r.wet_areas_mapping)}
-    ${provincialContoursMap(r._provincial_contours, centre)}
-  `, $('report-water'));
-
-  // Wildlife: wildlife + biodiversity + tree cover
-  b(`
-    ${wildlifeSection(r.wildlife || a.wildlife)}
-    ${biodiversitySection(r.biodiversity)}
-    ${treeCoverSection(r.tree_cover)}
-  `, $('report-wildlife'));
-
-  // Access: proximity + access + demographics + ATS
-  b(`
-    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-    ${accessSection(r.access, city?.name, city?.distance_km)}
-    ${demographicsSection(r.demographics)}
-    ${atsSection(r.ats, r.parcel_address)}
-  `, $('report-access'));
-
-  // Recommendations: site conditions → recommendations → investment → sales CTA
-  b(`
-    <section class="report-block placement-block">
-      <h2>What this parcel needs</h2>
-      <p class="fine" style="margin-top:-0.3rem">
-        Outcomes first (water, wind, food, soil…), matched to measured site conditions — not a fixed checklist.
-      </p>
-      ${siteDriversSection(siteDrivers)}
-      ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
-      <div class="elements" id="rec-elements-rules">
-        ${els.length
-          ? els.map((e) => recommendationCard(e)).join('')
-          : allEls.length
-            ? '<p class="fine">No recommendations in this value filter — try All or another outcome.</p>'
-            : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'}
+      ${mapEmbedSection('overview')}
+      ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
+      <div class="overview-actions" style="display:flex;flex-wrap:wrap;gap:0.65rem;margin-top:1.1rem">
+        <button type="button" class="btn btn-secondary" data-scroll-findings onclick="window.__eeScrollFindings&&window.__eeScrollFindings()">Read findings ↓</button>
+        <button type="button" class="btn" data-open-your-plan onclick="window.__eeNav&&window.__eeNav('services')">Build your plan${menuN ? ` (${menuN})` : ''} →</button>
       </div>
-    </section>
 
-    ${quoteSection(r.service_quote || a.service_quote)}
-
-    ${servicesCtaSection(services)}
-
-    <!-- Sales funnel CTA -->
-    <div class="ee-services-cta" style="margin-top:1.5rem;border-color:var(--gold);background:linear-gradient(135deg, rgba(168,128,31,0.08), rgba(91,58,115,0.06))">
-      <span class="mono eyebrow">Ready to build this?</span>
-      <h3 style="font-size:1.3rem;margin:0.2rem 0 0.5rem;font-family:'Bricolage Grotesque',sans-serif;font-weight:800">Turn this report into action</h3>
-      <p class="fine" style="margin:0 0 1rem;max-width:60ch">
-        This analysis is a planning conversation starter — not engineered drawings. Book a site walk with Expanding Edge
-        to confirm conditions, finalize scope, and get a firm design proposal.
-      </p>
-      <div style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
-        <a class="btn" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener" style="font-size:1rem;padding:0.85rem 1.5rem">
-          Book a site design consult →
-        </a>
-        <a class="btn btn-secondary" href="tel:+17802363630" style="font-size:0.95rem;padding:0.75rem 1.2rem">
-          Call (780) 236-3630
-        </a>
-        <a class="btn btn-secondary" href="mailto:info@expandingedge.ca?subject=Site%20Design%20Inquiry" style="font-size:0.95rem;padding:0.75rem 1.2rem">
-          Email info@expandingedge.ca
-        </a>
+      <div id="site-findings" class="site-findings-block">
+        <span class="mono eyebrow" style="display:block;margin-top:1.5rem">Evidence</span>
+        <h2 style="margin-top:0.25rem">Site findings</h2>
+        <p class="fine" style="margin-top:-0.15rem">
+          Expand each theme for the supporting cards. Recommendations stay at the end.
+        </p>
+        <p class="findings-jump fine">
+          <a href="#findings-land">Land</a> ·
+          <a href="#findings-security">Security</a> ·
+          <a href="#findings-economy">Economy</a> ·
+          <a href="#findings-water">Water</a> ·
+          <a href="#findings-wildlife">Wildlife</a> ·
+          <a href="#findings-energy">Energy</a> ·
+          <a href="#findings-vegetation">Vegetation &amp; food</a> ·
+          <a href="#findings-minerals">Geology &amp; minerals</a> ·
+          <a href="#findings-recommendations">Recommendations</a>
+        </p>
+        ${findingsHtml}
       </div>
-      <p class="fine" style="margin:0.75rem 0 0">
-        ${allEls.length} recommendations identified for this ${r.geometry?.area_ha != null ? `${r.geometry.area_ha} ha` : ''} parcel.
-        Estimated investment: ${r.service_quote?.subtotal ? fmtCad(r.service_quote.subtotal) : 'pending site walk'}.
-      </p>
+
+      <div class="next-steps-cta panel" style="margin-top:1.25rem;padding:1rem 1.15rem">
+        <h2 style="font-size:1.15rem;margin:0 0 0.4rem">Next: build your plan</h2>
+        <p class="fine" style="margin:0 0 0.75rem">Select interventions, unlock the PDF with email, and send an inquiry.</p>
+        <button type="button" class="btn" data-open-your-plan-findings onclick="window.__eeNav&&window.__eeNav('services')">Your plan →</button>
+      </div>
     </div>
+  `,
+    $('report-overview')
+  );
 
-    <div class="sources" style="margin-top:2rem">
-      <span class="mono">Data provenance</span>
-      <ul>
-        ${(r.data_provenance || []).map((p) => `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}
-      </ul>
+  // Clear retired findings pane if still in DOM
+  const retiredFindings = $('report-findings');
+  if (retiredFindings) {
+    retiredFindings.innerHTML =
+      '<p class="fine">Findings are on the <strong>Your site</strong> page.</p>';
+  }
+
+  // 2) Your plan
+  b(
+    `
+    <div class="panel fade">
+      ${nextStepsSection(r, 'services')}
     </div>
-  `, $('report-rules'));
+  `,
+    $('report-services')
+  );
+  setTimeout(() => bindNextStepsInteractions(r), 50);
 
-  // Fecundity: fecundity assessment
-  b(fecunditySection(r.fecundity), $('report-fecundity'));
-
-  // Init map embed in overview pane
-  initReportMapEmbed(r);
+  // Map init is deferred from generateReport after showReport() so the container has size
+  if (ctx.allEls) {
+    try {
+      bindValueFilters(ctx.allEls);
+    } catch (e) {
+      console.warn('value filters bind failed', e);
+    }
+  }
 }
 
 function paintCore(done) {
-  $('report-core').innerHTML = CORE_LABELS.map(
-    (item, n) => `
+  const core = $('report-core');
+  if (core) {
+    core.innerHTML = CORE_LABELS.map(
+      (item) => `
     <div class="step-row" data-done="${done ? '1' : '0'}" data-pane="${item.id}"
          style="${done ? `background-color:${item.color}` : ''};cursor:pointer">
       <span>${esc(item.label)}</span>
     </div>`
-  ).join('');
-  // Make sidebar steps clickable to switch panes
-  document.querySelectorAll('#report-core .step-row').forEach((sr) => {
-    sr.addEventListener('click', () => {
-      const pane = sr.dataset.pane;
-      if (pane) switchReportPane(pane);
+    ).join('');
+    core.querySelectorAll('.step-row').forEach((sr) => {
+      sr.addEventListener('click', () => {
+        const pane = sr.dataset.pane;
+        if (pane) switchReportPane(pane);
+      });
     });
-  });
+  }
+
+  // Side offerings (planting planner, etc.) — separate from site core
+  const side = $('report-side-offerings');
+  if (side) {
+    // Keep static card markup from HTML if present; refresh active state only.
+    // Re-bind open handler (idempotent via onclick replace).
+    const openBtn = $('btn-open-plant');
+    if (openBtn) {
+      openBtn.onclick = () => switchReportPane('plant');
+      openBtn.classList.toggle('is-active-pane', false);
+    }
+  }
 }
 
 function confBadge(c) {
