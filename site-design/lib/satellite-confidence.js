@@ -104,9 +104,10 @@ export function carbonSafeText(socClaim, body) {
  */
 export function satelliteAttribution() {
   return (
-    'Sentinel-2 data via Copernicus / ESA (Microsoft Planetary Computer); ' +
-    'Landsat via USGS; regional SOC from SoilGrids (ISRIC). ' +
-    'Vegetation indices are property-scale indicators; soil organic carbon remains ' +
-    'low-confidence without laboratory verification.'
+    'Primary vegetation indices: Natural Resources Canada Canada-wide LAI/fCOVER/fAPAR ' +
+    '(open.canada.ca dataset 033ac0b8) and Alberta Vegetation Inventory Crown provenance ' +
+    '(dataset 64b0e73a). Supplementary: Sentinel-2 / Landsat via Microsoft Planetary Computer; ' +
+    'regional SOC from SoilGrids (ISRIC). Vegetation indices are property-scale indicators; ' +
+    'soil organic carbon remains low-confidence without laboratory verification.'
   );
 }

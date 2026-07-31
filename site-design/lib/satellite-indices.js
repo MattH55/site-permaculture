@@ -1,10 +1,14 @@
 /**
  * Satellite vegetation indices + regional SOC context for the fecundity pipeline.
  *
- * Sources (public / free, no key required):
- *   - Sentinel-2 L2A via Microsoft Planetary Computer STAC + Data API (10 m)
- *   - Landsat Collection 2 L2 via Planetary Computer (30 m, multi-year trend)
- *   - Sentinel-1 RTC via Planetary Computer (relative moisture proxy)
+ * Primary vegetation indices (user-requested open data):
+ *   - NRCan Canada Wide Vegetation Maps (LAI, fCOVER, fAPAR)
+ *     https://open.canada.ca/data/en/dataset/033ac0b8-653c-43b2-a843-171fa1c9ace4
+ *   - Alberta Vegetation Inventory (AVI) Crown — structural inventory provenance
+ *     https://open.canada.ca/data/en/dataset/64b0e73a-da5f-4f7f-bca1-b656b6e86c94
+ *
+ * Supplementary (when available):
+ *   - Sentinel-2 L2A / Landsat / Sentinel-1 via Microsoft Planetary Computer
  *   - SoilGrids 2.0 REST (regional SOC ~250 m — low-moderate confidence only)
  *
  * Philosophy: satellite = screening / regional context.
@@ -21,6 +25,10 @@ import {
   buildIndexClaim,
   satelliteAttribution,
 } from './satellite-confidence.js';
+import {
+  fetchVegetationIndices,
+  vegetationAttribution,
+} from './vegetation-indices.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const STAC = 'https://planetarycomputer.microsoft.com/api/stac/v1';
@@ -61,8 +69,12 @@ export async function fetchSatelliteIndices(aoi, opts = {}) {
   const bbox = bboxOf(geometry);
   const fallbacks = [];
 
-  // Parallel: S2 composite, Landsat trend, S1 moisture, SoilGrids SOC
-  const [s2, landsat, s1, soc] = await Promise.all([
+  // Primary: NRCan LAI/fCOVER (+ AVI provenance). Secondary: PC + SoilGrids.
+  const [nrcanVeg, s2, landsat, s1, soc] = await Promise.all([
+    fetchVegetationIndices(bbox, { prefer_monthly: true }).catch((e) => {
+      fallbacks.push(`NRCan vegetation failed: ${e.message}`);
+      return null;
+    }),
     fetchSentinel2Indices(geometry, startDate, endDate, fallbacks).catch((e) => {
       fallbacks.push(`Sentinel-2 failed: ${e.message}`);
       return null;
@@ -81,15 +93,43 @@ export async function fetchSatelliteIndices(aoi, opts = {}) {
     }),
   ]);
 
+  if (nrcanVeg?.fallbacks?.length) fallbacks.push(...nrcanVeg.fallbacks);
+
   const ndvi = s2?.ndvi || null;
   const ndre = s2?.ndre || null;
   const savi = s2?.savi || null;
   const ndmi = s2?.ndmi || null;
 
-  // Cover % from NDVI (property-scale vegetative proxy)
-  const ndviCoverPct = ndvi?.median != null ? ndviToCoverPct(ndvi.median) : null;
+  // Prefer official NRCan fCOVER/LAI for cover %; fall back to S2 NDVI proxy
+  const nrcanCover = nrcanVeg?.cover_pct;
+  const ndviCoverPct =
+    nrcanCover != null
+      ? nrcanCover
+      : ndvi?.median != null
+        ? ndviToCoverPct(ndvi.median)
+        : null;
+
+  // Synthetic NDVI-like series for UI cards when NRCan is primary
+  const nrcanVigorProxy =
+    nrcanVeg?.vigor_index != null
+      ? {
+          median: nrcanVeg.vigor_index,
+          mean: nrcanVeg.vigor_index,
+          p10: nrcanVeg.fcover?.min ?? null,
+          p90: nrcanVeg.fcover?.max ?? null,
+          resolution_m: nrcanVeg.lai?.valid_count
+            ? nrcanVeg.collection === 'monthly-vegetation-parameters-20m-v1'
+              ? 20
+              : 100
+            : 100,
+          confidence: 'medium-high',
+          date: nrcanVeg.lai?.datetime || nrcanVeg.datetime || null,
+          source: 'NRCan LAI/fCOVER (proxy scale)',
+        }
+      : null;
 
   const claims = [
+    ...(nrcanVeg?.claims || []),
     buildIndexClaim('ndvi', ndvi),
     buildIndexClaim('ndre', ndre),
     buildIndexClaim('savi', savi),
@@ -97,9 +137,22 @@ export async function fetchSatelliteIndices(aoi, opts = {}) {
     buildSocClaim({ regional_soc: soc }),
   ];
 
+  const mapLayers = [
+    ...(nrcanVeg?.map_layers || []),
+    ...buildMapLayerHints(s2, soc, bbox),
+  ];
+
   const result = {
-    available: !!(ndvi || landsat || s1 || soc),
-    ndvi,
+    available: !!(nrcanVeg?.available || ndvi || landsat || s1 || soc),
+    // Primary open-Canada vegetation indices
+    nrcan_vegetation: nrcanVeg,
+    lai: nrcanVeg?.lai || null,
+    fcover: nrcanVeg?.fcover || null,
+    fapar: nrcanVeg?.fapar || null,
+    avi: nrcanVeg?.avi || null,
+    vegetation_vigor: nrcanVeg?.vegetation_vigor || null,
+    // Secondary / legacy fields
+    ndvi: ndvi || nrcanVigorProxy,
     ndre,
     savi,
     ndmi,
@@ -108,16 +161,17 @@ export async function fetchSatelliteIndices(aoi, opts = {}) {
     regional_soc: soc,
     ndviCoverPct,
     claims,
-    map_layers: buildMapLayerHints(s2, soc, bbox),
-    attribution: satelliteAttribution(),
+    map_layers: mapLayers,
+    attribution: [vegetationAttribution(), satelliteAttribution()].join(' '),
     aoi: { bbox, buffer_m: opts.buffer_m ?? 75 },
     date_range: { start: startDate, end: endDate },
     fallbacks,
     _meta: {
-      method: 'planetary-computer-stac+soilgrids',
+      method: 'nrcan-vegetation+avi+planetary-computer+soilgrids',
       cache: 'miss',
       cache_key: cacheKey,
       generated_at: new Date().toISOString(),
+      primary_vegetation: 'NRCan LAI/fCOVER (033ac0b8) + AVI Crown provenance (64b0e73a)',
     },
   };
 
@@ -139,9 +193,9 @@ export function toFecundityPatch(sat) {
     };
   }
 
-  const ndvi = sat.ndvi?.median;
-  let vegetationVigor = null;
-  if (ndvi != null) {
+  const ndvi = sat.ndvi?.median ?? sat.nrcan_vegetation?.vigor_index ?? null;
+  let vegetationVigor = sat.vegetation_vigor || sat.nrcan_vegetation?.vegetation_vigor || null;
+  if (!vegetationVigor && ndvi != null) {
     if (ndvi >= 0.55) vegetationVigor = 'high';
     else if (ndvi >= 0.35) vegetationVigor = 'moderate';
     else if (ndvi >= 0.15) vegetationVigor = 'low';
@@ -159,13 +213,16 @@ export function toFecundityPatch(sat) {
 
   return {
     satellite: sat,
-    ndviCoverPct: sat.ndviCoverPct ?? undefined,
+    ndviCoverPct: sat.ndviCoverPct ?? sat.nrcan_vegetation?.cover_pct ?? undefined,
     soilMoistureProxy,
     vegetationVigor,
     ndviMedian: ndvi ?? null,
     ndviTrendSlope: sat.vegetation_trend?.slope_per_year ?? null,
     satelliteClaims: sat.claims || [],
     regionalSocContext: sat.regional_soc || null,
+    lai: sat.lai?.mean ?? sat.nrcan_vegetation?.lai?.mean ?? null,
+    fcover: sat.fcover?.mean ?? sat.nrcan_vegetation?.fcover?.mean ?? null,
+    fapar: sat.fapar?.mean ?? sat.nrcan_vegetation?.fapar?.mean ?? null,
   };
 }
 

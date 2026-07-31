@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test lib/rules.test.js lib/embed-plant.test.js",
@@ -19,7 +21,7 @@
     "satellite:demo": "node scripts/satellite-indices.mjs --lat 53.80 --lng -113.65"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "geotiff": "^3.0.5"
   }
 }
-

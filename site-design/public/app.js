@@ -7096,36 +7096,73 @@ function fecunditySection(fec) {
       </div>`;
   }).join('');
 
-  // Satellite index cards
+  // Satellite / open-Canada vegetation index cards
   const idxCard = (label, idx) => {
-    if (!idx || idx.median == null) return '';
+    if (!idx || (idx.median == null && idx.mean == null)) return '';
+    const primary = idx.median != null ? idx.median : idx.mean;
     return `
       <article class="prox-card">
         <span class="mono">${esc(label)}</span>
-        <strong>${esc(idx.median)}</strong>
+        <strong>${esc(primary)}${idx.unit ? ` <span class="fine">${esc(idx.unit)}</span>` : ''}</strong>
         <p class="fine">
-          p10–p90 ${fmt(idx.p10)}–${fmt(idx.p90)}
-          · ${esc(idx.resolution_m ?? 10)} m
-          · ${esc(idx.confidence || '—')}
+          ${idx.min != null && idx.max != null ? `range ${fmt(idx.min)}–${fmt(idx.max)} · ` : ''}
+          ${idx.p10 != null ? `p10–p90 ${fmt(idx.p10)}–${fmt(idx.p90)} · ` : ''}
+          ${idx.resolution_m != null ? `${esc(idx.resolution_m)} m · ` : ''}
+          ${esc(idx.confidence || '—')}
           ${idx.date ? ` · ${esc(idx.date)}` : ''}
+          ${idx.source ? ` · ${esc(idx.source)}` : ''}
         </p>
       </article>`;
   };
 
+  const nrcan = sat?.nrcan_vegetation || null;
+  const lai = sat?.lai || nrcan?.lai || null;
+  const fcover = sat?.fcover || nrcan?.fcover || null;
+  const fapar = sat?.fapar || nrcan?.fapar || null;
+  const avi = sat?.avi || nrcan?.avi || null;
+  const resM =
+    nrcan?.collection === 'monthly-vegetation-parameters-20m-v1' ||
+    (nrcan && nrcan.resolution_m === 20)
+      ? 20
+      : nrcan?.resolution_m || 100;
+
   const satBlock = sat?.available
     ? `
+      <p class="fine" style="margin-top:0.75rem">
+        Primary vegetation indices from
+        <a href="https://open.canada.ca/data/en/dataset/033ac0b8-653c-43b2-a843-171fa1c9ace4" target="_blank" rel="noopener">NRCan Canada-wide LAI / fCOVER / fAPAR</a>
+        (Sentinel-2 biophysical products)
+        with
+        <a href="https://open.canada.ca/data/en/dataset/64b0e73a-da5f-4f7f-bca1-b656b6e86c94" target="_blank" rel="noopener">Alberta Vegetation Inventory (AVI) Crown</a>
+        as structural inventory reference.
+      </p>
       <div class="summary-grid" style="margin-top:0.85rem">
-        <div class="stat"><span class="k">NDVI cover</span><strong>${sat.ndviCoverPct != null ? `${esc(sat.ndviCoverPct)}%` : '—'}</strong></div>
-        <div class="stat"><span class="k">S2 scenes</span><strong>${esc(sat.ndvi?.scenes_used ?? sat.scenes?.length ?? '—')}</strong></div>
-        <div class="stat"><span class="k">Moisture proxy</span><strong>${sat.soil_moisture_proxy?.relative_index != null ? esc(sat.soil_moisture_proxy.relative_index) : '—'}</strong></div>
-        <div class="stat"><span class="k">NDVI trend</span><strong>${sat.vegetation_trend?.slope_per_year != null ? `${esc(sat.vegetation_trend.slope_per_year)}/yr` : '—'}</strong></div>
+        <div class="stat"><span class="k">Green cover</span><strong>${sat.ndviCoverPct != null ? `${esc(sat.ndviCoverPct)}%` : '—'}</strong></div>
+        <div class="stat"><span class="k">LAI</span><strong>${lai?.mean != null ? esc(lai.mean) : '—'}</strong></div>
+        <div class="stat"><span class="k">fCOVER</span><strong>${fcover?.mean != null ? esc(fcover.mean) : '—'}</strong></div>
+        <div class="stat"><span class="k">Vigor</span><strong>${esc(sat.vegetation_vigor || nrcan?.vegetation_vigor || '—')}</strong></div>
       </div>
       <div class="prox-grid" style="margin-top:0.75rem">
-        ${idxCard('NDVI (Sentinel-2)', sat.ndvi)}
-        ${idxCard('NDRE', sat.ndre)}
-        ${idxCard('SAVI', sat.savi)}
-        ${idxCard('NDMI', sat.ndmi)}
+        ${idxCard(`LAI (NRCan · ~${resM} m)`, lai ? { ...lai, resolution_m: resM } : null)}
+        ${idxCard(`fCOVER (NRCan · ~${resM} m)`, fcover ? { ...fcover, resolution_m: resM } : null)}
+        ${idxCard(`fAPAR (NRCan · ~${resM} m)`, fapar ? { ...fapar, resolution_m: resM } : null)}
+        ${idxCard('NDVI (Sentinel-2 supplementary)', sat.ndvi)}
+        ${idxCard('NDMI moisture', sat.ndmi)}
       </div>
+      ${
+        avi
+          ? `<div class="flag" data-severity="info" style="margin-top:0.75rem">
+        <strong>Alberta Vegetation Inventory (AVI) Crown</strong>
+        <p>${esc(avi.note || '')}</p>
+        <p class="fine" style="margin:0.35rem 0 0">
+          ${avi.natural_subregion?.name ? `Natural subregion: <strong>${esc(avi.natural_subregion.name)}</strong>${avi.natural_subregion.natural_region ? ` (${esc(avi.natural_subregion.natural_region)})` : ''}. ` : ''}
+          ${avi.likely_relevant ? 'Forested / parkland setting — AVI standards are relevant for stand structure review. ' : ''}
+          <a href="${esc(avi.dataset_url || 'https://open.canada.ca/data/en/dataset/64b0e73a-da5f-4f7f-bca1-b656b6e86c94')}" target="_blank" rel="noopener">Dataset</a>
+          ${avi.standards_url ? ` · <a href="${esc(avi.standards_url)}" target="_blank" rel="noopener">Inventory standards</a>` : ''}
+        </p>
+      </div>`
+          : ''
+      }
       ${satelliteMapEmbed(sat)}
     `
     : '';
@@ -7224,18 +7261,21 @@ function fecunditySection(fec) {
 }
 
 /**
- * Satellite supporting imagery: NDVI tile overlay + regional SOC sample points.
+ * Satellite supporting imagery: NRCan LAI/fCOVER WMS + optional NDVI + SOC points.
  */
 function satelliteMapEmbed(sat) {
-  const ndviLayer = (sat?.map_layers || []).find((l) => l.id === 'ndvi' && l.url);
-  const socLayer = (sat?.map_layers || []).find((l) => l.id === 'regional_soc');
+  const layers = sat?.map_layers || [];
+  const ndviLayer = layers.find((l) => l.id === 'ndvi' && l.url);
+  const laiWms = layers.find((l) => l.id === 'nrcan_lai' && l.type === 'wms');
+  const fcoverWms = layers.find((l) => l.id === 'nrcan_fcover' && l.type === 'wms');
+  const socLayer = layers.find((l) => l.id === 'regional_soc');
   const socPts =
     socLayer?.sample_points ||
     sat?.regional_soc?.sample_points ||
     [];
   const bbox = sat?.aoi?.bbox;
   if (!bbox && !socPts.length) return '';
-  if (!ndviLayer && !socPts.length) return '';
+  if (!ndviLayer && !laiWms && !fcoverWms && !socPts.length) return '';
 
   const id = 'sat-veg-soc-' + Math.random().toString(36).slice(2, 8);
   setTimeout(() => {
@@ -7244,10 +7284,37 @@ function satelliteMapEmbed(sat) {
     el.innerHTML = '';
     const map = L.map(el, { zoomControl: true, attributionControl: true });
     const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      attribution: 'Esri', maxZoom: 18,
+      attribution: 'Esri · NRCan vegetation', maxZoom: 18,
     }).addTo(map);
 
     const overlays = {};
+    let controlAdded = false;
+    const ensureControl = () => {
+      if (controlAdded || !Object.keys(overlays).length) return;
+      L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
+      controlAdded = true;
+    };
+
+    // NRCan LAI / fCOVER WMS (primary open Canada layers)
+    if (typeof L.tileLayer.wms === 'function') {
+      [laiWms, fcoverWms].filter(Boolean).forEach((cfg, i) => {
+        try {
+          const lyr = L.tileLayer.wms(cfg.url, {
+            layers: cfg.layers,
+            format: cfg.format || 'image/png',
+            transparent: cfg.transparent !== false,
+            version: cfg.version || '1.3.0',
+            opacity: cfg.opacity ?? 0.65,
+            attribution: cfg.attribution || 'NRCan',
+          });
+          if (i === 0) lyr.addTo(map);
+          overlays[cfg.label || cfg.id] = lyr;
+        } catch (e) {
+          console.warn('NRCan WMS layer failed', e);
+        }
+      });
+      ensureControl();
+    }
 
     if (ndviLayer?.url) {
       fetch(ndviLayer.url)
@@ -7255,14 +7322,13 @@ function satelliteMapEmbed(sat) {
         .then((tj) => {
           if (tj?.tiles?.[0]) {
             const ndvi = L.tileLayer(tj.tiles[0], {
-              opacity: ndviLayer.opacity ?? 0.65,
+              opacity: ndviLayer.opacity ?? 0.55,
               maxZoom: 18,
               attribution: ndviLayer.source || 'Sentinel-2',
-            }).addTo(map);
+            });
+            if (!laiWms && !fcoverWms) ndvi.addTo(map);
             overlays['NDVI (Sentinel-2)'] = ndvi;
-            if (Object.keys(overlays).length) {
-              L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
-            }
+            ensureControl();
           }
         })
         .catch(() => {});
@@ -7294,9 +7360,7 @@ function satelliteMapEmbed(sat) {
       });
       grp.addTo(map);
       overlays['SOC samples (context)'] = grp;
-      if (!ndviLayer?.url) {
-        L.control.layers({ Imagery: base }, overlays, { collapsed: true }).addTo(map);
-      }
+      ensureControl();
     }
 
     if (bbox) {
@@ -7317,6 +7381,8 @@ function satelliteMapEmbed(sat) {
   }, 120);
 
   const titleBits = [];
+  if (laiWms) titleBits.push('NRCan LAI');
+  if (fcoverWms) titleBits.push('NRCan fCOVER');
   if (ndviLayer) titleBits.push(`NDVI · ${ndviLayer.date || 'latest'} · ${ndviLayer.resolution_m || 10} m`);
   if (socPts.length) titleBits.push(`SOC samples (${socPts.length}) · ~250 m context`);
 
@@ -7325,9 +7391,13 @@ function satelliteMapEmbed(sat) {
       <span class="mono topo-label">Satellite vegetation &amp; soil carbon · ${esc(titleBits.join(' · ') || 'imagery')}</span>
       <div id="${id}" class="report-map minimap-embed" style="height:280px;margin-top:0.35rem"></div>
       <p class="fine">
-        ${ndviLayer ? esc(ndviLayer.legend_note || 'Green = higher vegetative vigor') + ' · ' : ''}
+        ${laiWms ? esc(laiWms.legend_note || 'LAI = leaf area index') + ' · ' : ''}
+        ${fcoverWms ? esc(fcoverWms.legend_note || 'fCOVER = green cover fraction') + ' · ' : ''}
+        ${ndviLayer ? esc(ndviLayer.legend_note || 'NDVI = supplementary vigor') + ' · ' : ''}
         ${socPts.length ? 'SOC markers = SoilGrids model estimates (not lab). ' : ''}
-        Toggle layers top-right. NDVI: ${esc(ndviLayer?.source || 'Sentinel-2')} · SOC: SoilGrids / ISRIC.
+        Toggle layers top-right.
+        Primary: <a href="https://open.canada.ca/data/en/dataset/033ac0b8-653c-43b2-a843-171fa1c9ace4" target="_blank" rel="noopener">NRCan vegetation</a>
+        · SOC: SoilGrids / ISRIC.
       </p>
     </div>`;
 }
