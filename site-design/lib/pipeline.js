@@ -37,6 +37,7 @@ import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
 import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
+import { modelPondHydrology } from './pond-hydrology.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
 
 const cache = new Map();
@@ -289,6 +290,15 @@ export async function generateSiteReport(input = {}) {
     soil: { drainage_class, texture: soils.texture },
     wetlands,
     small_water: null, // attached async later if available
+  });
+  water_collection.pond_hydrology = modelPondHydrology({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    precipitation: climate,
+    parcel_area_m2: areaHa * 10_000,
+    drainage_class,
   });
   record.water_collection = water_collection;
 

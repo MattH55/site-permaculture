@@ -6302,6 +6302,7 @@ function waterCollectionSection(wc) {
   const roofScenarios = wc.roof_scenarios || [];
   const swaleCapture = wc.swale_capture || {};
   const pondStorage = wc.pond_storage || {};
+  const pondHydrology = wc.pond_hydrology || {};
   const monthlyBudget = wc.monthly_budget || {};
   const primaryRoof = roofScenarios.find(s => s.id === 'house_barn') || roofScenarios[0];
   const monthEntries = Object.entries(monthlyBudget);
@@ -6323,6 +6324,47 @@ function waterCollectionSection(wc) {
       <strong>${(sc.annual_litres / 1000).toFixed(1)} m³</strong>
       <span class="fine">${sc.annual_litres.toLocaleString()} L · ${sc.annual_ibc_totes} IBC totes · tank ≥${(sc.recommended_tank_litres / 1000).toFixed(0)} m³</span>
     </div>`).join('');
+  const pondPlacement = pondHydrology.placement || {};
+  const pondMapId = pondPlacement.available ? `pond-placement-${Math.random().toString(36).slice(2, 8)}` : null;
+  if (pondMapId) scheduleLeafletWhenVisible(pondMapId, () => initPondHydrologyMap(pondMapId, pondPlacement));
+  const pondTierRows = (pondHydrology.tiers || []).map((tier) => `
+    <tr>
+      <td><strong>${esc(tier.label)}</strong><br><span class="fine">${esc(tier.capacity_m3)} m³ capacity · ~${esc(tier.surface_area_m2)} m² surface</span></td>
+      <td>${esc((tier.annual_captured_litres / 1000).toFixed(1))} m³<br><span class="fine">${esc((tier.annual_gross_runoff_litres / 1000).toFixed(1))} m³ gross</span></td>
+      <td>${esc((tier.monthly?.Jun?.captured_litres / 1000 || 0).toFixed(1))} m³<br><span class="fine">June example</span></td>
+      <td>${esc((tier.per_rain_event?.Jun?.captured_litres || 0).toLocaleString())} L<br><span class="fine">per event</span></td>
+    </tr>`).join('');
+  const pondMonthlyRows = (pondHydrology.tiers?.[1]?.monthly ? Object.entries(pondHydrology.tiers[1].monthly) : []).map(([month, row]) => `
+    <tr><td>${esc(month)}</td><td>${esc(row.precipitation_mm.toFixed(1))} mm</td><td>${esc(row.rain_events)}</td><td>${esc((row.gross_runoff_litres / 1000).toFixed(1))} m³</td><td>${esc((row.captured_litres / 1000).toFixed(1))} m³</td></tr>`).join('');
+  const pondEventRows = (pondHydrology.tiers || []).map((tier) => `
+    <tr><td>${esc(tier.label)}</td>${Object.values(tier.per_rain_event || {}).slice(0, 12).map((row) => `<td>${esc(row.captured_litres.toLocaleString())}</td>`).join('')}</tr>`).join('');
+  const pondHydrologyBlock = pondHydrology.available ? `
+    <div class="well-range-card" style="border-left-color:#1a9bb5;margin-top:0.85rem">
+      <span class="mono">Pond hydrology model · optimal accumulation location</span>
+      <div class="well-range-value" style="font-size:clamp(1.1rem,2.5vw,1.5rem);color:#1a788d">
+        ${esc(pondPlacement.latitude)}, ${esc(pondPlacement.longitude)}
+      </div>
+      <p class="fine">DEM elevation ${esc(pondPlacement.elevation_m)} m · ${esc(pondPlacement.catchment_area_m2.toLocaleString())} m² screened catchment · ${esc(pondPlacement.confidence)} placement confidence</p>
+      ${pondMapId ? `<div id="${pondMapId}" class="report-map" style="height:220px;margin-top:0.55rem" role="img" aria-label="Screened optimal pond placement"></div>` : ''}
+      <p class="fine" style="margin-top:0.45rem">Placement uses the lowest/convergent interior DEM cell, not a surveyed drainage basin. Confirm the location against wetlands, soils, property setbacks, spillway grade, and flood regulations.</p>
+    </div>
+    <div style="margin-top:0.8rem">
+      <span class="mono topo-label">Pond capture scenarios</span>
+      <div class="econ-table-wrap" style="margin-top:0.4rem;overflow-x:auto">
+        <table class="econ-table"><thead><tr><th>Size</th><th>Annual captured</th><th>Monthly captured</th><th>Per rain event</th></tr></thead><tbody>${pondTierRows}</tbody></table>
+      </div>
+      <p class="fine" style="margin-top:0.35rem">The monthly column shows June; the full month-by-month table is below. Three representative rain events per month are assumed.</p>
+    </div>
+    <details class="inner-details" style="margin-top:0.65rem">
+      <summary>Monthly pond water balance · medium pond</summary>
+      <div class="econ-table-wrap" style="margin-top:0.5rem;overflow-x:auto"><table class="econ-table"><thead><tr><th>Month</th><th>Rain</th><th>Events</th><th>Gross runoff</th><th>Captured</th></tr></thead><tbody>${pondMonthlyRows}</tbody></table></div>
+    </details>
+    <details class="inner-details" style="margin-top:0.5rem">
+      <summary>Captured litres per rain event · all pond sizes</summary>
+      <div class="econ-table-wrap" style="margin-top:0.5rem;overflow-x:auto"><table class="econ-table"><thead><tr><th>Size</th><th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th><th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th></tr></thead><tbody>${pondEventRows}</tbody></table></div>
+    </details>
+    <p class="fine" style="margin-top:0.55rem">${(pondHydrology.assumptions || []).map(esc).join(' ')}</p>
+  ` : '';
   return `
     <section class="report-block water-collection-block">
       <h2>Water collection budget</h2>
@@ -6351,6 +6393,7 @@ function waterCollectionSection(wc) {
       <span class="mono topo-label" style="margin-top:0.85rem;display:block">Monthly collection (house+barn + swales)</span>
       <div class="precip-chart" style="margin-top:0.45rem" aria-label="Monthly water collection">${monthBars}</div>
       <p class="fine" style="margin-top:0.3rem"><span style="display:inline-block;width:10px;height:10px;background:var(--ok);vertical-align:middle;margin-right:3px"></span> Swale · <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;vertical-align:middle;margin-right:3px"></span> Roof</p>
+      ${pondHydrologyBlock}
       <details class="inner-details" style="margin-top:0.85rem">
         <summary>Roof catchment scenarios</summary>
         <div class="summary-grid" style="margin-top:0.5rem">${roofCards}</div>
@@ -6358,6 +6401,22 @@ function waterCollectionSection(wc) {
       </details>
       <p class="fine" style="margin-top:0.65rem">${esc(wc.disclaimer || '')}</p>
     </section>`;
+}
+
+function initPondHydrologyMap(id, placement) {
+  const el = document.getElementById(id);
+  const report = state.report || {};
+  if (!el || typeof L === 'undefined' || placement?.latitude == null || placement?.longitude == null) return;
+  const map = L.map(el, { zoomControl: true, attributionControl: true }).setView([placement.latitude, placement.longitude], 15);
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 18 }).addTo(map);
+  L.marker([placement.latitude, placement.longitude]).addTo(map).bindPopup('<strong>Screened pond location</strong><br>Lowest/convergent DEM candidate').openPopup();
+  const ring = report.geometry?.coordinates?.[0];
+  if (Array.isArray(ring) && ring.length > 3) {
+    const parcel = L.polygon(ring.map(([lng, lat]) => [lat, lng]), { color: '#e8c547', weight: 2, fill: false }).addTo(map);
+    map.fitBounds(parcel.getBounds(), { padding: [18, 18], maxZoom: 16 });
+  }
 }
 
 function mineralsSection(m) {
