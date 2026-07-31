@@ -52,6 +52,7 @@ import { querySoilSurvey } from './soil-survey.js';
 import { buildSiteMapFeatures } from './site-map-features.js';
 import { buildActionMenu } from './action-menu.js';
 import { fetchPrecipitation } from './precipitation.js';
+import { fetchMinerals } from './minerals.js';
 
 const cache = new Map();
 
@@ -646,6 +647,28 @@ export async function generateSiteReport(input = {}) {
       terrain_relief_m: hrdemTerrain.relief_m,
       terrain_source: hrdemTerrain.source,
     };
+  }
+
+  // Minerals & geology — AER mineral occurrences (DIG 2025-0009 family)
+  const minerals = await withTimeout(
+    fetchMinerals(bbox, { centre, search_radius_km: 15 }),
+    15_000,
+    {
+      available: false,
+      error: 'timeout',
+      source: 'Alberta Geological Survey (AER)',
+      disclaimer: 'Mineral data timed out. Try again in a moment.',
+    },
+    'minerals'
+  );
+  record.minerals = minerals;
+  if (minerals?.available) {
+    record.data_provenance.push({
+      field: 'minerals / geological occurrences',
+      source_name: 'Alberta Geological Survey — Mineral Occurrences (DIG 2025-0009, DIG 2019-0026, DIG 2019-0027)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: 'https://ags.aer.ca/publications/all-publications/dig-2025-0009',
+    });
   }
 
   // Small water — expensive Planetary Computer stack; soft-cap hard
