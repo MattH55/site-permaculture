@@ -460,6 +460,13 @@ export async function generateSiteReport(input = {}) {
     available: false,
     has_wetland_on_site: !!wetlands.present,
     wetland_types: wetlands.wetland_class ? [String(wetlands.wetland_class)] : [],
+    wetland_polygons: { type: 'FeatureCollection', features: [] },
+    query_bbox: bbox,
+    feature_count: 0,
+    nearest_wetland_distance_m: null,
+    wetland_area_ha: null,
+    confidence: 'none',
+    source: 'Alberta Merged Wetland Inventory (AMWI)',
     error: e?.message || 'timeout',
     claims: [],
   });
