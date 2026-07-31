@@ -259,12 +259,21 @@ async function probePpsArchive() {
       return result;
     }
 
-    // Walk back several days until a GIS directory with IMERG files appears
+    // Walk back until a GIS directory with IMERG files appears.
+    // Prefer lags that land in fully published months (Final IMERG can lag weeks–months).
     let listing = null;
     let dayPath = null;
     let dayUrl = null;
-    for (const lag of [5, 10, 20, 40, 60]) {
-      const sampleDay = recentUtcDay(-lag);
+    const tryDays = [];
+    for (const lag of [10, 30, 60, 90, 120, 180, 365]) {
+      tryDays.push(recentUtcDay(-lag));
+    }
+    // Known-stable mid-month anchors in prior year (production archive is denser)
+    const y = new Date().getUTCFullYear() - 1;
+    for (const mm of ['06', '03', '12', '09']) {
+      tryDays.push({ y, mm, dd: '15' });
+    }
+    for (const sampleDay of tryDays) {
       dayPath = `/gpmdata/${sampleDay.y}/${sampleDay.mm}/${sampleDay.dd}/gis/`;
       dayUrl = PPS_BASE + dayPath;
       listing = await fetchText(dayUrl, headers, 12_000);
