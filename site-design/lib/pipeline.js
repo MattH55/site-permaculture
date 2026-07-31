@@ -22,7 +22,7 @@ import {
   plantingReportTable,
 } from './plant-interventions.js';
 import { assessSolar } from './solar.js';
-import { fetchNearestEpsCrimes } from './crime.js';
+import { fetchNearestEpsCrimes, ruralCrimeWatchContext } from './crime.js';
 import { assessLandValue } from './land-value.js';
 import { queryHardiness } from './hardiness.js';
 import { queryFloodHazard } from './flood.js';
@@ -406,11 +406,14 @@ export async function generateSiteReport(input = {}) {
   });
 
   // Attach full proximity / well / solar / crime / temperature / wildlife blocks for the UI
+  const rural_crime_map = ruralCrimeWatchContext(centre);
   record.proximity_context = {
     ...siteInput.proximity_context,
     crime_risk: proximity.crime_risk,
     nearest_crimes,
+    rural_crime_map,
   };
+  record.rural_crime_map = rural_crime_map;
   record.predicted_well_depth = predicted_well_depth;
   record.solar = solar;
   record.land_value = land_value;

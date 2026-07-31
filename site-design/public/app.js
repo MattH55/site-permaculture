@@ -2207,7 +2207,12 @@ function proximitySection(px, water, city, settlement, crime, nearestCrimes, cen
       </div>
 
       <div class="crime-card">
-        <span class="mono">Safety context (jurisdiction — not parcel-level)</span>
+        <span class="mono">Crime awareness — RCMP / Rural Crime Watch</span>
+        <p class="fine" style="margin:0.4rem 0 0.65rem">
+          Primary map:
+          <a href="${esc(rcmpCrimeMapEmbedUrl(centre))}" target="_blank" rel="noopener">RCMP Area Crime Map</a>
+          (Alberta Rural Crime Watch). Full interactive map is in <strong>Findings → Security</strong>.
+        </p>
         ${
           crime
             ? `
@@ -2232,28 +2237,78 @@ function proximitySection(px, water, city, settlement, crime, nearestCrimes, cen
                 'Canadian crime statistics are published by police service, not by address. This is jurisdiction-level context only — not a safety score for your parcel.'
             )}</p>
           </div>`
-            : `<p class="fine">Crime context unavailable.</p>`
+            : `<p class="fine">Open the RCMP map for current rural incident locations. Jurisdiction CSI is optional context when available.</p>`
         }
-        ${nearestCrimesSection(nearestCrimes, centre)}
+      </div>
+    </section>`;
+}
+
+/** Alberta RCMP / Rural Crime Watch public crime map (province-wide). */
+const RCMP_CRIME_MAP_PAGE =
+  'https://www.ruralcrimewatch.ab.ca/resources/RCMP-area-crime-map';
+const RCMP_CRIME_MAP_VIEWER =
+  'https://rcmp-k-div.maps.arcgis.com/apps/webappviewer/index.html?id=f648d78dbfb143d0b3bdf47d8eb2bbee';
+
+function rcmpCrimeMapEmbedUrl(centre) {
+  if (centre && Number.isFinite(centre.latitude) && Number.isFinite(centre.longitude)) {
+    return `${RCMP_CRIME_MAP_VIEWER}&center=${centre.longitude},${centre.latitude}&level=10`;
+  }
+  return RCMP_CRIME_MAP_VIEWER;
+}
+
+/**
+ * Primary crime map for Alberta parcels — RCMP Area Crime Map via Rural Crime Watch.
+ */
+function rcmpCrimeMapSection(centre) {
+  const mapUrl = rcmpCrimeMapEmbedUrl(centre);
+  return `
+    <section class="report-block">
+      <h2>RCMP area crime map</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Live Alberta RCMP crime awareness map from
+        <a href="${esc(RCMP_CRIME_MAP_PAGE)}" target="_blank" rel="noopener">Alberta Rural Crime Watch</a>.
+        Approximate recent incidents for community awareness — not a parcel risk score.
+      </p>
+      <div class="rcmp-crime-map-wrap" style="margin-top:0.65rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0f1410">
+        <iframe
+          title="Alberta RCMP Area Crime Map"
+          src="${esc(mapUrl)}"
+          style="width:100%;height:min(520px,70vh);border:0;display:block"
+          loading="lazy"
+          referrerpolicy="no-referrer-when-downgrade"
+          allowfullscreen
+        ></iframe>
+      </div>
+      <p class="fine" style="margin-top:0.55rem">
+        <a class="rec-service-link" href="${esc(mapUrl)}" target="_blank" rel="noopener">Open map fullscreen →</a>
+        ·
+        <a href="${esc(RCMP_CRIME_MAP_PAGE)}" target="_blank" rel="noopener">Rural Crime Watch resource page</a>
+        · Report suspicious activity: <a href="tel:3107267">310-RCMP (7267)</a>
+        · Emergencies: 911
+      </p>
+      <div class="flag" data-severity="caution" style="margin-top:0.65rem">
+        <strong>Important caveat</strong>
+        <p>
+          RCMP publishes approximate incident locations for public awareness; data may be delayed or incomplete.
+          This is situational awareness only — not a safety rating, insurance product, or police clearance for your property.
+        </p>
       </div>
     </section>`;
 }
 
 function nearestCrimesSection(nc, centre) {
-  if (!nc) return '';
-  if (!nc.available) {
-    return `
-      <div class="crime-nearest" style="margin-top:1rem">
-        <span class="mono">EPS Community Safety Map — nearest occurrences</span>
-        <p class="fine" style="margin:0.4rem 0 0">${esc(
-          nc.note || nc.error || 'Live EPS nearest-occurrence list not available for this site.'
-        )}</p>
-        ${
-          nc.source_url
-            ? `<p class="fine"><a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Open Community Safety Map</a></p>`
-            : ''
-        }
-      </div>`;
+  // EPS city layer is optional context inside Edmonton only
+  if (!nc?.available || !nc?.nearest?.length) {
+    if (nc && nc.in_eps_coverage === false) {
+      return `
+        <div class="crime-nearest" style="margin-top:0.75rem">
+          <p class="fine" style="margin:0">
+            Edmonton EPS nearest-occurrence list applies only inside / near the city.
+            Use the <strong>RCMP area crime map</strong> above for Alberta rural / provincial context.
+          </p>
+        </div>`;
+    }
+    return '';
   }
   const rows = (nc.nearest || [])
     .map(
@@ -2283,8 +2338,10 @@ function nearestCrimesSection(nc, centre) {
 
   return `
     <div class="crime-nearest" style="margin-top:1.1rem">
-      <span class="mono">20 nearest EPS-reported occurrences</span>
-      <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}</p>
+      <span class="mono">Supplemental — Edmonton EPS nearest occurrences</span>
+      <p class="fine" style="margin:0.35rem 0 0.6rem">${esc(nc.note || '')}
+        City of Edmonton Community Safety Map only (not RCMP rural map).
+      </p>
       ${crimeMinimap(nc, centre)}
       ${chips ? `<div class="plant-chips">${chips}</div>` : ''}
       <div class="econ-table-wrap crime-table-wrap">
@@ -2304,7 +2361,7 @@ function nearestCrimesSection(nc, centre) {
       <p class="fine" style="margin-top:0.6rem">${esc(nc.disclaimer || '')}
         ${
           nc.source_url
-            ? ` · <a href="${esc(nc.source_url)}" target="_blank" rel="noopener">Community Safety Map</a>`
+            ? ` · <a href="${esc(nc.source_url)}" target="_blank" rel="noopener">EPS Community Safety Map</a>`
             : ''
         }
       </p>
@@ -7541,8 +7598,9 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     .filter(Boolean)
     .join('');
 
-  // ── Security: crime ──
+  // ── Security: RCMP Rural Crime Watch map (primary) + optional EPS city list ──
   const securityBody = [
+    rcmpCrimeMapSection(centre),
     crimeSectionStandalone(crime, px),
     nearestCrimesSection(nearestCrimes, centre),
   ]
@@ -7688,24 +7746,25 @@ function distanceContextSection(px, water, city, settlement) {
 
 function crimeSectionStandalone(crime, px) {
   const c = crime || px?.crime_risk;
-  if (!c) {
-    return `
-      <section class="report-block">
-        <h2>Security context</h2>
-        <p class="fine">No municipal crime summary for this location. Planning context only — not a risk assessment.</p>
-      </section>`;
-  }
+  // Jurisdiction CSI / stats are optional; RCMP map is primary
+  if (!c) return '';
   return `
     <section class="report-block">
-      <h2>Security context</h2>
+      <h2>Jurisdiction crime context</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Regional / municipal context only — not a parcel risk rating or insurance product.
+        Statistics Canada / police-service level context (when available) — not a parcel risk rating.
+        For current incident mapping, use the RCMP area crime map above.
       </p>
       <div class="summary-grid">
-        <div class="stat"><span class="k">Band</span><strong>${esc(c.band || c.level || '—')}</strong></div>
-        <div class="stat"><span class="k">Area</span><strong>${esc(c.area_name || c.municipality || '—')}</strong></div>
-        <div class="stat"><span class="k">Source</span><strong style="font-size:0.9rem">${esc(
-          c.source_name || c.source || '—'
+        <div class="stat"><span class="k">Classification</span><strong>${esc(
+          c.rural_or_urban_classification || c.band || c.level || '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Crime Severity Index</span><strong>${
+          c.crime_severity_index != null ? esc(c.crime_severity_index) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Data year</span><strong>${esc(c.data_year || '—')}</strong></div>
+        <div class="stat"><span class="k">Reporting area</span><strong style="font-size:0.9rem">${esc(
+          c.reporting_jurisdiction || c.area_name || c.municipality || '—'
         )}</strong></div>
       </div>
       ${c.summary ? `<p class="fine" style="margin-top:0.55rem">${esc(c.summary)}</p>` : ''}
