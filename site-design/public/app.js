@@ -1377,8 +1377,8 @@ function renderReport(r) {
 }
 
 /**
- * Overview property map: parcel + Alberta provincial contours only
- * (Open Government data via provincial_elevation MapServer).
+ * Overview property map: parcel + Alberta provincial contours (Altalis map id=118
+ * product family via open Titan) + HRDEM hillshade where NRCan coverage exists.
  * @param {string} [idSuffix]
  */
 function mapEmbedSection(idSuffix = 'main') {
@@ -1389,20 +1389,17 @@ function mapEmbedSection(idSuffix = 'main') {
     <section class="report-block report-map-block">
       <h2>Your parcel</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Satellite basemap with the boundary you drew and
-        <strong>Alberta provincial elevation contours</strong>
-        (1:20&nbsp;000 cartographic contours · Open Government Licence — Alberta).
-        No AI detection, plantings, or derived DEM contours on this map.
+        Satellite basemap with the boundary you drew,
+        <strong>Alberta 1:20&nbsp;000 provincial contours</strong>
+        (same product family as
+        <a href="https://www.altalis.com/map;id=118" target="_blank" rel="noopener">Altalis map id=118</a>,
+        served openly via Alberta Titan), and
+        <strong>HRDEM hillshade</strong> where NRCan coverage exists
+        (<a href="https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b" target="_blank" rel="noopener">HRDEM Mosaic</a>).
       </p>
-      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Parcel map with Alberta provincial contours"></div>
+      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Parcel map with provincial contours and HRDEM"></div>
       <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
       <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
-      <p class="fine" style="margin-top:0.35rem">
-        Contour source:
-        <a href="https://open.alberta.ca/opendata/gda-d57d86ba-41d0-48a0-848b-da30171c44f5" target="_blank" rel="noopener">Alberta Contour open data</a>
-        ·
-        <a href="https://geospatial.alberta.ca/titan/rest/services/elevation/provincial_elevation/MapServer" target="_blank" rel="noopener">ESRI REST MapServer</a>
-      </p>
     </section>`;
 }
 
@@ -1455,9 +1452,8 @@ function getParcelLatLngsFromReport(r) {
 }
 
 /**
- * Overview map only: satellite + drawn parcel + Alberta provincial contours
- * (open.alberta.ca Contour / provincial_elevation MapServer).
- * No DEM heatmaps, DEM contours, plantings, settlements, water, or AI layers.
+ * Overview map: satellite + parcel + Alberta provincial contours (Altalis id=118
+ * product family via open Titan) + HRDEM hillshade WMS when coverage exists.
  */
 function mountUnifiedPropertyMap(el, latlngs, report) {
   if (!el || typeof L === 'undefined' || !latlngs?.length) return;
@@ -1485,11 +1481,11 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
   }
   el._eeLeafletMap = map;
 
-  L.tileLayer(
+  const imagery = L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
     {
       attribution:
-        'Esri · Alberta provincial elevation contours (Open Government Licence — Alberta)',
+        'Esri · Alberta contours (Titan / Altalis map 118 family) · HRDEM (NRCan)',
       maxZoom: 20,
     }
   ).addTo(map);
@@ -1499,6 +1495,10 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     { opacity: 0.5, maxZoom: 20 }
   ).addTo(map);
 
+  const overlays = {};
+  const hrdemLayer = addHrdemWmsToMap(map, report);
+  if (hrdemLayer) overlays['HRDEM hillshade'] = hrdemLayer;
+
   const parcelLayer = L.polygon(latlngs, {
     color: '#a8801f',
     fillColor: '#a8801f',
@@ -1506,51 +1506,45 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     weight: 3,
   }).addTo(map);
   parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+  overlays['Your parcel'] = parcelLayer;
 
-  // Alberta provincial contours only (public MapServer)
-  const provFc =
-    report?.site_map?.contours?.provincial ||
-    report?._provincial_contours ||
-    null;
+  const contourLayer = addProvincialContoursToMap(map, report);
   let contourCount = 0;
-  if (provFc?.features?.length) {
-    const provLayer = L.geoJSON(provFc, {
-      style: (f) => {
-        const isIndex = f.properties?.contour_type === 'index';
-        return {
-          color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.55)',
-          weight: isIndex ? 2.2 : 1.1,
-          opacity: isIndex ? 0.95 : 0.75,
-          fill: false,
-        };
-      },
-      onEachFeature: (f, lyr) => {
-        const z = f.properties?.elevation_m ?? f.properties?.ELEVATION;
-        if (z != null) {
-          lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
-        }
-      },
-    }).addTo(map);
-    contourCount = provFc.features.length;
-    // Keep parcel outline on top of contour lines
-    parcelLayer.bringToFront();
-    void provLayer;
+  if (contourLayer) {
+    overlays['Provincial contours'] = contourLayer;
+    contourCount =
+      getProvincialContoursFc(report)?.features?.length ||
+      contourLayer.getLayers?.().length ||
+      0;
+  }
+  parcelLayer.bringToFront();
+
+  if (Object.keys(overlays).length > 1) {
+    L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
   }
 
+  const hrdem = getHrdemOverlay(report);
   const legendEl = document.getElementById(el.id.replace('report-map-', 'report-map-legend-'));
   if (legendEl) {
     legendEl.innerHTML = `
       <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
-      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Index contour</span>
-      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:rgba(91,58,115,0.55);border-width:1px"></span>Intermediate contour</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Provincial contour</span>
+      ${
+        hrdem?.available
+          ? '<span class="fine"><span class="legend-swatch" style="background:rgba(80,80,80,0.45);border-color:#444"></span>HRDEM hillshade</span>'
+          : ''
+      }
     `;
   }
 
   const statusEl = document.getElementById(el.id.replace('report-map-', 'report-map-status-'));
   if (statusEl) {
-    statusEl.textContent = contourCount
-      ? `Alberta provincial contours: ${contourCount} line features on this map`
-      : 'Parcel only — provincial contours unavailable for this area (try again or zoom context).';
+    const bits = [];
+    if (contourCount) bits.push(`${contourCount} provincial contour lines`);
+    else bits.push('no contours returned for this extent');
+    if (hrdem?.available) bits.push('HRDEM hillshade on');
+    else bits.push('HRDEM not available here');
+    statusEl.textContent = bits.join(' · ');
   }
 
   const fit = () => {
@@ -5701,6 +5695,7 @@ function initSmallWaterMap(elId, featureCollection, mapLayers, parcelLatLngs) {
   const overlays = {};
   const boundsGroup = [];
 
+  addHrdemWmsToMap(map, state.report);
   addProvincialContoursToMap(map, state.report);
 
   // Parcel boundary (same drawn coords as property map)
@@ -5945,12 +5940,22 @@ function scheduleLeafletWhenVisible(elId, initFn) {
 function getProvincialContoursFc(report) {
   const r = report || state.report;
   const p =
+    r?.elevation_overlays?.contours ||
     r?.site_map?.contours?.provincial ||
     r?._provincial_contours ||
     null;
   if (p?.features?.length) return p;
-  if (Array.isArray(p?.features) && p.features.length) return p;
   return null;
+}
+
+function getHrdemOverlay(report) {
+  const r = report || state.report;
+  return (
+    r?.elevation_overlays?.hrdem ||
+    r?.hrdem ||
+    r?.analysis?.hrdem ||
+    null
+  );
 }
 
 /** Draw provincial contours on a Leaflet map; returns layer or null. */
@@ -5974,6 +5979,47 @@ function addProvincialContoursToMap(map, report) {
   }).addTo(map);
 }
 
+/**
+ * HRDEM Mosaic WMS hillshade (NRCan) when STAC reports coverage for the AOI.
+ * https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b
+ */
+function addHrdemWmsToMap(map, report) {
+  const hrdem = getHrdemOverlay(report);
+  if (!map || !hrdem?.available || !hrdem?.wms?.url) {
+    // Coverage flag without full wms config — still try default WMS if available
+    if (!hrdem?.available) return null;
+  }
+  if (typeof L === 'undefined' || !L.tileLayer?.wms) return null;
+
+  const cfg = hrdem.wms || {
+    url: 'https://datacube.services.geo.ca/ows/elevation',
+    layers: 'dtm-hillshade',
+    format: 'image/png',
+    transparent: true,
+    version: '1.3.0',
+    opacity: 0.55,
+    attribution:
+      'HRDEM Mosaic © His Majesty the King in Right of Canada (NRCan)',
+  };
+
+  try {
+    const layer = L.tileLayer.wms(cfg.url, {
+      layers: cfg.layers || 'dtm-hillshade',
+      format: cfg.format || 'image/png',
+      transparent: cfg.transparent !== false,
+      version: cfg.version || '1.3.0',
+      opacity: cfg.opacity ?? 0.55,
+      attribution: cfg.attribution || 'HRDEM NRCan',
+      // CRS handled by Leaflet default (EPSG:3857 tiles via WMS 1.3)
+    });
+    layer.addTo(map);
+    return layer;
+  } catch (e) {
+    console.warn('HRDEM WMS failed', e);
+    return null;
+  }
+}
+
 function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
@@ -5993,7 +6039,7 @@ function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
 
   const boundsGroup = [];
 
-  // Provincial contours under wetland fills
+  addHrdemWmsToMap(map, state.report);
   addProvincialContoursToMap(map, state.report);
 
   let parcelPoly = null;

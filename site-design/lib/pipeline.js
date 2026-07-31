@@ -37,6 +37,7 @@ import { assessAccess } from './access.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
+import { buildElevationOverlays } from './elevation-overlays.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
@@ -436,7 +437,7 @@ export async function generateSiteReport(input = {}) {
     },
   };
 
-  const [accessRaw, provincialContours, satellite, wetlandsDetail, windRose, precipitation] =
+  const [accessRaw, elevationOverlays, satellite, wetlandsDetail, windRose, precipitation] =
     await Promise.all([
       withTimeout(
         assessAccess(centre, nearestCityDist),
@@ -445,11 +446,21 @@ export async function generateSiteReport(input = {}) {
         'access'
       ),
       withTimeout(
-        // Public Alberta contour lines (open.alberta.ca provincial elevation MapServer)
-        queryProvincialContours(bbox, { limit: 1200, includeIndex: true }),
-        20_000,
-        { features: [], source: 'Alberta provincial elevation (timeout)' },
-        'provincial_contours'
+        // Altalis map id=118 product family (open Titan) + HRDEM when available
+        buildElevationOverlays(bbox, {
+          limit: 1200,
+          hrdem_hint: layers.hrdem,
+        }),
+        22_000,
+        {
+          contours: {
+            type: 'FeatureCollection',
+            features: [],
+            source: 'Alberta provincial elevation (timeout)',
+          },
+          hrdem: layers.hrdem || { available: false },
+        },
+        'elevation_overlays'
       ),
       withTimeout(
         fetchSatelliteIndices(
@@ -549,7 +560,24 @@ export async function generateSiteReport(input = {}) {
     depth_to_water: depthToWater,
     predicted_streams: predictedStreams,
   };
+  const provincialContours =
+    elevationOverlays?.contours || {
+      type: 'FeatureCollection',
+      features: [],
+    };
   record._provincial_contours = provincialContours;
+  record.elevation_overlays = {
+    contours: provincialContours,
+    hrdem: elevationOverlays?.hrdem || layers.hrdem || { available: false },
+    sources: elevationOverlays?.sources || null,
+  };
+  // Enrich layers.hrdem for UI flags / provenance
+  if (elevationOverlays?.hrdem) {
+    record.hrdem = {
+      ...(layers.hrdem || {}),
+      ...elevationOverlays.hrdem,
+    };
+  }
 
   // Small water — expensive Planetary Computer stack; soft-cap hard
   const smallWater = await withTimeout(
@@ -787,6 +815,7 @@ export async function generateSiteReport(input = {}) {
       wetlands: wetlandsDetail,
       small_water: smallWater,
       provincial_contours: provincialContours,
+      elevation_overlays: record.elevation_overlays,
       tree_cover: treeCover,
       tree_sample_grid: record.tree_sample_grid,
       proximity,
