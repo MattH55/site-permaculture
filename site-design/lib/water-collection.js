@@ -16,6 +16,11 @@ const ROOF_SCENARIOS = [
   { id: 'farmstead', label: 'Full farmstead', area_m2: 350 },
 ];
 
+// Literature-informed planning split for a maintained contour swale. Actual
+// infiltration varies materially with soil texture, antecedent moisture,
+// compaction, vegetation, and storm intensity; this is not a field test.
+const SWALE_INFILTRATION_FRACTION = 0.75;
+
 /**
  * Estimate the full water collection budget for a parcel.
  *
@@ -214,7 +219,11 @@ function estimateSwaleCapture({ swaleMeters, monthlyMm, slopePercent, soilDraina
   const swaleCapacityPerMetreLitres = 150; // 0.15 m³ = 150 L
 
   const monthlyLitres = {};
+  const monthlyInfiltrationLitres = {};
+  const monthlyOverflowLitres = {};
   let annualLitres = 0;
+  let annualInfiltrationLitres = 0;
+  let annualOverflowLitres = 0;
 
   for (const [month, mm] of Object.entries(monthlyMm || {})) {
     const precipM = Number(mm || 0) / 1000; // convert mm to m
@@ -227,7 +236,13 @@ function estimateSwaleCapture({ swaleMeters, monthlyMm, slopePercent, soilDraina
     // Assume 3 rain events/month; swale drains between events
     const effectiveCapture = Math.min(runoffLitres, swaleCapacity * 3);
     monthlyLitres[month] = Math.round(effectiveCapture);
+    const infiltrated = effectiveCapture * SWALE_INFILTRATION_FRACTION;
+    const overflow = Math.max(0, runoffLitres - effectiveCapture);
+    monthlyInfiltrationLitres[month] = Math.round(infiltrated);
+    monthlyOverflowLitres[month] = Math.round(overflow);
     annualLitres += effectiveCapture;
+    annualInfiltrationLitres += infiltrated;
+    annualOverflowLitres += overflow;
   }
 
   return {
@@ -239,6 +254,14 @@ function estimateSwaleCapture({ swaleMeters, monthlyMm, slopePercent, soilDraina
     annual_litres: Math.round(annualLitres),
     annual_m3: Math.round(annualLitres / 1000),
     monthly_litres: monthlyLitres,
+    annual_infiltration_litres: Math.round(annualInfiltrationLitres),
+    annual_infiltration_m3: Math.round(annualInfiltrationLitres / 1000),
+    annual_overflow_litres: Math.round(annualOverflowLitres),
+    annual_overflow_m3: Math.round(annualOverflowLitres / 1000),
+    monthly_infiltration_litres: monthlyInfiltrationLitres,
+    monthly_overflow_litres: monthlyOverflowLitres,
+    infiltration_fraction_assumed: SWALE_INFILTRATION_FRACTION,
+    infiltration_basis: 'Planning midpoint of roughly 60–90% infiltration reported for vegetated contour earthworks; verify with soil infiltration testing.',
     note: `Each metre of swale intercepts runoff from ~${Math.round(catchmentPerMetreM2)} m² of upslope catchment.`,
   };
 }

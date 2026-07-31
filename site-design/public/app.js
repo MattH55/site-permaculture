@@ -1384,7 +1384,7 @@ function renderReport(r) {
       </p>
       ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
-        Planning guidance for Expanding Edge — not engineered drawings.
+        Planning guidance for Land Intelligence — not engineered drawings.
         (780) 236-3630 · info@expandingedge.ca
       </p>
     </div>`;
@@ -3068,6 +3068,7 @@ function solarSection(solar) {
   }
   const m = solar.mean_daily_global_insolation_kwh_m2 || {};
   const y = solar.estimated_pv_yield || {};
+  const solarPlan = solar.planning_scenario || {};
   const v = solar.viability || {};
   const monthly = solar.monthly_latitude_tilt || [];
   const bars = monthlySolarBars(monthly);
@@ -3101,8 +3102,15 @@ function solarSection(solar) {
             ? `${esc(y.fixed_south_latitude_tilt_kwh_per_kwp_year)} kWh/kWp·yr`
             : '—'
         }</strong></div>
+        ${solarPlan.annual_generation_kwh != null ? `<div class="stat"><span class="k">Illustrative 5 kWp generation</span><strong>${esc(solarPlan.annual_generation_kwh)} kWh/yr</strong></div>` : ''}
+        ${solarPlan.annual_grid_savings_cad != null ? `<div class="stat"><span class="k">Illustrative annual grid savings</span><strong>$${esc(solarPlan.annual_grid_savings_cad)} CAD/yr</strong></div>` : ''}
       </div>
       <p class="fine" style="margin:0.75rem 0 0.5rem">${esc(v.summary || '')}</p>
+      ${
+        solarPlan.note
+          ? `<p class="fine" style="margin-top:0.5rem"><strong>Illustrative planning scenario:</strong> ${esc(solarPlan.note)}</p>`
+          : ''
+      }
       ${
         solar.aspect_guidance
           ? `<p class="fine"><strong>Site aspect:</strong> ${esc(solar.aspect_guidance)}</p>`
@@ -4215,7 +4223,7 @@ function servicesCtaSection(services) {
   const top = services.slice(0, 4);
   return `
     <div class="ee-services-cta">
-      <span class="mono eyebrow">Expanding Edge · next steps</span>
+      <span class="mono eyebrow">Land Intelligence · next steps</span>
       <h3 class="ee-services-title">Services that match these recommendations</h3>
       <p class="fine">These CTAs follow the outcomes above — book a focused consult or a full site design.</p>
       <div class="ee-services-grid">
@@ -4273,7 +4281,6 @@ function recommendationCard(e) {
   const offering = (e.related_services || [])
     .map((id) => EE_SERVICE_META[id])
     .find(Boolean);
-  const headline = (e.value_headline || '').trim();
   const secondary = (e.secondary_values || [])
     .map((v) => VALUE_LABELS[v] || v)
     .filter(Boolean);
@@ -4300,7 +4307,6 @@ function recommendationCard(e) {
     <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
       ${offering ? `<h3 class="rec-offering-heading">${esc(offering.label)}</h3>` : `<h3 class="rec-offering-heading">${esc(technique || 'Site recommendation')}</h3>`}
       <div class="value-chips">${chips}</div>
-      ${headline ? `<p class="value-headline">${esc(headline)}</p>` : ''}
       <div class="el-head">
         <span class="badge zone">Zone ${esc(e.zone)}</span>
         ${confBadge(e.confidence)}
@@ -5055,6 +5061,23 @@ function recommendedPlantingsSection(table, intervention) {
   const goalsLabel = table?.goals_label || intervention?.goals_label || '';
   const hardiness = table?.hardiness || table?.site_filters?.plant_hardiness_zone;
   const eff = table?.effective_zone || table?.site_filters?.effective_hardiness_zone;
+  const foodRows = rows.filter((r) => /food|edible|fruit|nut|berry|food_production/i.test(
+    `${r.functions || ''} ${r.common_name || ''}`
+  ));
+  const foodYield = foodRows.reduce((acc, r) => {
+    const y = r.product_yield_kg || (r.product_yield_mid_kg != null ? { mid: r.product_yield_mid_kg } : null);
+    if (!y || (r.unit && !/kg|kilogram/i.test(r.unit))) return acc;
+    acc.low += Number(y.low ?? y.low_kg ?? y.mid ?? y.mid_kg ?? 0);
+    acc.mid += Number(y.mid ?? y.mid_kg ?? 0);
+    acc.high += Number(y.high ?? y.high_kg ?? y.mid ?? y.mid_kg ?? 0);
+    return acc;
+  }, { low: 0, mid: 0, high: 0 });
+  const foodYieldBlock = foodRows.length && foodYield.mid > 0
+    ? `<div class="well-range-card" style="border-left-color:var(--ok);margin-top:0.75rem">
+        <span class="mono">Estimated food-forest yield at maturity</span>
+        <div class="well-range-value" style="color:var(--ok)">${fmtQty(foodYield.mid)} kg/yr</div>
+        <p class="fine">Planning range ${fmtQty(foodYield.low)}–${fmtQty(foodYield.high)} kg/yr from the edible rows shown below. Establishment takes time; species, harvest, weather, and market access drive actual yield.</p>
+      </div>` : '';
 
   const body = rows
     .slice(0, 14)
@@ -5155,6 +5178,7 @@ function recommendedPlantingsSection(table, intervention) {
         <span class="badge beta" style="margin-left:0.35rem">Beta</span>
       </p>
       ${valueBlock}
+      ${foodYieldBlock}
       ${leverCards ? `<span class="mono topo-label" style="display:block;margin-top:0.75rem">Levers this plan is expected to improve</span>${leverCards}` : ''}
       <div class="econ-table-wrap" style="margin-top:0.85rem">
         <table class="econ-table plantings-table">
@@ -5554,6 +5578,14 @@ function wellDepthSection(w, centre) {
   const lithSum = w.lithology_summary;
 
   const enrichCards = [];
+  if (swl != null || aquiferTop != null || depth != null) {
+    enrichCards.push(`
+      <article class="prox-card" style="border-left-color:#2a6f97">
+        <span class="mono">Groundwater access</span>
+        <strong>${swl != null ? `Water table ~${fmt(swl, 'm bgs')}` : 'Aquifer access screened'}</strong>
+        <p class="fine">Planning completion ${fmt(depth, 'm bgs')}${aquiferTop != null ? ` · aquifer top ~${fmt(aquiferTop, 'm bgs')}` : ''}. This indicates potential access, not a guaranteed supply.</p>
+      </article>`);
+  }
   if (swl != null) {
     enrichCards.push(`
       <article class="prox-card">
@@ -5574,8 +5606,8 @@ function wellDepthSection(w, centre) {
     enrichCards.push(`
       <article class="prox-card">
         <span class="mono">Well yield (${yieldSum.count} wells)</span>
-        <strong>mean ${yieldSum.mean} · max ${yieldSum.max}</strong>
-        <p class="fine">min ${yieldSum.min} · ${esc(yieldSum.unit || 'rate')}</p>
+        <strong>mean ${esc(yieldSum.mean)} gpm · max ${esc(yieldSum.max)} gpm</strong>
+        <p class="fine">min ${esc(yieldSum.min)} gpm · reported nearby-well yield</p>
       </article>`);
   }
   if (pumpSum?.count) {
@@ -5583,7 +5615,7 @@ function wellDepthSection(w, centre) {
       <article class="prox-card">
         <span class="mono">Pump tests (${pumpSum.count} wells)</span>
         <strong>SWL ${fmt(pumpSum.swl_range_m?.low, 'm')}–${fmt(pumpSum.swl_range_m?.high, 'm')}</strong>
-        <p class="fine">${pumpSum.yield_range ? `yield ${pumpSum.yield_range.low}–${pumpSum.yield_range.high}` : ''}</p>
+        <p class="fine">${pumpSum.yield_range ? `yield ${pumpSum.yield_range.low}–${pumpSum.yield_range.high} ${esc(pumpSum.yield_range.unit || 'gpm')}` : 'No pump-test flow rate reported'}</p>
       </article>`);
   }
   if (chemSum?.count) {
@@ -5964,6 +5996,9 @@ function windSection(climate, r, windRose) {
                 ? 'Chinook-prone area — dense multi-row belt with spruce on the windward side for year-round snow and wind control.'
                 : 'Use the Alberta prairie palette above; diversify deciduous rows so one pest (e.g. emerald ash borer) cannot clear the belt.'
             }
+          </p>
+          <p class="fine" style="margin-top:0.5rem">
+            Expected functions: improved microclimate and wind protection; lower wind-driven soil loss and evapotranspiration; better moisture retention; seasonal shade; and added wildlife habitat. These are directional design benefits, not parcel-measured guarantees.
           </p>
         </div>
       </div>
@@ -6384,12 +6419,10 @@ function waterCollectionSection(wc) {
         <div class="stat"><span class="k">Roof catchment</span><strong>${primaryRoof ? (primaryRoof.annual_litres / 1000).toFixed(1) + ' m³' : '—'}</strong><span class="fine">${primaryRoof ? primaryRoof.label : ''} · 85% eff.</span></div>
         <div class="stat"><span class="k">Swale capture</span><strong>${swaleCapture.recommended ? (swaleCapture.annual_litres / 1000).toFixed(1) + ' m³' : 'N/A'}</strong><span class="fine">${swaleCapture.recommended ? swaleCapture.swale_meters + ' m swale' : swaleCapture.note || 'No swales'}</span></div>
         <div class="stat"><span class="k">Pond storage</span><strong>${pondStorage.recommended ? pondStorage.estimated_volume_m3 + ' m³' : 'N/A'}</strong><span class="fine">${pondStorage.recommended ? pondStorage.note : pondStorage.note || 'No ponds'}</span></div>
-        <div class="stat"><span class="k">Parcel runoff</span><strong>${(wc.parcel_runoff_litres / 1000).toFixed(0)} m³</strong><span class="fine">Total water leaving annually</span></div>
-      </div>
-      <div class="summary-grid" style="margin-top:0.35rem">
         <div class="stat"><span class="k">Driest months</span><strong>${dryMonths || '—'}</strong></div>
         <div class="stat"><span class="k">Wettest months</span><strong>${wetMonths || '—'}</strong></div>
       </div>
+      ${swaleCapture.recommended ? `<p class="fine" style="margin-top:0.45rem"><strong>Swale water balance:</strong> ~${(swaleCapture.annual_litres / 1000).toFixed(1)} m³ intercepted, ~${(swaleCapture.annual_infiltration_m3 || 0).toFixed(1)} m³ estimated to infiltrate, and ~${(swaleCapture.annual_overflow_m3 || 0).toFixed(1)} m³ remaining as overflow/runoff. ${esc(swaleCapture.infiltration_basis || '')}</p>` : ''}
       <span class="mono topo-label" style="margin-top:0.85rem;display:block">Monthly collection (house+barn + swales)</span>
       <div class="precip-chart" style="margin-top:0.45rem" aria-label="Monthly water collection">${monthBars}</div>
       <p class="fine" style="margin-top:0.3rem"><span style="display:inline-block;width:10px;height:10px;background:var(--ok);vertical-align:middle;margin-right:3px"></span> Swale · <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;vertical-align:middle;margin-right:3px"></span> Roof</p>
@@ -7438,7 +7471,7 @@ function nextStepsSection(r, idSuffix = 'main') {
     { step: 1, label: 'Your site insights', description: 'Free analysis' },
     { step: 2, label: 'Choose interventions', description: 'Select what you want' },
     { step: 3, label: 'Full report', description: 'Download with email' },
-    { step: 4, label: 'Estimate & inquire', description: 'Talk to Expanding Edge' },
+    { step: 4, label: 'Estimate & inquire', description: 'Talk to Land Intelligence' },
   ])
     .map(
       (s, i) => `
@@ -8140,7 +8173,7 @@ async function downloadSectionPdf(sectionEl, label) {
     const hdr = document.createElement('div');
     hdr.style.cssText = 'margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #5b3a73;';
     hdr.innerHTML = `
-      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Expanding Edge Permaculture</div>
+      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Land Intelligence</div>
       <div style="font-size:14px;font-weight:700;margin-top:2px">${esc(state.report?.site_name || 'Site report')} — ${esc(label)}</div>
       <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · expandingedge.ca</div>
     `;
@@ -8186,7 +8219,7 @@ async function downloadFullPdf() {
     const r = state.report || {};
     titlePage.style.cssText = 'text-align: center; padding: 40px 20px 20px;';
     titlePage.innerHTML = `
-      <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Expanding Edge Permaculture</div>
+      <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Land Intelligence</div>
       <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
       <div style="font-size:14px;color:#46584c;margin-bottom:30px">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
@@ -8198,7 +8231,7 @@ async function downloadFullPdf() {
         <br>expandingedge.ca · (780) 236-3630
       </div>
       <div style="font-size:9px;color:#aaa;margin-top:30px">
-        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment.
+        Planning guidance for conversation with Land Intelligence — not engineered drawings or a crime risk assessment.
       </div>
     `;
     wrapper.appendChild(titlePage);
@@ -8993,6 +9026,9 @@ function renderSectionPanes(r, ctx) {
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
+        <div class="stat"><span class="k">Soil texture</span><strong>${esc((r.soil_survey?.characteristics?.texture_class || r.soil_survey?.sample_summary?.texture_class || a.soil_survey?.characteristics?.texture_class || '—'))}</strong></div>
+        <div class="stat"><span class="k">pH</span><strong>${esc((r.soil_survey?.characteristics?.ph_h2o_mean || r.soil_survey?.sample_summary?.mean_ph || a.soil_survey?.sample_summary?.mean_ph || '—'))}</strong></div>
+        <div class="stat"><span class="k">SOC model</span><strong>${esc((r.soil_survey?.characteristics?.soc_g_kg_regional_mean || r.soil_survey?.sample_summary?.mean_soc_g_kg || a.soil_survey?.sample_summary?.mean_soc_g_kg || '—'))}${(r.soil_survey?.characteristics?.soc_g_kg_regional_mean || r.soil_survey?.sample_summary?.mean_soc_g_kg || a.soil_survey?.sample_summary?.mean_soc_g_kg) != null ? ' g/kg' : ''}</strong></div>
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
         <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
