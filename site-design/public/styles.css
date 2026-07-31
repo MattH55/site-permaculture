@@ -1134,6 +1134,126 @@ h3 { font-size: 1.08rem; }
   border-left: 3px solid var(--gold);
   background: linear-gradient(135deg, rgba(168,128,31,0.08), rgba(91,58,115,0.05));
 }
+.findings-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  margin: 0.5rem 0 1rem;
+}
+.findings-jump a {
+  color: var(--berry);
+  text-decoration: none;
+  border-bottom: 1px solid rgba(91, 58, 115, 0.35);
+}
+.findings-jump a:hover { border-bottom-color: var(--berry); }
+.findings-toc { margin: 0 0 0.75rem; color: var(--ink-soft); }
+
+/* Expandable findings themes */
+.findings-accordion {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  margin: 0 0 0.65rem;
+  overflow: hidden;
+}
+.findings-accordion-summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.35rem 0.85rem;
+  padding: 0.85rem 1rem;
+  user-select: none;
+}
+.findings-accordion-summary::-webkit-details-marker { display: none; }
+.findings-accordion-summary::marker { content: ''; }
+.findings-accordion-title {
+  font-family: 'Bricolage Grotesque', system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 1.1rem;
+  flex: 1 1 auto;
+}
+.findings-accordion-blurb {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--ink-soft);
+}
+.findings-accordion-hint {
+  color: var(--berry);
+  border: 1px solid rgba(91, 58, 115, 0.3);
+  border-radius: var(--radius);
+  padding: 0.2rem 0.45rem;
+  font-size: 0.62rem;
+}
+.findings-accordion-hint::before { content: '▸ '; }
+.findings-accordion[open] > .findings-accordion-summary {
+  border-bottom: 1px dashed var(--line);
+  background: rgba(91, 58, 115, 0.04);
+}
+.findings-accordion[open] .findings-accordion-hint::before { content: '▾ '; }
+.findings-accordion-summary:hover {
+  background: rgba(168, 128, 31, 0.06);
+}
+.findings-accordion-body {
+  padding: 0.35rem 0.65rem 0.85rem;
+}
+.findings-accordion-body > .report-block {
+  margin-top: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+  background: var(--paper);
+}
+.findings-accordion-body > .report-block > h2 {
+  font-size: 1.05rem;
+}
+
+/* Precipitation month bars */
+.precip-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.35rem;
+  height: 88px;
+  padding: 0.25rem 0.15rem 0;
+}
+.precip-month {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  min-width: 0;
+}
+.precip-bar {
+  width: 70%;
+  max-width: 18px;
+  background: linear-gradient(180deg, #4a90d9, #2a6f97);
+  border-radius: 2px 2px 0 0;
+  min-height: 4px;
+}
+.precip-label {
+  font-size: 0.55rem;
+  margin-top: 0.25rem;
+  color: var(--ink-soft);
+  letter-spacing: 0.04em;
+}
+.map-advanced {
+  margin: 0.5rem 0 0.25rem;
+}
+.map-advanced > summary {
+  cursor: pointer;
+  color: var(--ink-soft);
+}
+#pane-site {
+  /* PDF export host only */
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+}
 
 .report-map {
   width: 100%;

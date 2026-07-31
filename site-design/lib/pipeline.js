@@ -49,6 +49,7 @@ import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
 import { querySoilSurvey } from './soil-survey.js';
 import { buildSiteMapFeatures } from './site-map-features.js';
 import { buildActionMenu } from './action-menu.js';
+import { fetchPrecipitation } from './precipitation.js';
 
 const cache = new Map();
 
@@ -425,7 +426,17 @@ export async function generateSiteReport(input = {}) {
     source: 'NASA POWER',
   });
 
-  const [accessRaw, provincialContours, satellite, wetlandsDetail, windRose] =
+  const precipFallback = {
+    available: false,
+    error: 'timeout',
+    source: 'NASA POWER',
+    gpm_pps: {
+      archive_url: 'https://arthurhouhttps.pps.eosdis.nasa.gov/',
+      registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
+    },
+  };
+
+  const [accessRaw, provincialContours, satellite, wetlandsDetail, windRose, precipitation] =
     await Promise.all([
       withTimeout(
         assessAccess(centre, nearestCityDist),
@@ -461,8 +472,22 @@ export async function generateSiteReport(input = {}) {
         windFallback,
         'wind_rose'
       ),
+      withTimeout(
+        fetchPrecipitation(centre, { years: 5 }),
+        18_000,
+        precipFallback,
+        'precipitation'
+      ),
     ]);
-
+  record.precipitation = precipitation;
+  // Prefer POWER annual precip when climate proxy is coarse
+  if (precipitation?.mean_annual_mm != null) {
+    record.climate = {
+      ...(record.climate || siteInput.climate || {}),
+      annual_precipitation_mm: precipitation.mean_annual_mm,
+      precipitation_source: precipitation.source,
+    };
+  }
   let access = accessRaw || accessFallback;
   if (access && !access.trip_costs_to_city && nearestCityDist) {
     try {

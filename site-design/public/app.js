@@ -7200,88 +7200,316 @@ function pillarPackageSlice(sp, category) {
 }
 
 /**
- * One scrolled findings document — de-duplicated evidence for the landowner.
- * Skips sales package cards, extra contour maps, and niche demos.
+ * Accordion section for findings — collapsed by default; open in PDF mode.
+ */
+function findingsAccordion(id, title, blurb, bodyHtml, opts = {}) {
+  if (!bodyHtml || !String(bodyHtml).trim()) return '';
+  const open = opts.open || opts.forPdf ? ' open' : '';
+  return `
+    <details class="findings-accordion" id="${esc(id)}"${open}>
+      <summary class="findings-accordion-summary">
+        <span class="findings-accordion-title">${esc(title)}</span>
+        ${blurb ? `<span class="fine findings-accordion-blurb">${esc(blurb)}</span>` : ''}
+        <span class="findings-accordion-hint mono" aria-hidden="true">Expand</span>
+      </summary>
+      <div class="findings-accordion-body">
+        ${bodyHtml}
+      </div>
+    </details>`;
+}
+
+/**
+ * Findings organized for landowners:
+ * Land · Security · Economy · Water · Wildlife · Energy · Vegetation & food
+ * Recommendations deferred to the end.
  */
 function buildFindingsHtml(r, ctx, opts = {}) {
   const {
     topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar,
-    landValue, hardiness, flood, zoning, allEls, els, valueCounts, flags,
+    landValue, hardiness, flood, zoning, allEls, els,
   } = ctx;
   const forPdf = !!opts.forPdf;
+  const acc = (id, title, blurb, body) =>
+    findingsAccordion(id, title, blurb, body, { forPdf });
 
-  const topRecs = (els || allEls || []).slice(0, 6);
-  const recBlock =
-    topRecs.length && !forPdf
-      ? `
+  // ── Land: legal description, distance / access, soils, topo, hardiness ──
+  const landBody = [
+    atsSection(r.ats, r.parcel_address),
+    accessSection(r.access, city?.name, city?.distance_km),
+    distanceContextSection(px, water, city, settlement),
+    topologySection(topo, a),
+    soilSurveySection(r.soil_survey || a.soil_survey),
+    hardinessFloodZoningSection(hardiness, flood, zoning, r),
+    temperatureSection(r.temperature || a.temperature),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Security: crime ──
+  const securityBody = [
+    crimeSectionStandalone(crime, px),
+    nearestCrimesSection(nearestCrimes, centre),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Economy: demographics, land prices ──
+  const economyBody = [
+    demographicsSection(r.demographics),
+    landValueSection(landValue),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Water: precip (NASA), wells, wetlands, seeps ──
+  const waterBody = [
+    precipitationSection(r.precipitation || r.climate),
+    wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
+    wetlandsSection(r.wetlands || r.fecundity?.wetlands),
+    smallWaterSection(r.small_water),
+    wetAreasSection(r.wet_areas_mapping),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Wildlife ──
+  const wildlifeBody = [
+    wildlifeSection(r.wildlife || a.wildlife),
+    biodiversitySection(r.biodiversity),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Energy: solar (+ wind as energy climate) ──
+  const energyBody = [
+    solarSection(solar),
+    windSection(r.climate, r, r.wind_rose),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Vegetation & food (assessment, not shopping list) ──
+  const vegBody = [
+    treeCoverSection(r.tree_cover),
+    fecunditySection(r.fecundity),
+  ]
+    .filter(Boolean)
+    .join('');
+
+  // ── Recommendations last ──
+  const topRecs = (els || allEls || []).slice(0, 12);
+  const recCards = topRecs.length
+    ? forPdf
+      ? `<ul>${topRecs
+          .map(
+            (e) =>
+              `<li><strong>${esc(e.element_type || e.technique || 'Item')}</strong> — ${esc(
+                e.condition_basis || e.value_headline || ''
+              )}</li>`
+          )
+          .join('')}</ul>`
+      : `<div class="elements">${topRecs.map((e) => recommendationCard(e)).join('')}</div>`
+    : '<p class="fine">No placement recommendations matched this parcel profile.</p>';
+
+  const recBody = `
     <section class="report-block">
-      <h2>What this site suggests</h2>
+      <h2>Placement recommendations</h2>
       <p class="fine" style="margin-top:-0.3rem">
-        Highest-priority placement ideas. Full choices and pricing are in <strong>Your plan</strong>.
+        Technique-level ideas from site measurements. Choose what to pursue in <strong>Your plan</strong>.
       </p>
-      <div class="elements">
-        ${topRecs.map((e) => recommendationCard(e)).join('')}
-      </div>
-    </section>`
-      : topRecs.length
-        ? `<section class="report-block"><h2>What this site suggests</h2>
-            <ul>${topRecs.map((e) => `<li><strong>${esc(e.element_type || e.technique || 'Item')}</strong> — ${esc(e.condition_basis || e.value_headline || '')}</li>`).join('')}</ul>
-          </section>`
-        : '';
-
-  return `
-    ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
-
-    ${recBlock}
-
-    <div class="findings-anchor mono fine" id="findings-water">Water</div>
-    ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
-    ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
-    ${smallWaterSection(r.small_water)}
-    ${wetAreasSection(r.wet_areas_mapping)}
-
-    <div class="findings-anchor mono fine" id="findings-climate">Climate &amp; energy</div>
-    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-    ${temperatureSection(r.temperature || a.temperature)}
-    ${windSection(r.climate, r, r.wind_rose)}
-    ${solarSection(solar)}
-
-    <div class="findings-anchor mono fine" id="findings-land">Land &amp; soils</div>
-    ${topologySection(topo, a)}
-    ${soilSurveySection(r.soil_survey || a.soil_survey)}
-    ${landValueSection(landValue)}
-    ${treeCoverSection(r.tree_cover)}
-
-    <div class="findings-anchor mono fine" id="findings-food">Food &amp; fecundity</div>
-    ${fecunditySection(r.fecundity)}
+      ${recCards}
+      ${siteDriversSection(ctx.siteDrivers) || ''}
+    </section>
     ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
-
-    <div class="findings-anchor mono fine" id="findings-context">Context</div>
-    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-    ${accessSection(r.access, city?.name, city?.distance_km)}
-    ${atsSection(r.ats, r.parcel_address)}
-    ${wildlifeSection(r.wildlife || a.wildlife)}
-    ${biodiversitySection(r.biodiversity)}
-
     ${
       !forPdf
-        ? `<details class="report-block tech-notes-details">
-            <summary><strong>Optional detail</strong> — demographics, cell coverage, placement drivers</summary>
-            ${demographicsSection(r.demographics)}
-            ${cellServiceSection(centre)}
-            ${siteDriversSection(ctx.siteDrivers)}
-            ${
-              (allEls || []).length
-                ? `<div class="elements" style="margin-top:0.75rem">${(allEls || [])
-                    .slice(0, 12)
-                    .map((e) => recommendationCard(e))
-                    .join('')}</div>`
-                : ''
-            }
-          </details>`
+        ? `<div class="plant-cta panel side-offer-cta-panel" style="margin-top:1rem;padding:0.95rem 1.1rem">
+            <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
+            <h3 style="margin:0.2rem 0">Planting planner</h3>
+            <p class="fine" style="margin:0 0 0.65rem">Re-score goals and economics in the beta planner.</p>
+            <button type="button" class="btn btn-secondary" data-open-plant-beta onclick="window.__eeNav&&window.__eeNav('plant')">Open planting planner →</button>
+          </div>`
         : ''
     }
+    ${!forPdf ? cellServiceSection(centre) : ''}
   `;
+
+  const flagsHtml = ctx.flags?.length
+    ? `<div class="flags">${ctx.flags
+        .map(
+          (f) => `
+      <div class="flag" data-severity="${esc(f.severity)}">
+        <strong>${esc(severityLabel(f.severity))}</strong>
+        <p>${esc(f.message)}</p>
+      </div>`
+        )
+        .join('')}</div>`
+    : '';
+
+  return `
+    ${flagsHtml}
+    <p class="fine findings-toc">
+      Expand a theme to review the supporting cards. Recommendations are last.
+    </p>
+    ${acc('findings-land', 'Land', 'Legal description, distance, soils, terrain, hardiness', landBody)}
+    ${acc('findings-security', 'Security', 'Crime context near the parcel', securityBody)}
+    ${acc('findings-economy', 'Economy', 'Demographics and land prices', economyBody)}
+    ${acc('findings-water', 'Water', 'Precipitation, wells, wetlands, seeps', waterBody)}
+    ${acc('findings-wildlife', 'Wildlife', 'Habitat and biodiversity signals', wildlifeBody)}
+    ${acc('findings-energy', 'Energy', 'Solar resource and wind', energyBody)}
+    ${acc('findings-vegetation', 'Vegetation & food', 'Canopy and land productivity (assessment)', vegBody)}
+    ${acc('findings-recommendations', 'Recommendations', 'Placement ideas and plant fits — after the evidence', recBody)}
+  `;
+}
+
+/** Distance / nearest places without crime (crime lives under Security). */
+function distanceContextSection(px, water, city, settlement) {
+  if (!water && !city && !settlement) return '';
+  return `
+    <section class="report-block">
+      <h2>Distance &amp; context</h2>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Nearest water</span><strong>${
+          water ? fmtDistance(water.distance_m) : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Nearest settlement</span><strong>${
+          settlement
+            ? `${esc(settlement.name)} · ${fmt(settlement.distance_km, 'km')}`
+            : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${
+          city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'
+        }</strong></div>
+      </div>
+      ${
+        water?.feature_name || water?.feature_type
+          ? `<p class="fine" style="margin-top:0.5rem">Water feature: ${esc(
+              water.feature_name || water.feature_type || '—'
+            )}</p>`
+          : ''
+      }
+    </section>`;
+}
+
+function crimeSectionStandalone(crime, px) {
+  const c = crime || px?.crime_risk;
+  if (!c) {
+    return `
+      <section class="report-block">
+        <h2>Security context</h2>
+        <p class="fine">No municipal crime summary for this location. Planning context only — not a risk assessment.</p>
+      </section>`;
+  }
+  return `
+    <section class="report-block">
+      <h2>Security context</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Regional / municipal context only — not a parcel risk rating or insurance product.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Band</span><strong>${esc(c.band || c.level || '—')}</strong></div>
+        <div class="stat"><span class="k">Area</span><strong>${esc(c.area_name || c.municipality || '—')}</strong></div>
+        <div class="stat"><span class="k">Source</span><strong style="font-size:0.9rem">${esc(
+          c.source_name || c.source || '—'
+        )}</strong></div>
+      </div>
+      ${c.summary ? `<p class="fine" style="margin-top:0.55rem">${esc(c.summary)}</p>` : ''}
+      ${c.note || c.disclaimer ? `<p class="fine">${esc(c.note || c.disclaimer)}</p>` : ''}
+    </section>`;
+}
+
+/**
+ * NASA POWER precipitation + GPM PPS archive attribution.
+ */
+function precipitationSection(precip) {
+  // Accept full precipitation object or climate fallback
+  const p =
+    precip && (precip.mean_annual_mm != null || precip.monthly_mm || precip.available != null)
+      ? precip
+      : precip?.annual_precipitation_mm != null
+        ? {
+            available: true,
+            mean_annual_mm: precip.annual_precipitation_mm,
+            source: precip.precipitation_source || 'Site climate',
+            monthly_mm: null,
+            gpm_pps: {
+              archive_url: 'https://arthurhouhttps.pps.eosdis.nasa.gov/',
+              registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
+            },
+          }
+        : null;
+
+  if (!p) {
+    return `
+      <section class="report-block">
+        <h2>Precipitation</h2>
+        <p class="fine">Precipitation series not available for this point yet.</p>
+        <p class="fine">
+          Research archive:
+          <a href="https://arthurhouhttps.pps.eosdis.nasa.gov/" target="_blank" rel="noopener">NASA GPM PPS (arthurhouhttps)</a>
+        </p>
+      </section>`;
+  }
+
+  const months = p.monthly_mm || p.monthly || null;
+  const monthBars = months
+    ? Object.entries(months)
+        .map(([k, v]) => {
+          const max = Math.max(...Object.values(months).map(Number), 1);
+          const pct = Math.round((Number(v) / max) * 100);
+          return `<div class="precip-month" title="${esc(k)}: ${esc(v)} mm">
+            <span class="precip-bar" style="height:${Math.max(8, pct)}%"></span>
+            <span class="precip-label mono">${esc(String(k).slice(0, 3))}</span>
+          </div>`;
+        })
+        .join('')
+    : '';
+
+  const years = (p.annual_by_year || [])
+    .slice(-6)
+    .map((y) => `<span class="plant-chip">${esc(y.year)}: <strong>${esc(y.mm)}</strong> mm</span>`)
+    .join('');
+
+  const pps = p.gpm_pps || {};
+
+  return `
+    <section class="report-block">
+      <h2>Precipitation</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        NASA POWER bias-corrected precipitation at the parcel centroid (planning screen).
+        Full GPM IMERG research products live in the
+        <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">PPS archive (arthurhouhttps.pps.eosdis.nasa.gov)</a>.
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Mean annual</span><strong>${
+          p.mean_annual_mm != null ? `${esc(p.mean_annual_mm)} mm` : '—'
+        }</strong></div>
+        <div class="stat"><span class="k">Series</span><strong style="font-size:0.9rem">${esc(
+          p.years?.start && p.years?.end
+            ? `${p.years.start}–${p.years.end}`
+            : p.years?.note || '—'
+        )}</strong></div>
+        <div class="stat"><span class="k">Source</span><strong style="font-size:0.85rem">${esc(
+          p.source || 'NASA'
+        )}</strong></div>
+      </div>
+      ${
+        monthBars
+          ? `<div class="precip-chart" style="margin-top:0.75rem" aria-label="Mean monthly precipitation">${monthBars}</div>
+             <p class="fine" style="margin-top:0.35rem">Mean monthly pattern (mm)</p>`
+          : ''
+      }
+      ${years ? `<div class="plant-chips" style="margin-top:0.55rem">${years}</div>` : ''}
+      <p class="fine" style="margin-top:0.65rem">
+        ${esc(p.methodology_note || '')}
+        ${
+          pps.registration_url
+            ? ` · <a href="${esc(pps.registration_url)}" target="_blank" rel="noopener">PPS registration</a>`
+            : ''
+        }
+        ${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">NASA POWER</a>` : ''}
+      </p>
+    </section>`;
 }
 
 function renderSectionPanes(r, ctx) {
@@ -7336,14 +7564,17 @@ function renderSectionPanes(r, ctx) {
         <span class="mono eyebrow" style="display:block;margin-top:1.5rem">Evidence</span>
         <h2 style="margin-top:0.25rem">Site findings</h2>
         <p class="fine" style="margin-top:-0.15rem">
-          Water, climate, soils, and food signals for this parcel.
+          Expand each theme for the supporting cards. Recommendations stay at the end.
         </p>
         <p class="findings-jump fine">
-          <a href="#findings-water">Water</a> ·
-          <a href="#findings-climate">Climate</a> ·
           <a href="#findings-land">Land</a> ·
-          <a href="#findings-food">Food</a> ·
-          <a href="#findings-context">Context</a>
+          <a href="#findings-security">Security</a> ·
+          <a href="#findings-economy">Economy</a> ·
+          <a href="#findings-water">Water</a> ·
+          <a href="#findings-wildlife">Wildlife</a> ·
+          <a href="#findings-energy">Energy</a> ·
+          <a href="#findings-vegetation">Vegetation &amp; food</a> ·
+          <a href="#findings-recommendations">Recommendations</a>
         </p>
         ${findingsHtml}
       </div>
