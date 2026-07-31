@@ -39,6 +39,7 @@ import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
+import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 
 const cache = new Map();
 
@@ -61,7 +62,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -98,6 +99,18 @@ export async function generateSiteReport(input = {}) {
       available: false,
       error: e.message,
       features: [],
+    })),
+    fetchSatelliteIndices(
+      { type: 'Polygon', coordinates: [ring] },
+      '2024-05-01',
+      '2026-10-31'
+    ).catch((e) => ({
+      available: false,
+      error: e.message,
+    })),
+    assessBiodiversity(centre).catch((e) => ({
+      available: false,
+      error: e.message,
     })),
   ]);
 
@@ -374,6 +387,16 @@ export async function generateSiteReport(input = {}) {
     source_name: soils.source_name || 'Agricultural Land Resource Atlas of Alberta',
     source_url: soils.source_url || null,
   };
+  // Satellite patch for fecundity report (LAI/fCOVER/NDVI/SOC)
+  const fecunditySatPatch = satellite?.available ? toFecundityPatch(satellite) : {};
+  // Regional SOC context from satellite module
+  const fecundityRegionalSoc = satellite?.regional_soc || null;
+  // Plant richness / biodiversity heuristic from assessBiodiversity
+  const fecundityPlantRichness = biodiversity?.available ? {
+    species_count: biodiversity.species_count || null,
+    rare_or_indicator_species: biodiversity.rare_or_indicator_species || [],
+    source_name: biodiversity.source_name || 'GBIF + iNaturalist heuristic',
+  } : null;
   const fecundityReport = generateFecundityReport({
     measured: {},  // no direct site measurements from remote report
     topoData: { avgSlopePercent: t.slope_percent },
@@ -385,6 +408,11 @@ export async function generateSiteReport(input = {}) {
     wildlifeObservations: wildlife?.sighting_species || [],
     windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
     frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
+    // Satellite vegetation indices + SOC
+    satellite: satellite?.available ? satellite : null,
+    ...fecunditySatPatch,
+    regional_soc: fecundityRegionalSoc,
+    plant_richness: fecundityPlantRichness,
   }, { propertyLabel: siteInput.site_name });
   record.fecundity = fecundityReport;
 

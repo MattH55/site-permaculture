@@ -148,6 +148,12 @@ function inferIndicators(rawData = {}) {
 
   // ── Satellite plant health (NRCan LAI / fCOVER / fAPAR + S2 NDVI) ──
   const sat = rawData.satellite || {};
+
+  // ── Satellite SOC → soil biology (low confidence only) ──
+  const socVal = sat.soc?.value ?? sat.soc?.mean ?? null;
+  if (socVal != null) {
+    set('satelliteSOC', Number(socVal), 'low — Sentinel-2 inferred SOC proxy (not lab-grade)');
+  }
   const nrcan = sat.nrcan_vegetation || rawData.nrcan_vegetation || {};
   const laiMean =
     rawData.laiMean ??
@@ -248,6 +254,27 @@ function inferIndicators(rawData = {}) {
     if ((laiMean != null && laiMean >= 2.5) || (treeCoverPct != null && treeCoverPct >= 35)) layers = 4;
     if (treeCoverPct != null && treeCoverPct >= 55) layers = 5;
     set('observedLayerCount', layers, 'moderate — inferred from plant-health / canopy');
+  }
+
+  // ── Plant richness / biodiversity (from assessBiodiversity via pipeline) ──
+  const plantRich = rawData.plant_richness || null;
+  if (plantRich && plantRich.species_count != null) {
+    set('plantSpeciesCount', Number(plantRich.species_count), 'moderate — regional flora survey (GBIF/iNaturalist heuristic)');
+  }
+  if (plantRich && Array.isArray(plantRich.rare_or_indicator_species) && plantRich.rare_or_indicator_species.length > 0) {
+    set('rareOrIndicatorSpecies', plantRich.rare_or_indicator_species.length, 'moderate — indicator species count');
+  }
+
+  // ── Biodiversity / wildlife observations ──
+  const bio = rawData.biodiversity || null;
+  if (bio && bio.species_count != null) {
+    set('wildlifeSpeciesCount', Number(bio.species_count), 'moderate — GBIF/iNaturalist heuristic');
+  }
+  if (bio && Array.isArray(bio.fauna_groups) && bio.fauna_groups.length > 0) {
+    set('faunaGroupDiversity', bio.fauna_groups.length, 'moderate — regional fauna group diversity');
+  }
+  if (bio && Array.isArray(bio.habitat_types) && bio.habitat_types.length > 0) {
+    set('habitatHeterogeneity', bio.habitat_types.join(', '), 'moderate — regional habitat types');
   }
 
   // Fauna
