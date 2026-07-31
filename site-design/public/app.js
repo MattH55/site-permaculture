@@ -1749,40 +1749,20 @@ function clientPlacePlantings(plan, latlngs) {
 
 function topologySection(topo, a) {
   if (!topo || topo.elevation_m == null) {
-    return `<h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p>`;
+    return `<section class="report-block"><h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p></section>`;
   }
-  const heat = topoHeatHtml(topo);
-  const profile = topoProfileSvg(topo.profile || []);
-  const contour = topoContourSvg(topo);
+  // Stats only — elevation grid / cross-section / SVG contours removed (use provincial contours on satellite maps).
   return `
     <section class="report-block">
       <h2>Topology</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Derived from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Summary from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Contour lines are shown on the satellite maps (Alberta provincial elevation).
         Relief ${fmt(topo.relief_m, 'm')} ·
         ${topo.keypoint_present ? 'keypoint candidate present' : 'no clear keypoint'} ·
         erosion ${esc(topo.erosion_risk || '—')}
       </p>
-      <div class="topo-layout">
-        <div class="topo-heat-wrap">
-          <span class="mono topo-label">Elevation surface (sample grid)</span>
-          ${heat}
-          <div class="topo-scale mono">
-            <span>${fmt(topo.elevation_min_m, 'm')}</span>
-            <span>low → high</span>
-            <span>${fmt(topo.elevation_max_m, 'm')}</span>
-          </div>
-        </div>
-        <div class="topo-profile-wrap">
-          <span class="mono topo-label">W → E cross-section (mid parcel)</span>
-          ${profile}
-        </div>
-        <div class="topo-contour-wrap">
-          <span class="mono topo-label">Contour map (plan view)</span>
-          ${contour}
-        </div>
-      </div>
-      <div class="summary-grid" style="margin-top:1rem">
+      <div class="summary-grid" style="margin-top:0.65rem">
         <div class="stat"><span class="k">Min elev</span><strong>${fmt(topo.elevation_min_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Mean elev</span><strong>${fmt(topo.elevation_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
@@ -5596,7 +5576,9 @@ function smallWaterSection(sw) {
   const fc = sw.feature_collection;
   const parcel = getParcelLatLngs();
   if (fc?.features?.length || parcel) {
-    setTimeout(() => initSmallWaterMap(mapId, fc, sw.map_layers, parcel), 130);
+    scheduleLeafletWhenVisible(mapId, () =>
+      initSmallWaterMap(mapId, fc, sw.map_layers, parcel)
+    );
   }
 
   const openRows = open
@@ -5702,15 +5684,24 @@ function smallWaterSection(sw) {
 function initSmallWaterMap(elId, featureCollection, mapLayers, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
+  if (el._eeLeafletMap) {
+    try {
+      el._eeLeafletMap.remove();
+    } catch { /* ignore */ }
+    el._eeLeafletMap = null;
+  }
   el.innerHTML = '';
   const map = L.map(el, { zoomControl: true, attributionControl: true });
+  el._eeLeafletMap = map;
   const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Esri · Copernicus Sentinel via Planetary Computer · AMWI (OGL-A)',
+    attribution: 'Esri · Copernicus · AMWI · Alberta provincial contours',
     maxZoom: 18,
   }).addTo(map);
 
   const overlays = {};
   const boundsGroup = [];
+
+  addProvincialContoursToMap(map, state.report);
 
   // Parcel boundary (same drawn coords as property map)
   const parcelRing = parcelLatLngs || getParcelLatLngs();
@@ -5838,16 +5829,19 @@ function wetlandsSection(w) {
   const mapId = 'wetlands-map-' + Math.random().toString(36).slice(2, 8);
   const fc = w.wetland_polygons;
   const parcel = getParcelLatLngs();
-  // Always show map when we have wetlands and/or the drawn parcel
-  if (fc?.features?.length || parcel) {
-    setTimeout(() => initWetlandsMap(mapId, fc, w.query_bbox, parcel), 120);
+  const showMap = !!(fc?.features?.length || parcel);
+  // Init when the accordion becomes visible (Leaflet needs non-zero size)
+  if (showMap) {
+    scheduleLeafletWhenVisible(mapId, () =>
+      initWetlandsMap(mapId, fc, w.query_bbox, parcel)
+    );
   }
   return `
     <section class="report-block wetlands-block">
       <h2>Wetlands (inventory)</h2>
       <p class="fine" style="margin-top:-0.35rem">
         Alberta Merged Wetland Inventory polygons for screening water, microclimate, and fauna levers.
-        Gold outline = <strong>your parcel</strong>. Teal fill = mapped wetlands.
+        Gold outline = <strong>your parcel</strong>. Teal fill = mapped wetlands. Purple lines = provincial contours.
         <strong>Not a formal Wetland Policy delineation</strong> — field assessment required before earthworks or Water Act decisions.
       </p>
       <div class="summary-grid">
@@ -5865,11 +5859,12 @@ function wetlandsSection(w) {
           : `<p class="fine" style="margin-top:0.65rem">No AMWI wetland polygon on the parcel. Pond candidates still depend on topography, soils, and catchment — not inventory absence alone.</p>`
       }
       ${
-        fc?.features?.length || parcel
-          ? `<div id="${mapId}" class="report-map minimap-embed" style="height:280px;margin-top:0.75rem"></div>
+        showMap
+          ? `<div id="${mapId}" class="report-map minimap-embed" style="height:280px;margin-top:0.75rem;min-height:280px"></div>
         <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center">
           <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
           <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:#2a9d8f;border:2px solid #0b6e4f;vertical-align:middle;margin-right:4px"></span>AMWI wetland</span>
+          <span class="fine"><span style="display:inline-block;width:14px;height:2px;background:#5b3a73;vertical-align:middle;margin-right:4px"></span>Provincial contour</span>
         </div>`
           : ''
       }
@@ -5878,24 +5873,129 @@ function wetlandsSection(w) {
         · Source: ${esc(w.source || 'AMWI')}
         ${w.source_url ? ` · <a href="${esc(w.source_url)}" target="_blank" rel="noopener">layer</a>` : ''}
         · Features: ${esc(w.feature_count ?? 0)}
+        ${w.error ? ` · Lookup note: ${esc(w.error)}` : ''}
       </p>
       ${w.disclaimer ? `<p class="fine">${esc(w.disclaimer)}</p>` : ''}
     </section>`;
 }
 
+/**
+ * Leaflet containers inside collapsed <details> have 0 size — init only when visible.
+ * Supports multiple maps per accordion (each registers its own init).
+ */
+function scheduleLeafletWhenVisible(elId, initFn) {
+  const tryInit = () => {
+    const el = document.getElementById(elId);
+    if (!el) return false;
+    const details = el.closest('details');
+    if (details && !details.open) return false;
+    if (el.offsetWidth < 40 || el.offsetHeight < 40) return false;
+    if (el.dataset.leafletReady === '1') {
+      // Already built — just reflow
+      try {
+        el._eeLeafletMap?.invalidateSize?.({ animate: false });
+      } catch { /* ignore */ }
+      return true;
+    }
+    el.dataset.leafletReady = '1';
+    try {
+      initFn();
+    } catch (e) {
+      console.warn('map init failed', elId, e);
+      el.dataset.leafletReady = '0';
+      return false;
+    }
+    setTimeout(() => {
+      try {
+        el._eeLeafletMap?.invalidateSize?.({ animate: false });
+      } catch { /* ignore */ }
+    }, 200);
+    return true;
+  };
+
+  if (tryInit()) return;
+
+  const bindDetails = () => {
+    const el = document.getElementById(elId);
+    if (!el) return;
+    const details = el.closest('details');
+    if (!details) return;
+    if (!details._eeMapInits) details._eeMapInits = [];
+    details._eeMapInits.push(tryInit);
+    if (!details._eeMapBound) {
+      details._eeMapBound = true;
+      details.addEventListener('toggle', () => {
+        if (!details.open) return;
+        setTimeout(() => {
+          (details._eeMapInits || []).forEach((fn) => {
+            try {
+              fn();
+            } catch { /* ignore */ }
+          });
+        }, 60);
+      });
+    }
+  };
+  setTimeout(bindDetails, 0);
+  setTimeout(tryInit, 250);
+  setTimeout(tryInit, 1000);
+}
+
+/** Alberta provincial contours FeatureCollection from report. */
+function getProvincialContoursFc(report) {
+  const r = report || state.report;
+  const p =
+    r?.site_map?.contours?.provincial ||
+    r?._provincial_contours ||
+    null;
+  if (p?.features?.length) return p;
+  if (Array.isArray(p?.features) && p.features.length) return p;
+  return null;
+}
+
+/** Draw provincial contours on a Leaflet map; returns layer or null. */
+function addProvincialContoursToMap(map, report) {
+  const fc = getProvincialContoursFc(report);
+  if (!fc?.features?.length || !map) return null;
+  return L.geoJSON(fc, {
+    style: (f) => {
+      const isIndex = f.properties?.contour_type === 'index';
+      return {
+        color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.5)',
+        weight: isIndex ? 2 : 1,
+        opacity: isIndex ? 0.95 : 0.7,
+        fill: false,
+      };
+    },
+    onEachFeature: (f, lyr) => {
+      const z = f.properties?.elevation_m ?? f.properties?.ELEVATION;
+      if (z != null) lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
+    },
+  }).addTo(map);
+}
+
 function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
+  if (el._eeLeafletMap) {
+    try {
+      el._eeLeafletMap.remove();
+    } catch { /* ignore */ }
+    el._eeLeafletMap = null;
+  }
   el.innerHTML = '';
   const map = L.map(el, { zoomControl: true, attributionControl: true });
+  el._eeLeafletMap = map;
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Esri · AMWI (OGL-A)',
+    attribution: 'Esri · AMWI (OGL-A) · Alberta provincial contours',
     maxZoom: 18,
   }).addTo(map);
 
   const boundsGroup = [];
 
-  // Parcel boundary first (under wetlands for fill, but drawn on top after for outline clarity)
+  // Provincial contours under wetland fills
+  addProvincialContoursToMap(map, state.report);
+
   let parcelPoly = null;
   const parcelRing = parcelLatLngs || getParcelLatLngs();
   if (parcelRing?.length >= 3) {
@@ -5904,13 +6004,20 @@ function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
       fillColor: '#a8801f',
       fillOpacity: 0.12,
       weight: 3,
-      dashArray: null,
     }).addTo(map);
     parcelPoly.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
     boundsGroup.push(parcelPoly);
   }
 
-  const fc = featureCollection?.features?.length ? featureCollection : null;
+  // Normalize GeoJSON — AMWI may store MultiRing as Polygon with multi outer rings
+  let fc = null;
+  if (featureCollection?.features?.length) {
+    const fixed = featureCollection.features
+      .map((f) => normalizeWetlandFeature(f))
+      .filter(Boolean);
+    if (fixed.length) fc = { type: 'FeatureCollection', features: fixed };
+  }
+
   if (fc) {
     const layer = L.geoJSON(fc, {
       style: {
@@ -5926,22 +6033,27 @@ function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
             `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
             `CWCS: ${esc(p.cwcs_class || '—')}<br/>` +
             `${p.on_parcel ? '<em>Intersects parcel</em><br/>' : ''}` +
-            `<span class="fine">AMWI inventory · high confidence for screening</span>`
+            `<span class="fine">AMWI inventory · screening only</span>`
         );
       },
     }).addTo(map);
     boundsGroup.push(layer);
+  } else if (!parcelRing) {
+    el.innerHTML =
+      '<p class="fine" style="padding:0.75rem">No wetland polygons or parcel boundary to display.</p>';
+    return;
   }
 
-  // Bring parcel outline to front so it stays visible over wetland fills
   if (parcelPoly) parcelPoly.bringToFront();
 
   try {
     if (boundsGroup.length) {
-      const fg = L.featureGroup(boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x])));
+      const fg = L.featureGroup(
+        boundsGroup.flatMap((x) => (x.getLayers ? x.getLayers() : [x]))
+      );
       const b = fg.getBounds();
       if (b.isValid()) map.fitBounds(b, { padding: [20, 20], maxZoom: 17 });
-    } else if (bbox) {
+    } else if (bbox?.south != null) {
       map.fitBounds(
         [
           [bbox.south, bbox.west],
@@ -5953,6 +6065,40 @@ function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
   } catch {
     /* ignore */
   }
+
+  setTimeout(() => {
+    try {
+      map.invalidateSize({ animate: false });
+    } catch { /* ignore */ }
+  }, 100);
+}
+
+/** Ensure wetland GeoJSON rings are valid Leaflet polygons. */
+function normalizeWetlandFeature(f) {
+  if (!f?.geometry) return null;
+  const g = f.geometry;
+  let coords = g.coordinates;
+  if (!coords) return null;
+  // Polygon: [ ring ] or accidentally multi outer rings without MultiPolygon type
+  if (g.type === 'Polygon') {
+    if (!Array.isArray(coords[0])) return null;
+    // If first element looks like a point [lng,lat], wrap
+    if (typeof coords[0][0] === 'number') {
+      coords = [coords];
+    }
+    // Drop rings that are too short
+    coords = coords.filter((ring) => Array.isArray(ring) && ring.length >= 3);
+    if (!coords.length) return null;
+    return {
+      type: 'Feature',
+      properties: f.properties || {},
+      geometry: { type: 'Polygon', coordinates: coords },
+    };
+  }
+  if (g.type === 'MultiPolygon') {
+    return f;
+  }
+  return f;
 }
 
 function wetAreasSection(wam) {
