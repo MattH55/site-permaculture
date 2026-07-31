@@ -1890,14 +1890,15 @@ function terrain3dBlock(id, report) {
   );
   const semantic = report?.semantic_terrain;
   const semanticCounts = semantic?.features?.reduce((m, f) => {
-    m[f.feature_type] = (m[f.feature_type] || 0) + 1;
+    const key = f.layer || f.priority_group || f.feature_type;
+    m[key] = (m[key] || 0) + 1;
     return m;
   }, {}) || {};
   const semanticControls = Object.keys(semanticCounts).length
     ? Object.entries(semanticCounts).map(([type, count]) => `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-semantic-toggle="${esc(id)}" data-semantic-layer="${esc(type)}" />
-          ${esc(type.replace(/_/g, ' '))} (${count})
+          ${esc(semantic?.layer_labels?.[type] || type.replace(/_/g, ' '))} (${count})
         </label>`).join('')
     : '<span class="fine">No mapped semantic features returned for this AOI.</span>';
   return `
@@ -2474,7 +2475,9 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
   const features = payload?.features || [];
   const groups = new Map();
   const colors = { water: 0x2a9dc9, wetland: 0x38a68b, building: 0xd88c45, road: 0x777777, railway: 0xb4b4b4, forest: 0x2f8f4e, shrubland: 0x77a84e, cropland: 0xb1a447, grassland: 0x88b858, pipeline: 0xe36b35, power: 0xf0c64b, protected_area: 0x9b75c7 };
-  const bbox = opts.bbox;
+  const bbox = opts.bbox || (payload?.bbox
+    ? [payload.bbox.west, payload.bbox.south, payload.bbox.east, payload.bbox.north]
+    : null);
   if (!bbox || bbox.length !== 4 || !features.length) return { setVisible() {}, dispose() {} };
   const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
   const point = ([lng, lat], lift = 0.6) => {
@@ -2486,8 +2489,25 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const y = Number.isFinite(elev) ? (elev - opts.zMean) * (opts.meshW * 0.08 * opts.exaggerate()) / opts.relief + lift : lift;
     return new THREE.Vector3(x, y, z);
   };
+  const polygonMesh = (ring, type) => {
+    const base = ring.map((c) => point(c, 0.45));
+    const height = type === 'building' ? 4 : 0.35;
+    const top = ring.map((c) => point(c, height));
+    const vertices = [];
+    const pushTri = (a, b, c) => vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    for (let i = 1; i < base.length - 2; i++) pushTri(top[0], top[i], top[i + 1]);
+    for (let i = 0; i < base.length - 1; i++) {
+      pushTri(base[i], base[i + 1], top[i + 1]);
+      pushTri(base[i], top[i + 1], top[i]);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, material(type));
+  };
   for (const feature of features) {
     const type = feature.feature_type;
+    const layer = feature.layer || feature.priority_group || type;
     const geom = feature.geometry;
     let object = null;
     if (geom.type === 'Point') {
@@ -2498,14 +2518,12 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     } else if (geom.type === 'Polygon') {
       const ring = geom.coordinates?.[0] || [];
       if (ring.length < 3) continue;
-      const shape = new THREE.Shape(ring.map((c) => { const p = point(c, 0.7); return new THREE.Vector2(p.x, p.z); }));
-      object = new THREE.Mesh(new THREE.ShapeGeometry(shape), material(type));
-      object.position.y = 0.7;
+      object = polygonMesh(ring, type);
     }
     if (!object) continue;
     object.userData.semanticFeature = feature;
-    if (!groups.has(type)) groups.set(type, new THREE.Group());
-    groups.get(type).add(object);
+    if (!groups.has(layer)) groups.set(layer, new THREE.Group());
+    groups.get(layer).add(object);
   }
   for (const group of groups.values()) scene.add(group);
   return {

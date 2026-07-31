@@ -37,6 +37,7 @@ import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
 import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
+import { fetchSemanticTerrain } from './semantic-terrain.js';
 
 const cache = new Map();
 
@@ -59,7 +60,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -91,6 +92,11 @@ export async function generateSiteReport(input = {}) {
     assessWildlife(bbox, centre).catch((e) => ({
       available: false,
       error: e.message,
+    })),
+    fetchSemanticTerrain(bbox).catch((e) => ({
+      available: false,
+      error: e.message,
+      features: [],
     })),
   ]);
 
@@ -338,6 +344,7 @@ export async function generateSiteReport(input = {}) {
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
   record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
+  record.semantic_terrain = semantic_terrain;
 
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
