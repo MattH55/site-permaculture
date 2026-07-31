@@ -257,9 +257,47 @@ export async function generateSiteReport(input = {}) {
       'sturgeon_county'
     ),
     withTimeout(
-      querySoilSurvey(centre.latitude, centre.longitude, { bbox, samples: 9 }),
-      12_000,
-      { available: false, error: 'Soil survey timed out' },
+      querySoilSurvey(centre.latitude, centre.longitude, { bbox, samples: 5 }),
+      35_000,
+      {
+        available: false,
+        error: 'Soil survey timed out',
+        recommended_lab_tests: {
+          available: true,
+          title: 'Recommended soil tests',
+          intro:
+            'Soil inventory timed out on this run. These lab/field tests still form the high-confidence design baseline.',
+          sample_protocol:
+            'Composite 8–12 cores from the management unit. Keep topsoil separate if planning earthworks.',
+          tests: [
+            {
+              id: 'standard_chemistry',
+              name: 'Standard chemistry panel',
+              priority: 1,
+              method: 'Accredited lab',
+              measures: ['pH', 'EC', 'OM %', 'N-P-K-S', 'Ca', 'Mg', 'Na'],
+              why: 'Baseline fertility for plantings and amendments.',
+            },
+            {
+              id: 'organic_carbon',
+              name: 'Lab SOC / organic matter',
+              priority: 1,
+              method: 'Laboratory',
+              measures: ['SOC g/kg or OM %'],
+              why: 'Required before any numeric soil-carbon claim.',
+            },
+            {
+              id: 'texture_structure',
+              name: 'Texture & structure',
+              priority: 1,
+              method: 'Lab particle size + field jar test',
+              measures: ['sand/silt/clay %', 'texture class'],
+              why: 'Confirms infiltration and water-holding capacity.',
+            },
+          ],
+          labs_note: 'Use any Alberta-serving agricultural lab; bring results to the site walk.',
+        },
+      },
       'soil_survey'
     ),
   ]);

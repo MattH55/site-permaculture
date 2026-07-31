@@ -5229,13 +5229,25 @@ function biodiversitySection(bio) {
 }
 
 function soilSurveySection(ss) {
-  if (!ss || !ss.available) return '';
+  // Always show recommended lab tests; show inventory block when available
+  const labHtml = recommendedSoilTestsSection(ss?.recommended_lab_tests);
+  if (!ss || !ss.available) {
+    if (ss?.error && !labHtml) {
+      return `
+        <section class="report-block">
+          <h2>Soil survey &amp; tests</h2>
+          <p class="fine">Soil inventory unavailable: ${esc(ss.error)}</p>
+        </section>`;
+    }
+    return labHtml || '';
+  }
 
   const ls = ss.land_system;
   const ag = ss.agrasid;
   const zoneInfo = ss.soil_zone_info;
   const orderInfo = ss.soil_order_info;
   const chars = ss.characteristics || {};
+  const sum = ss.sample_summary || {};
 
   const zoneColor = {
     'Brown': '#c9a35b',
@@ -5265,9 +5277,9 @@ function soilSurveySection(ss) {
 
   return `
     <section class="report-block">
-      <h2>Soil survey — AGRASID/AGRASIS</h2>
+      <h2>Soil survey &amp; sample tests</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Alberta Agriculture soil inventory data for this location.
+        Alberta Agriculture soil inventory plus mapped SoilGrids sample points (texture, pH, SOC screening).
         ${ls?.land_system_name ? `Land system: <strong>${esc(ls.land_system_name)}</strong>` : ''}
         ${ls?.soil_zone ? ` · Soil zone: <strong style="color:${zoneColor}">${esc(ls.soil_zone)}</strong>` : ''}
         ${ls?.ag_climate_zone ? ` · Ag climate: ${esc(ls.ag_climate_zone)}` : ''}
@@ -5277,9 +5289,12 @@ function soilSurveySection(ss) {
         <div class="stat"><span class="k">Land system</span><strong>${esc(ls?.land_system_symbol || '—')}</strong></div>
         <div class="stat"><span class="k">Soil zone</span><strong style="color:${zoneColor}">${esc(ls?.soil_zone || '—')}</strong></div>
         <div class="stat"><span class="k">Soil order</span><strong style="color:${qualityColor}">${esc(ls?.soil_order_primary || '—')}</strong></div>
+        <div class="stat"><span class="k">Texture (model)</span><strong>${esc(chars.texture_class || sum.texture_class || '—')}</strong></div>
+        <div class="stat"><span class="k">pH (model)</span><strong>${chars.ph_h2o_mean != null ? esc(chars.ph_h2o_mean) : sum.mean_ph != null ? esc(sum.mean_ph) : '—'}</strong></div>
+        <div class="stat"><span class="k">SOC model</span><strong>${chars.soc_g_kg_regional_mean != null ? `${esc(chars.soc_g_kg_regional_mean)} g/kg` : sum.mean_soc_g_kg != null ? `${esc(sum.mean_soc_g_kg)} g/kg` : '—'}</strong></div>
         <div class="stat"><span class="k">Surface forms</span><strong>${esc((ls?.surface_forms || []).join(', ') || '—')}</strong></div>
         <div class="stat"><span class="k">Major components</span><strong>${esc((ls?.major_components || []).join(', ') || '—')}</strong></div>
-        <div class="stat"><span class="k">Morphology</span><strong>${esc(ls?.morphology || '—')}</strong></div>
+        <div class="stat"><span class="k">Sample points</span><strong>${esc(ss.soil_samples?.length || 0)}</strong></div>
       </div>
 
       ${ag ? `
@@ -5318,7 +5333,7 @@ function soilSurveySection(ss) {
       ${charsRows ? `
         <div class="econ-table-wrap" style="margin-top:0.75rem">
           <table class="econ-table">
-            <thead><tr><th>Property</th><th>Inferred value</th></tr></thead>
+            <thead><tr><th>Property</th><th>Mapped / inferred value</th></tr></thead>
             <tbody>${charsRows}</tbody>
           </table>
         </div>
@@ -5327,9 +5342,59 @@ function soilSurveySection(ss) {
       ${soilSamplesMapBlock(ss)}
 
       <p class="fine" style="margin-top:0.6rem">
-        Source: <a href="${esc(ss.source_url)}" target="_blank" rel="noopener">${esc(ss.source_url)}</a>
-        · ${ss.soil_samples?.length ? 'AGRASID/AGRASIS + SoilGrids sample grid · ' : ''}Open Government Licence — Alberta / ISRIC
+        Source: <a href="${esc(ss.source_url)}" target="_blank" rel="noopener">${esc(ss.source || ss.source_url)}</a>
+        · ${ss.soil_samples?.length ? `${esc(ss.soil_samples.length)} SoilGrids sample points · ` : ''}
+        <strong>Not laboratory values</strong> — screening only. Open Government Licence — Alberta / ISRIC
       </p>
+    </section>
+    ${labHtml}`;
+}
+
+/**
+ * Recommended laboratory / field soil tests (restored EE soil-testing toolbox).
+ */
+function recommendedSoilTestsSection(lab) {
+  if (!lab?.available && !lab?.tests?.length) return '';
+  const tests = lab.tests || [];
+  const cards = tests
+    .map(
+      (t) => `
+      <article class="prox-card" style="border-left:3px solid ${t.priority === 1 ? 'var(--ok)' : 'var(--line)'}">
+        <span class="mono">${t.priority === 1 ? 'Priority' : 'Optional'} · ${esc(t.method || 'Lab / field')}</span>
+        <strong>${esc(t.name)}</strong>
+        <p class="fine" style="margin:0.35rem 0 0">${esc(t.why || '')}</p>
+        ${
+          t.measures?.length
+            ? `<p class="fine" style="margin:0.3rem 0 0"><strong>Measures:</strong> ${t.measures.map(esc).join(' · ')}</p>`
+            : ''
+        }
+      </article>`
+    )
+    .join('');
+
+  return `
+    <section class="report-block">
+      <h2>${esc(lab.title || 'Recommended soil tests')}</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        ${esc(
+          lab.intro ||
+            'Laboratory and field tests that complete the remote soil map — high-confidence baseline for plantings, earthworks, and soil-carbon claims.'
+        )}
+      </p>
+      ${
+        lab.sample_protocol
+          ? `<div class="flag" data-severity="info" style="margin:0.65rem 0">
+        <strong>How to sample</strong>
+        <p>${esc(lab.sample_protocol)}</p>
+      </div>`
+          : ''
+      }
+      <div class="prox-grid" style="margin-top:0.65rem">${cards}</div>
+      ${
+        lab.labs_note
+          ? `<p class="fine" style="margin-top:0.65rem">${esc(lab.labs_note)}</p>`
+          : ''
+      }
     </section>`;
 }
 
