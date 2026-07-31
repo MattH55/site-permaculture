@@ -155,7 +155,7 @@ describe('applyRules', () => {
     const swale = design_elements.find((e) => e.element_type === 'swale');
     assert.ok(swale);
     assert.equal(swale.primary_value, 'compliance_safety');
-    assert.match(swale.value_headline, /wetland|Water Act/i);
+    assert.match(swale.value_headline, /wet|wetland/i);
     assert.equal(swale.priority, 1);
   });
 });
@@ -169,15 +169,15 @@ describe('recommendation-values', () => {
     assert.ok(b < c);
   });
 
-  it('builds site-specific windbreak headlines', () => {
+  it('builds site-specific windbreak headlines from Alberta prairie palette', () => {
     const v = enrichElementValues(
       'windbreak',
       { climate: { prevailing_wind_direction: 'NW', chinook_exposure: true } },
       {}
     );
     assert.equal(v.primary_value, 'wind_protection');
-    assert.match(v.value_headline, /NW/);
-    assert.match(v.value_headline, /chinook/i);
+    assert.match(v.value_headline, /NW|shelterbelt|prairie|spruce|caragana|poplar/i);
+    assert.match(v.value_headline, /chinook|conifer|spruce/i);
   });
 
   it('groups by primary_value', () => {

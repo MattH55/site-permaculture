@@ -5,6 +5,8 @@
  * (water storage, wind protection, food, etc.) and builds value headlines.
  */
 
+import { shelterbeltValueHeadline } from './shelterbelt-palette.js';
+
 /** Stable value taxonomy for schema, UI chips, and EE marketing filters. */
 export const VALUE_TAXONOMY = {
   water_storage: {
@@ -248,12 +250,12 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
   const zone = climate.plant_hardiness_zone;
   const footprint = num(site.footprint_ha);
 
-  // Regulatory swale block
+  // Regulatory swale block — keep earthworks off mapped wet areas (details in placement notes)
   if (
     elementType === 'swale' &&
     (ctx.wetland_block || /wetland/i.test(ctx.condition_basis || ''))
   ) {
-    return 'Protect existing wetland function and confirm Water Act approvals before any earthworks.';
+    return 'Mapped wet areas stay in place — redesign water features around the wetland edge.';
   }
 
   switch (elementType) {
@@ -278,13 +280,8 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
         ? 'Build planting depth and organic matter where the native soil profile is thin or low-capability.'
         : 'Build planting depth and organic matter for productive Zone 1 beds.';
     case 'windbreak':
-    case 'shelterbelt_zone': {
-      const dir = wind || 'prevailing';
-      const chinook = climate.chinook_exposure
-        ? ' Buffer chinook freeze–thaw as well as everyday wind.'
-        : '';
-      return `Shelter Zones 1–2 from ${dir} winds with a multi-row belt.${chinook}`;
-    }
+    case 'shelterbelt_zone':
+      return shelterbeltValueHeadline(site);
     case 'food_forest_guild': {
       const z = zone ? ` in zone ${zone}` : '';
       const days = ffd != null ? ` (~${ffd} frost-free days)` : '';
@@ -298,14 +295,10 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
       return 'Maximise food yield and easy harvest access on a tight footprint.';
     case 'groundwater_well': {
       const depth = num(site.predicted_well_depth?.estimated_depth_m);
-      const swl = num(site.predicted_well_depth?.estimated_static_water_level_m);
-      if (depth != null && swl != null) {
-        return `Secure reliable water with a well completed near ${fmtNum(depth)} m (water table ~${fmtNum(swl)} m), sized from local hydrogeology.`;
-      }
       if (depth != null) {
-        return `Secure reliable water with a well completed near ${fmtNum(depth)} m, sized from nearby pump tests and aquifer signals.`;
+        return `Groundwater option indicated by nearby well records (local completion depths vary).`;
       }
-      return 'Secure reliable groundwater where surface water is distant or unreliable.';
+      return 'Assess groundwater where surface water is distant or unreliable.';
     }
     default: {
       const label = VALUE_TAXONOMY[primaryValue]?.label || 'site benefit';

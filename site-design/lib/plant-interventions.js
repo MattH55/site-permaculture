@@ -8,6 +8,12 @@
 
 import { CATEGORY_WEIGHTS } from './fecundity-assessment.js';
 import { COEFFICIENT_VERSION } from './intervention-effects.js';
+import {
+  selectShelterbeltMix,
+  shelterbeltPlacementNotes,
+  isShelterbeltPalettePlant,
+  SHELTERBELT_DESIGN_NOTE,
+} from './shelterbelt-palette.js';
 
 const LEVER_LABELS = {
   water: 'Water — infiltration & retention',
@@ -63,9 +69,12 @@ export function enrichDesignElementsWithPlants(designElements = [], plantingPlan
       (p) =>
         p.primary_value === 'wind_protection' ||
         (p.lever_benefits || []).includes('microclimate') ||
-        /caragana|sea.?buckthorn|buffalo|willow|poplar|spruce|pine|ash/i.test(p.common_name || '')
+        isShelterbeltPalettePlant(p) ||
+        /caragana|sea.?buckthorn|buffalo|willow|poplar|spruce|pine|ash|lilac|saskatoon|chokecherry|maple|elm/i.test(
+          p.common_name || ''
+        )
     )
-    .slice(0, 5);
+    .slice(0, 8);
 
   const foodPlants = plants
     .filter((p) => p.primary_value === 'food_production' || p.edibility_rating != null)
@@ -77,6 +86,20 @@ export function enrichDesignElementsWithPlants(designElements = [], plantingPlan
 
   const shelterGuild = guilds.find((g) => g.id === 'shelterbelt_mix' || /shelter/i.test(g.label));
   const foodGuild = guilds.find((g) => g.id === 'food_forest_understory' || /food forest/i.test(g.label));
+
+  const siteForPalette = {
+    climate: {
+      plant_hardiness_zone: plantingPlan.site_filters?.plant_hardiness_zone,
+      prevailing_wind_direction: windDir,
+      chinook_exposure: profile?.microclimate?.chinook_exposure,
+    },
+    soil: {
+      ph: profile?.soil?.ph,
+      drainage_class: profile?.soil?.drainage,
+    },
+    water: { regime: profile?.water?.regime },
+  };
+  const shelterMix = selectShelterbeltMix(siteForPalette, plants);
 
   const weakPhrase = weakest.length
     ? weakest
@@ -90,26 +113,27 @@ export function enrichDesignElementsWithPlants(designElements = [], plantingPlan
     const next = { ...el };
 
     if (type === 'windbreak' || type === 'shelterbelt_zone') {
-      const names = (shelterGuild?.members || windPlants)
+      const members = shelterGuild?.members?.length
+        ? shelterGuild.members
+        : shelterMix.members;
+      const names = (members || windPlants)
         .map((p) => p.common_name)
         .filter(Boolean)
-        .slice(0, 4);
+        .slice(0, 6);
       if (names.length) {
-        const list = names.join(' + ');
         const why = [
           wind ? `wind exposure is ${wind}` : null,
           windDir ? `prevailing ${windDir}` : null,
           weakPhrase ? `weak levers: ${weakPhrase}` : null,
+          'Alberta prairie multi-row palette',
         ]
           .filter(Boolean)
           .join('; ');
-        next.placement_notes =
-          `Shelterbelt using ${list}${why ? ` because ${why}` : ''}. ` +
-          (el.placement_notes || '')
-            .replace(/^Place a multi-row shelterbelt[^.]*\.\s*/i, '')
-            .trim();
+        next.placement_notes = shelterbeltPlacementNotes(siteForPalette, plants);
         next.suggested_species = names;
         next.plant_rationale = why || null;
+        next.shelterbelt_rows = shelterMix.by_role || shelterGuild?.by_role || null;
+        next.design_note = shelterMix.design_note || SHELTERBELT_DESIGN_NOTE;
         next.improves_levers = uniqueLevers([
           'microclimate',
           ...(windPlants.flatMap((p) => p.lever_benefits || []) || []),

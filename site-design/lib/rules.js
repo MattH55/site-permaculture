@@ -259,10 +259,10 @@ export function applyRules(site = {}) {
   }
 
   // Rule 7 & 8 — windbreak + multi-row shelterbelt as ONE placement card
-  // (previously two near-identical cards that looked like a duplicate section)
+  // Species detail is filled later from the Alberta prairie palette (plant-interventions).
   if (climate.prevailing_wind_direction) {
     const chinookNote = climate.chinook_exposure
-      ? ' Chinook corridor: prioritise the belt and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
+      ? ' Chinook corridor: prioritise dense conifer rows and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
       : '';
     elements.push(
       element(
@@ -271,7 +271,12 @@ export function applyRules(site = {}) {
           condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}${
             climate.chinook_exposure ? ' AND chinook_exposure = true' : ''
           }`,
-          placement_notes: `Place a multi-row shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2 (often west/northwest in Alberta). Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.${chinookNote}`,
+          placement_notes:
+            `Orient a multi-row prairie shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds ` +
+            `(windward conifer → deciduous backbone → shrub hedge). ` +
+            `Suitable Alberta species include caragana, lilac, saskatoon/chokecherry, hybrid or balsam poplar, ` +
+            `green ash / Manitoba maple / resistant elm, Colorado or white spruce, and lodgepole pine. ` +
+            `Leave snow-trap gaps where winter access is needed.${chinookNote}`,
           confidence: climate.chinook_exposure
             ? 'rule_based_high'
             : 'rule_based_moderate',
@@ -287,7 +292,9 @@ export function applyRules(site = {}) {
         {
           condition_basis: 'chinook_exposure = true',
           placement_notes:
-            'Chinook exposure without a listed wind direction — default multi-row west/northwest shelterbelt upwind of Zones 1–2. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
+            'Chinook exposure without a listed wind direction — default multi-row west/northwest prairie shelterbelt ' +
+            '(conifer → deciduous → shrub). Prefer Colorado/white spruce, hybrid poplar, caragana, and lilac; ' +
+            'avoid early-flowering woody species. Hardiness zone alone understates freeze–thaw risk.',
           confidence: 'rule_based_high',
           zone: 2,
         },

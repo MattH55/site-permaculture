@@ -5169,12 +5169,18 @@ function windSection(climate, r, windRose) {
           </div>
           <p class="fine">
             A shelterbelt reduces wind speed 50–80% for a downwind distance of 5–10× its height (H).
-            For a 10m tall poplar belt, the protected zone extends 50–100m leeward.
-            Multi-row belts with fast-growing pioneers (poplar, caragana) + slower evergreens (spruce)
-            provide year-round wind protection.
+            For a 10&nbsp;m tall poplar belt, the protected zone extends 50–100&nbsp;m leeward.
+            Alberta prairie multi-row pattern (windward → leeward):
+            conifer (Colorado or white spruce, lodgepole pine) →
+            deciduous backbone (hybrid/balsam poplar, green ash, Manitoba maple, resistant elm) →
+            shrub hedge (caragana, lilac, saskatoon, chokecherry).
           </p>
           <p class="fine" style="margin-top:0.5rem">
-            <strong>Recommendation:</strong> ${climate?.chinook_exposure ? 'Chinook-prone area — use dense multi-row shelterbelt for snow management and wind protection.' : 'Standard 3–5 row shelterbelt with deciduous + conifer mix recommended.'}
+            <strong>Recommendation:</strong> ${
+              climate?.chinook_exposure
+                ? 'Chinook-prone area — dense multi-row belt with spruce on the windward side for year-round snow and wind control.'
+                : 'Use the Alberta prairie palette above; diversify deciduous rows so one pest (e.g. emerald ash borer) cannot clear the belt.'
+            }
           </p>
         </div>
       </div>

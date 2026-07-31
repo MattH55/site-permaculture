@@ -39,6 +39,11 @@ import {
   goalsLabel,
   getPlantGoalsPayload,
 } from './plant-goals.js';
+import {
+  selectShelterbeltMix,
+  isShelterbeltPalettePlant,
+  SHELTERBELT_DESIGN_NOTE,
+} from './shelterbelt-palette.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -297,27 +302,46 @@ function buildFitSummary(row, profile) {
 function suggestGuilds(plants, profile) {
   const guilds = [];
 
-  // Shelterbelt mix when wind is open or microclimate weak
+  // Shelterbelt mix when wind is open or microclimate weak — Alberta prairie palette
   const windWeak =
     profile.microclimate?.wind_exposure === 'open' ||
+    profile.microclimate?.prevailing_wind ||
     (profile.fecundity?.lever_scores?.microclimate != null &&
       profile.fecundity.lever_scores.microclimate < 55);
   if (windWeak) {
-    const members = plants
+    const siteForPalette = {
+      climate: {
+        plant_hardiness_zone: profile.hardiness?.effective_zone,
+        prevailing_wind_direction: profile.microclimate?.prevailing_wind,
+        chinook_exposure: profile.microclimate?.chinook_exposure,
+      },
+      soil: { ph: profile.soil?.ph, drainage_class: profile.soil?.drainage },
+      water: { regime: profile.water?.regime },
+    };
+    const mix = selectShelterbeltMix(siteForPalette, plants);
+    const catalogMembers = plants
       .filter(
         (p) =>
           p.primary_value === 'wind_protection' ||
-          /caragana|sea.?buckthorn|buffalo|willow|spruce|poplar|ash/i.test(p.common_name || '')
+          isShelterbeltPalettePlant(p) ||
+          /caragana|sea.?buckthorn|buffalo|willow|spruce|poplar|ash|pine|lilac|saskatoon|chokecherry|maple|elm/i.test(
+            p.common_name || ''
+          )
       )
-      .slice(0, 5);
+      .slice(0, 4)
+      .map(guildMember);
+    // Prefer palette mix (balanced rows); fill gaps from ranked catalog
+    const members = mix.members?.length >= 3 ? mix.members : catalogMembers;
     if (members.length >= 2) {
       guilds.push({
         id: 'shelterbelt_mix',
-        label: 'Shelterbelt mix',
+        label: 'Alberta prairie shelterbelt mix',
         rationale:
-          'Open or wind-exposed site — multi-row belt with pioneer shrubs + longer-lived trees for wind, snow, and microclimate.',
+          `Open or wind-exposed site — ${SHELTERBELT_DESIGN_NOTE}`,
         lever_targets: ['microclimate', 'water'],
-        members: members.map(guildMember),
+        members,
+        by_role: mix.by_role || null,
+        design_note: mix.design_note || SHELTERBELT_DESIGN_NOTE,
       });
     }
   }
@@ -610,9 +634,11 @@ function scoreCrop(crop, ctx, profile = null) {
   // ——— SOFT: weak fecundity levers ———
   const weakest = ctx.weakest || [];
   const nFix = !!(crop.nitrogen_fixer || crop.plant_specs?.nitrogen_fixer);
-  const windish = /caragana|sea.?buckthorn|buffalo|willow|poplar|spruce|pine|ash|shelter|wind/i.test(
-    `${crop.common_name} ${crop.id} ${crop.notes || ''}`
-  );
+  const windish =
+    isShelterbeltPalettePlant(crop) ||
+    /caragana|sea.?buckthorn|buffalo|willow|poplar|spruce|pine|ash|shelter|wind|lilac|saskatoon|chokecherry|maple|elm|hackberry|okanese/i.test(
+      `${crop.common_name} ${crop.id} ${crop.notes || ''}`
+    );
   const soilish =
     crop.category === 'cover_crop' ||
     nFix ||
