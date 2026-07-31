@@ -29,9 +29,11 @@ services:
         sync: false
       - key: RESEND_API_KEY
         sync: false
+      # Delivery inbox (Gmail / forwarding address until domain verified)
       - key: INQUIRY_TO
+        sync: false
+      - key: INQUIRY_PUBLIC_TO
         value: info@expandingedge.ca
-      # Account-owner inbox until expandingedge.ca is verified in Resend
       - key: RESEND_FALLBACK_TO
         sync: false
       # After verifying domain: Expanding Edge <noreply@expandingedge.ca>

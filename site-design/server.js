@@ -245,11 +245,13 @@ app.post('/api/lead', async (req, res) => {
     };
     appendLead(lead);
 
-    // Notify Expanding Edge when someone unlocks the full report
-    const to = process.env.INQUIRY_TO || 'info@expandingedge.ca';
+    // Notify team when someone unlocks the full report
+    const to = inquiryDeliveryAddress();
+    const publicTo = inquiryPublicAddress();
     const subject = `Full report download — ${lead.site_name || 'Alberta parcel'}`;
     const text = [
       'Someone unlocked the full site-design report.',
+      publicTo && publicTo !== to ? `Public contact (forward if needed): ${publicTo}` : null,
       '',
       `Email: ${email}`,
       lead.name ? `Name: ${lead.name}` : null,
@@ -295,11 +297,15 @@ app.post('/api/inquiry', async (req, res) => {
       return res.status(400).json({ error: 'Select at least one intervention before inquiring' });
     }
 
-    const to = process.env.INQUIRY_TO || 'info@expandingedge.ca';
+    const to = inquiryDeliveryAddress();
+    const publicTo = inquiryPublicAddress();
     const siteName = body.site_name || 'Alberta parcel';
     const subject = `Site design inquiry — ${siteName}`;
     const lines = [
       `New inquiry from site-design tool`,
+      publicTo && publicTo.toLowerCase() !== String(to).toLowerCase()
+        ? `Forward / EE public inbox: ${publicTo}`
+        : null,
       ``,
       `From: ${body.name || '—'} <${email}>`,
       body.phone ? `Phone: ${body.phone}` : null,
@@ -385,6 +391,20 @@ function appendLead(lead) {
   } catch (e) {
     console.warn('lead log write failed', e.message);
   }
+}
+
+/** Where Resend delivers (Gmail / forwarding inbox until domain is verified). */
+function inquiryDeliveryAddress() {
+  return (
+    process.env.INQUIRY_TO ||
+    process.env.RESEND_FALLBACK_TO ||
+    'matt.halma@gmail.com'
+  );
+}
+
+/** Public EE address shown in the body for human forwarding (optional). */
+function inquiryPublicAddress() {
+  return process.env.INQUIRY_PUBLIC_TO || 'info@expandingedge.ca';
 }
 
 /**
