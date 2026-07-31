@@ -39,3 +39,6 @@ services:
       # After verifying domain: Expanding Edge <noreply@expandingedge.ca>
       - key: INQUIRY_FROM
         sync: false
+      # NASA GPM PPS (email as username + password)
+      - key: GPM_PPS_EMAIL
+        sync: false

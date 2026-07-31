@@ -7502,13 +7502,35 @@ function precipitationSection(precip) {
       ${years ? `<div class="plant-chips" style="margin-top:0.55rem">${years}</div>` : ''}
       <p class="fine" style="margin-top:0.65rem">
         ${esc(p.methodology_note || '')}
-        ${
-          pps.registration_url
-            ? ` · <a href="${esc(pps.registration_url)}" target="_blank" rel="noopener">PPS registration</a>`
-            : ''
-        }
         ${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">NASA POWER</a>` : ''}
       </p>
+      ${
+        pps.authenticated || pps.authenticated_probe
+          ? `<div class="flag" data-severity="info" style="margin-top:0.65rem">
+              <strong>GPM PPS archive connected</strong>
+              <p>
+                Authenticated to
+                <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">arthurhouhttps.pps.eosdis.nasa.gov</a>
+                ${pps.account ? ` as <span class="mono">${esc(pps.account)}</span>` : ''}.
+                ${esc(pps.note || '')}
+                ${
+                  pps.sample_directory
+                    ? `<br/><span class="fine">Sample dir: <a href="${esc(pps.sample_directory)}" target="_blank" rel="noopener">${esc(pps.sample_directory)}</a></span>`
+                    : ''
+                }
+              </p>
+            </div>`
+          : `<p class="fine" style="margin-top:0.45rem">
+              PPS:
+              <a href="${esc(pps.archive_url || 'https://arthurhouhttps.pps.eosdis.nasa.gov/')}" target="_blank" rel="noopener">research archive</a>
+              ${pps.note ? ` — ${esc(pps.note)}` : ''}
+              ${
+                pps.registration_url
+                  ? ` · <a href="${esc(pps.registration_url)}" target="_blank" rel="noopener">register</a>`
+                  : ''
+              }
+            </p>`
+      }
     </section>`;
 }
 

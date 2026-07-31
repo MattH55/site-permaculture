@@ -221,43 +221,102 @@ async function fetchPowerClimatology(lat, lng) {
 }
 
 /**
- * Optional PPS probe — requires GPM_PPS_EMAIL (used as both user & password).
- * Confirms the research archive is reachable for this deployment.
+ * PPS research archive — GPM_PPS_EMAIL is both username and password
+ * (standard PPS registration pattern).
+ * Confirms auth and lists a recent IMERG GIS directory when possible.
  */
 async function probePpsArchive() {
-  const email = process.env.GPM_PPS_EMAIL || process.env.PPS_EMAIL;
+  const email = (process.env.GPM_PPS_EMAIL || process.env.PPS_EMAIL || '')
+    .trim()
+    .toLowerCase();
   const result = {
     archive_url: PPS_BASE + '/',
+    gpmdata_url: PPS_BASE + '/gpmdata/',
     requires_registration: true,
     registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
-    authenticated_probe: false,
+    authenticated: false,
+    account: email ? maskEmail(email) : null,
   };
   if (!email) {
     result.note =
-      'Set GPM_PPS_EMAIL to enable authenticated PPS archive checks. IMERG file download still requires manual/scripted access.';
+      'Set GPM_PPS_EMAIL in the environment (registered email = username and password) to enable PPS archive access.';
     return result;
   }
+
+  const auth = 'Basic ' + Buffer.from(`${email}:${email}`).toString('base64');
+  const headers = {
+    Authorization: auth,
+    'User-Agent': UA,
+    Accept: 'text/html,application/xhtml+xml',
+  };
+
   try {
-    const auth =
-      'Basic ' + Buffer.from(`${email}:${email}`).toString('base64');
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12_000);
-    const res = await fetch(PPS_BASE + '/gpmdata/', {
-      headers: { Authorization: auth, 'User-Agent': UA },
-      signal: ctrl.signal,
-    });
-    clearTimeout(t);
-    result.authenticated_probe = res.ok || res.status === 401 || res.status === 403
-      ? res.ok
-      : false;
-    result.http_status = res.status;
-    result.note = res.ok
-      ? 'PPS archive reachable with registered email credentials.'
-      : `PPS responded ${res.status} — register email at PPS if needed.`;
+    const root = await fetchText(PPS_BASE + '/gpmdata/', headers, 15_000);
+    result.authenticated = root.ok;
+    result.http_status = root.status;
+    if (!root.ok) {
+      result.note = `PPS auth failed (HTTP ${root.status}). Confirm registration at ${result.registration_url}`;
+      return result;
+    }
+
+    // Walk back several days until a GIS directory with IMERG files appears
+    let listing = null;
+    let dayPath = null;
+    let dayUrl = null;
+    for (const lag of [5, 10, 20, 40, 60]) {
+      const sampleDay = recentUtcDay(-lag);
+      dayPath = `/gpmdata/${sampleDay.y}/${sampleDay.mm}/${sampleDay.dd}/gis/`;
+      dayUrl = PPS_BASE + dayPath;
+      listing = await fetchText(dayUrl, headers, 12_000);
+      if (listing.ok && /IMERG/i.test(listing.text || '')) break;
+    }
+    result.sample_directory = dayUrl;
+    result.sample_directory_ok = !!listing?.ok;
+    if (listing?.ok && listing.text) {
+      const files = [...listing.text.matchAll(/href="([^"]*IMERG[^"]+)"/gi)]
+        .map((m) => m[1])
+        .filter((f) => !f.startsWith('?') && !f.startsWith('/'))
+        .slice(0, 8);
+      result.sample_imerg_files = files;
+      result.note =
+        files.length > 0
+          ? `PPS connected as ${maskEmail(email)}. Found ${files.length} IMERG GIS file(s) under ${dayPath}.`
+          : `PPS connected as ${maskEmail(email)}. Archive root OK; no IMERG GIS files in recent sample directories.`;
+    } else {
+      result.note = `PPS connected as ${maskEmail(email)} (gpmdata OK). Recent /gis sample returned HTTP ${listing?.status ?? 'n/a'}.`;
+    }
   } catch (e) {
     result.note = `PPS probe failed: ${e.message}`;
   }
   return result;
+}
+
+function maskEmail(email) {
+  const [user, domain] = String(email).split('@');
+  if (!domain) return '***';
+  const u = user.length <= 2 ? user[0] + '*' : user.slice(0, 2) + '***';
+  return `${u}@${domain}`;
+}
+
+function recentUtcDay(offsetDays = -2) {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  const y = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return { y, mm, dd };
+}
+
+async function fetchText(url, headers, timeoutMs) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { headers, signal: ctrl.signal, redirect: 'follow' });
+    const text = await res.text();
+    return { ok: res.ok, status: res.status, text };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
 async function fetchJson(url, timeoutMs) {
