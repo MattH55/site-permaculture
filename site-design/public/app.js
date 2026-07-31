@@ -114,6 +114,23 @@ const EE_SERVICE_META = {
 };
 
 const PILLAR_ORDER = ['water', 'food', 'energy', 'shelter'];
+const COUNTY_ASSESSMENT_LINKS = [
+  {
+    name: 'Sturgeon County',
+    url: 'https://data-sturgeoncounty.opendata.arcgis.com/maps/748b4f24f28345b1af0edee8c615d5b9/explore',
+    detail: 'Property Viewer / Sturgeon County Atlas: search by address or roll number for assessed value, address, and property information.',
+  },
+  {
+    name: 'Parkland County',
+    url: 'https://www.parklandcounty.com/home-property-utilities/maps/',
+    detail: 'Discover Parkland: property information, aerial imagery, and map tools. Assessment is updated annually using mass appraisal.',
+  },
+  {
+    name: 'Leduc County',
+    url: 'https://maps.leduc.ca/assessment/',
+    detail: 'Property Assessment Viewer: search a parcel by address, roll number, or legal description.',
+  },
+];
 const PILLAR_META = {
   water: { label: 'Water', client: 'Wells, swales, ponds' },
   food: { label: 'Food', client: 'Food forest & soil carbon building' },
@@ -1871,6 +1888,18 @@ function terrain3dBlock(id, report) {
   const wetlandBlock = els.some(
     (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
   );
+  const semantic = report?.semantic_terrain;
+  const semanticCounts = semantic?.features?.reduce((m, f) => {
+    m[f.feature_type] = (m[f.feature_type] || 0) + 1;
+    return m;
+  }, {}) || {};
+  const semanticControls = Object.keys(semanticCounts).length
+    ? Object.entries(semanticCounts).map(([type, count]) => `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-semantic-toggle="${esc(id)}" data-semantic-layer="${esc(type)}" />
+          ${esc(type.replace(/_/g, ' '))} (${count})
+        </label>`).join('')
+    : '<span class="fine">No mapped semantic features returned for this AOI.</span>';
   return `
     <div class="terrain-3d-panel" style="margin-top:1rem">
       <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
@@ -1914,6 +1943,9 @@ function terrain3dBlock(id, report) {
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
+      <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
+        <span class="mono" style="font-size:0.72rem">Mapped features</span>${semanticControls}
+      </div>
       <p class="fine" style="margin-top:0.4rem">
         <strong>Blue / teal</strong> = low catchment &amp; pond candidates ·
         <strong>Gold</strong> = mid-slope hillsides suited to contour swales ·
@@ -1921,12 +1953,10 @@ function terrain3dBlock(id, report) {
         Drag to orbit · scroll to zoom. Zones are DEM-derived planning hints
         ${hasPondRec ? ' · report recommends pond / water storage' : ''}
         ${hasSwaleRec ? ' · report recommends swale / terrace' : ''}
-        ${wetlandBlock ? ' · <strong>wetland present — earthworks need approvals</strong>' : ''}.
-        ${
-          hasHrdemGrid
-            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a>.`
-            : 'Built from design elevation samples.'
-        }
+        ${hasHrdemGrid
+          ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b') }" target="_blank" rel="noopener">NRCan HRDEM</a>.`
+          : 'Built from design elevation samples.'}
+        ${semantic?.available ? ` Mapped features: ${esc(semantic.feature_count)} · ${esc(semantic.source)}.` : ''}
       </p>
     </div>`;
 }
@@ -2292,6 +2322,12 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   );
   scene.add(wire);
 
+  const semanticTerrain = mountSemanticTerrainObjects(scene, report?.semantic_terrain, {
+    bbox: report?.geometry?.bbox || report?.semantic_terrain?.bbox,
+    meshW, meshD, rows, cols, elevations, zMean, relief,
+    exaggerate: () => exaggerate,
+  });
+
   scene.add(new THREE.AmbientLight(0xb8c4b0, 0.55));
   const sun = new THREE.DirectionalLight(0xfff2d6, 0.95);
   sun.position.set(40, 80, 20);
@@ -2383,6 +2419,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
     });
   });
+  document.querySelectorAll(`[data-semantic-toggle="${hostId}"]`).forEach((cb) => {
+    cb.addEventListener('change', () => {
+      semanticTerrain?.setVisible(cb.getAttribute('data-semantic-layer'), cb.checked);
+    });
+  });
   const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -2408,6 +2449,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
       geo.dispose();
       mat.dispose();
+      semanticTerrain?.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
     },
@@ -2426,6 +2468,50 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     ` · relief ${relief.toFixed(1)} m · pond ${nPond} · catchment ${nCatch} · swale ${nSwale} cells`;
   el.style.position = 'relative';
   el.appendChild(badge);
+}
+
+function mountSemanticTerrainObjects(scene, payload, opts) {
+  const features = payload?.features || [];
+  const groups = new Map();
+  const colors = { water: 0x2a9dc9, wetland: 0x38a68b, building: 0xd88c45, road: 0x777777, railway: 0xb4b4b4, forest: 0x2f8f4e, shrubland: 0x77a84e, cropland: 0xb1a447, grassland: 0x88b858, pipeline: 0xe36b35, power: 0xf0c64b, protected_area: 0x9b75c7 };
+  const bbox = opts.bbox;
+  if (!bbox || bbox.length !== 4 || !features.length) return { setVisible() {}, dispose() {} };
+  const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
+  const point = ([lng, lat], lift = 0.6) => {
+    const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
+    const z = ((lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9) - 0.5) * opts.meshD;
+    const col = Math.max(0, Math.min(opts.cols - 1, Math.round((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) * (opts.cols - 1))));
+    const row = Math.max(0, Math.min(opts.rows - 1, Math.round((1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1))));
+    const elev = Number(opts.elevations[row * opts.cols + col]);
+    const y = Number.isFinite(elev) ? (elev - opts.zMean) * (opts.meshW * 0.08 * opts.exaggerate()) / opts.relief + lift : lift;
+    return new THREE.Vector3(x, y, z);
+  };
+  for (const feature of features) {
+    const type = feature.feature_type;
+    const geom = feature.geometry;
+    let object = null;
+    if (geom.type === 'Point') {
+      object = new THREE.Mesh(new THREE.BoxGeometry(1.5, type === 'building' ? 3 : 1.2, 1.5), material(type));
+      object.position.copy(point(geom.coordinates, type === 'building' ? 1.5 : 0.8));
+    } else if (geom.type === 'LineString') {
+      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.8))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
+    } else if (geom.type === 'Polygon') {
+      const ring = geom.coordinates?.[0] || [];
+      if (ring.length < 3) continue;
+      const shape = new THREE.Shape(ring.map((c) => { const p = point(c, 0.7); return new THREE.Vector2(p.x, p.z); }));
+      object = new THREE.Mesh(new THREE.ShapeGeometry(shape), material(type));
+      object.position.y = 0.7;
+    }
+    if (!object) continue;
+    object.userData.semanticFeature = feature;
+    if (!groups.has(type)) groups.set(type, new THREE.Group());
+    groups.get(type).add(object);
+  }
+  for (const group of groups.values()) scene.add(group);
+  return {
+    setVisible(type, visible) { groups.get(type)?.traverse((o) => { o.visible = visible; }); },
+    dispose() { for (const group of groups.values()) { group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); scene.remove(group); } },
+  };
 }
 
 function topoHeatHtml(topo) {
@@ -3567,6 +3653,24 @@ function floodFloodCardBody(flood, floodClass) {
       <a href="${esc(awareness)}" target="_blank" rel="noopener">floods.alberta.ca</a>
       · <a href="${esc(sourceUrl)}" target="_blank" rel="noopener">FHIP open data</a>
     </p>`;
+}
+
+function countyAssessmentLinksHtml() {
+  return `
+    <div class="flag" data-severity="info" style="margin:0.65rem 0 0.85rem">
+      <strong>County assessment viewers — currently available for these counties only</strong>
+      <p>Use the appropriate public viewer to look up one parcel at a time by address, roll number, or legal description. These links provide assessment context; they do not bulk-query all parcels and the values are not appraisals or sale prices.</p>
+      <div class="prox-grid" style="margin-top:0.55rem">
+        ${COUNTY_ASSESSMENT_LINKS.map((item) => `
+          <article class="prox-card">
+            <span class="mono">${esc(item.name)}</span>
+            <p class="fine" style="margin:0.3rem 0 0.55rem">${esc(item.detail)}</p>
+            <a href="${esc(item.url)}" target="_blank" rel="noopener">Open ${esc(item.name)} viewer →</a>
+          </article>
+        `).join('')}
+      </div>
+      <p class="fine" style="margin-bottom:0">For bulk parcel data, use the relevant county open-data portal or contact its assessment department.</p>
+    </div>`;
 }
 
 function landValueSection(lv) {
@@ -5828,9 +5932,27 @@ function windSection(climate, r, windRose) {
 }
 
 function biodiversitySection(bio) {
-  if (!bio || !bio.available) return '';
+  if (!bio) return '';
   const inner = bio.inner || {};
   const outer = bio.outer || {};
+  const richness = bio.species_richness;
+  const richnessLabels = { all_species: 'All species', birds: 'Birds', mammals: 'Mammals' };
+  const richnessRows = Object.entries(richness?.layers || {})
+    .map(([key, value]) => `
+      <div class="stat"><span class="k">${esc(richnessLabels[key] || key)}</span><strong>${esc(value.value)}</strong></div>`)
+    .join('');
+  const richnessBlock = richnessRows
+    ? `<div class="flag" data-severity="info" style="margin-top:0.85rem">
+        <strong>Regional species-richness screening</strong>
+        <p>Supplied Alberta richness surfaces intersecting this site. These are regional model values, not a property-specific species inventory or an iNaturalist observation count.</p>
+        <div class="summary-grid">${richnessRows}</div>
+        <p class="fine" style="margin-bottom:0">Source: supplied Alberta species-richness geodatabases · link ${esc(Object.values(richness.layers)[0]?.link_id || '—')}</p>
+      </div>`
+    : '';
+
+  if (!bio.available) {
+    return richnessRows ? `<section class="report-block"><h2>Biodiversity assessment</h2>${richnessBlock}</section>` : '';
+  }
   
   const speciesList = (inner.top_species || []).map(s => `
     <div class="stat">
@@ -5864,6 +5986,7 @@ function biodiversitySection(bio) {
 
       <span class="mono topo-label">Nearby potential (observed 3km, not yet local)</span>
       <div class="summary-grid" style="margin-top:0.5rem">${discoveries}</div>
+      ${richnessBlock}
     </section>`;
 }
 
