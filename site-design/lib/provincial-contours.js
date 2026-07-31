@@ -74,13 +74,16 @@ export async function queryProvincialContours(bbox, opts = {}) {
           if (path.length < 2) continue;
           allFeatures.push({
             type: 'Feature',
+            properties: {
+              elevation_m: elev != null ? Number(elev) : null,
+              ELEVATION: elev != null ? Number(elev) : null,
+              contour_type: isIndex ? 'index' : 'intermediate',
+              source: 'Alberta provincial elevation MapServer',
+              licence: 'Open Government Licence - Alberta',
+            },
             geometry: {
               type: 'LineString',
               coordinates: path, // [[lng, lat], ...]
-            },
-            properties: {
-              elevation_m: elev != null ? Number(elev) : null,
-              contour_type: isIndex ? 'index' : 'intermediate',
             },
           });
           if (allFeatures.length >= limit) break;

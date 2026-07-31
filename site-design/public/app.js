@@ -39,16 +39,13 @@ const VALUE_LABELS = {
 /** Report flow: site → packages (Food/Water/Energy/Shelter) → evidence */
 /**
  * Simplified IA (value → plan):
- *  1. Overview — map + headline facts + CTA
- *  2. Findings — one scroll of site evidence (was 6 pillar tabs)
- *  3. Your plan — select / email / estimate / inquire
+ *  1. Overview — simple map + headline facts + full findings (one scroll)
+ *  2. Your plan — select / email / estimate / inquire
  * Planting planner stays a side beta offering.
- * Removed from nav: Water/Energy/Food/Shelter/Site data/Fecundity/Tech notes/Full report
  * (Full report HTML still built for PDF export only.)
  */
 const CORE_LABELS = [
-  { id: 'overview', label: 'Overview', color: 'var(--h1)' },
-  { id: 'findings', label: 'Findings', color: 'var(--h3)' },
+  { id: 'overview', label: 'Your site', color: 'var(--h1)' },
   { id: 'services', label: 'Your plan', color: 'var(--h7)' },
 ];
 /** Side-rail add-ons — not part of the core site design package */
@@ -302,12 +299,32 @@ function mainPostInit() {
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
 
-  // Delegated nav so "Read findings" / "Your plan" always work after re-render
+  // Global nav helpers (onclick-safe; survives re-renders)
+  window.__eeNav = (pane) => {
+    try {
+      switchReportPane(pane);
+    } catch (e) {
+      console.warn('nav failed', e);
+    }
+  };
+  window.__eeScrollFindings = () => {
+    switchReportPane('overview');
+    requestAnimationFrame(() => {
+      const el =
+        document.getElementById('site-findings') ||
+        document.getElementById('findings-water');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  // Delegated nav for data-* attributes
   $('report-stage')?.addEventListener('click', (ev) => {
-    const findings = ev.target.closest('[data-open-findings], [data-open-findings-link]');
+    const findings = ev.target.closest(
+      '[data-open-findings], [data-open-findings-link], [data-scroll-findings]'
+    );
     if (findings) {
       ev.preventDefault();
-      switchReportPane('findings');
+      window.__eeScrollFindings();
       return;
     }
     const plan = ev.target.closest(
@@ -334,43 +351,53 @@ function mainPostInit() {
 }
 
 function switchReportPane(which) {
-  // Legacy pane ids → simplified IA
+  // Legacy / alias pane ids → current IA
   const aliases = {
-    water: 'findings',
-    energy: 'findings',
-    food: 'findings',
-    shelter: 'findings',
-    topo: 'findings',
-    fecundity: 'findings',
-    rules: 'findings',
+    findings: 'overview', // findings live on overview as one scroll
+    water: 'overview',
+    energy: 'overview',
+    food: 'overview',
+    shelter: 'overview',
+    topo: 'overview',
+    fecundity: 'overview',
+    rules: 'overview',
     site: 'overview',
+    plan: 'services',
   };
   which = aliases[which] || which;
 
-  // Prefer explicit DOM ids so Findings always resolves (do not depend only on SECTION_IDS)
   const paneId = which === 'plant' ? 'pane-plant' : `pane-${which}`;
-  const target = document.getElementById(paneId);
+  let target = document.getElementById(paneId);
+  // Fallbacks if deploy HTML is out of date
+  if (!target && which === 'overview') {
+    target = document.getElementById('pane-overview') || document.getElementById('report-overview')?.closest('.report-pane');
+  }
+  if (!target && which === 'services') {
+    target = document.getElementById('pane-services');
+  }
   if (!target) {
     console.warn('switchReportPane: missing pane', paneId);
     return;
   }
 
   document.querySelectorAll('.report-pane').forEach((p) => {
-    // Keep PDF export host hidden and out of the tab flow
-    if (p.id === 'pane-site') {
+    if (p.id === 'pane-site' || p.id === 'pane-findings') {
+      // PDF host + retired findings pane stay hidden
       p.hidden = true;
       p.classList.remove('is-active');
+      p.style.display = 'none';
       return;
     }
     p.classList.remove('is-active');
     p.hidden = true;
+    p.style.display = 'none';
   });
 
   target.classList.add('is-active');
   target.hidden = false;
   target.removeAttribute('hidden');
+  target.style.display = 'block';
 
-  // Update sidebar step highlight + keep chip visible on mobile rail
   document.querySelectorAll('#report-core .step-row, #report-side-offerings [data-pane]').forEach((sr) => {
     const on = sr.dataset.pane === which;
     sr.classList.toggle('is-active-pane', on);
@@ -379,7 +406,6 @@ function switchReportPane(which) {
     }
   });
 
-  // Update top tabs (planting is a separate beta offering)
   const tabSite = $('tab-site');
   const tabPlant = $('tab-plant');
   const isPlant = which === 'plant';
@@ -389,7 +415,6 @@ function switchReportPane(which) {
   tabPlant?.setAttribute('aria-selected', String(isPlant));
   document.body.classList.toggle('is-plant-pane', isPlant);
 
-  // Leaflet maps need invalidateSize when their pane becomes visible
   setTimeout(() => {
     target.querySelectorAll('.minimap-embed, .report-map').forEach((el) => {
       const map = el._eeLeafletMap;
@@ -401,7 +426,9 @@ function switchReportPane(which) {
     });
   }, 120);
 
-  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (which !== 'overview') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
 }
 
 function loadGoogleMaps(key) {
@@ -1350,9 +1377,9 @@ function renderReport(r) {
 }
 
 /**
- * Live property map host (parcel + elevation + contours + plantings + water data).
- * No client-side image / AI feature detection.
- * @param {string} [idSuffix] unique suffix so overview + full report don't share one #id
+ * Overview property map: parcel + Alberta provincial contours only
+ * (Open Government data via provincial_elevation MapServer).
+ * @param {string} [idSuffix]
  */
 function mapEmbedSection(idSuffix = 'main') {
   const id = `report-map-${idSuffix}`;
@@ -1360,15 +1387,22 @@ function mapEmbedSection(idSuffix = 'main') {
   const statusId = `report-map-status-${idSuffix}`;
   return `
     <section class="report-block report-map-block">
-      <h2>Property map</h2>
+      <h2>Your parcel</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Satellite view of the boundary you drew, with elevation, contours, inventory water,
-        and proposed plantings from site data — not image AI guesses.
-        Use the layer control (top-right) to toggle overlays.
+        Satellite basemap with the boundary you drew and
+        <strong>Alberta provincial elevation contours</strong>
+        (1:20&nbsp;000 cartographic contours · Open Government Licence — Alberta).
+        No AI detection, plantings, or derived DEM contours on this map.
       </p>
-      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Property map with elevation, contours, and plantings"></div>
+      <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Parcel map with Alberta provincial contours"></div>
       <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
       <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
+      <p class="fine" style="margin-top:0.35rem">
+        Contour source:
+        <a href="https://open.alberta.ca/opendata/gda-d57d86ba-41d0-48a0-848b-da30171c44f5" target="_blank" rel="noopener">Alberta Contour open data</a>
+        ·
+        <a href="https://geospatial.alberta.ca/titan/rest/services/elevation/provincial_elevation/MapServer" target="_blank" rel="noopener">ESRI REST MapServer</a>
+      </p>
     </section>`;
 }
 
@@ -1421,8 +1455,9 @@ function getParcelLatLngsFromReport(r) {
 }
 
 /**
- * Unified property map: parcel boundary + elevation + contours + plantings + water
- * + nearby named places. No AI pixel detection.
+ * Overview map only: satellite + drawn parcel + Alberta provincial contours
+ * (open.alberta.ca Contour / provincial_elevation MapServer).
+ * No DEM heatmaps, DEM contours, plantings, settlements, water, or AI layers.
  */
 function mountUnifiedPropertyMap(el, latlngs, report) {
   if (!el || typeof L === 'undefined' || !latlngs?.length) return;
@@ -1444,246 +1479,78 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
       scrollWheelZoom: true,
     });
   } catch (err) {
-    console.warn('Unified map init failed', err);
+    console.warn('Parcel map init failed', err);
     el.innerHTML = '<p class="fine">Map could not load — try reopening this section.</p>';
     return;
   }
   el._eeLeafletMap = map;
 
-  const imagery = L.tileLayer(
+  L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    { attribution: 'Esri World Imagery · DEM · AMWI · Copernicus', maxZoom: 20 }
+    {
+      attribution:
+        'Esri · Alberta provincial elevation contours (Open Government Licence — Alberta)',
+      maxZoom: 20,
+    }
   ).addTo(map);
 
-  const labels = L.tileLayer(
+  L.tileLayer(
     'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { opacity: 0.55, maxZoom: 20 }
+    { opacity: 0.5, maxZoom: 20 }
   ).addTo(map);
 
-  const sm = report?.site_map || {};
-  const overlays = {};
-  const baseMaps = { Imagery: imagery };
-
-  // ── Parcel (always on) ──
   const parcelLayer = L.polygon(latlngs, {
     color: '#a8801f',
     fillColor: '#a8801f',
-    fillOpacity: 0.1,
+    fillOpacity: 0.12,
     weight: 3,
   }).addTo(map);
-  parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew — source for all map overlays');
-  overlays['Your parcel'] = parcelLayer;
+  parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
 
-  // ── Elevation surface (canvas image overlay) ──
-  const elevPayload = sm.elevation || elevPayloadFromTopology(report, latlngs);
-  const elevLayer = buildElevationImageOverlay(elevPayload);
-  if (elevLayer) {
-    elevLayer.addTo(map);
-    overlays['Elevation surface'] = elevLayer;
-  }
-
-  // ── DEM contours ──
-  const demFc = sm.contours?.dem;
-  if (demFc?.features?.length) {
-    const demContours = L.geoJSON(demFc, {
+  // Alberta provincial contours only (public MapServer)
+  const provFc =
+    report?.site_map?.contours?.provincial ||
+    report?._provincial_contours ||
+    null;
+  let contourCount = 0;
+  if (provFc?.features?.length) {
+    const provLayer = L.geoJSON(provFc, {
       style: (f) => {
         const isIndex = f.properties?.contour_type === 'index';
         return {
           color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.55)',
           weight: isIndex ? 2.2 : 1.1,
-          opacity: isIndex ? 0.95 : 0.7,
+          opacity: isIndex ? 0.95 : 0.75,
           fill: false,
         };
       },
       onEachFeature: (f, lyr) => {
-        const z = f.properties?.elevation_m;
-        if (z != null) lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
+        const z = f.properties?.elevation_m ?? f.properties?.ELEVATION;
+        if (z != null) {
+          lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
+        }
       },
     }).addTo(map);
-    overlays['Contours (DEM)'] = demContours;
+    contourCount = provFc.features.length;
+    // Keep parcel outline on top of contour lines
+    parcelLayer.bringToFront();
+    void provLayer;
   }
 
-  // ── Provincial contours (optional) ──
-  const provFc = sm.contours?.provincial;
-  if (provFc?.features?.length) {
-    const prov = L.geoJSON(provFc, {
-      style: (f) => {
-        const isIndex = f.properties?.contour_type === 'index';
-        return {
-          color: isIndex ? '#2a6f97' : 'rgba(42,111,151,0.4)',
-          weight: isIndex ? 1.8 : 1,
-          opacity: 0.75,
-          fill: false,
-        };
-      },
-    });
-    overlays['Contours (provincial)'] = prov;
-  }
-
-  // ── Water (wetlands + small water data) ──
-  const waterFc = sm.water || packageWaterFromReport(report);
-  if (waterFc?.features?.length) {
-    const wetLayer = L.layerGroup();
-    const confirmedWater = L.layerGroup();
-    const possibleWater = L.layerGroup();
-    L.geoJSON(waterFc, {
-      style: (f) => {
-        const layer = f.properties?.layer || f.properties?.class || '';
-        const isPoss =
-          f.properties?.class === 'possible' || /low/i.test(String(f.properties?.confidence || ''));
-        if (layer === 'wetlands' || f.properties?.class === 'wetland_inventory') {
-          return {
-            color: '#0b6e4f',
-            weight: 2,
-            fillColor: '#2a9d8f',
-            fillOpacity: 0.45,
-          };
-        }
-        return {
-          color: isPoss ? '#c45c26' : '#1d6a9a',
-          weight: 2,
-          fillColor: isPoss ? '#e9c46a' : '#4cc9f0',
-          fillOpacity: isPoss ? 0.35 : 0.45,
-          dashArray: isPoss ? '6 4' : null,
-        };
-      },
-      onEachFeature: (f, lyr) => {
-        const p = f.properties || {};
-        const isPoss = p.class === 'possible' || /low/i.test(String(p.confidence || ''));
-        lyr.bindPopup(
-          `<strong>${esc(p.type || p.class || 'water')}</strong><br/>` +
-            `${p.area_ha != null ? p.area_ha + ' ha<br/>' : ''}` +
-            `${p.area_m2 != null ? p.area_m2 + ' m²<br/>' : ''}` +
-            `Source: ${esc(p.source || p.layer || '—')}<br/>` +
-            `Confidence: <strong>${esc(p.confidence || (p.layer === 'wetlands' ? 'high' : '—'))}</strong>` +
-            (isPoss
-              ? '<br/><em>Verify on site walk — not permanent water</em>'
-              : '<br/><span class="fine">Screening only — not regulatory delineation</span>')
-        );
-        if (p.layer === 'wetlands' || p.class === 'wetland_inventory') lyr.addTo(wetLayer);
-        else if (isPoss) lyr.addTo(possibleWater);
-        else lyr.addTo(confirmedWater);
-      },
-    });
-    if (wetLayer.getLayers().length) {
-      wetLayer.addTo(map);
-      overlays['Wetlands (AMWI)'] = wetLayer;
-    }
-    if (confirmedWater.getLayers().length) {
-      confirmedWater.addTo(map);
-      overlays['Open water (data)'] = confirmedWater;
-    }
-    if (possibleWater.getLayers().length) {
-      possibleWater.addTo(map);
-      overlays['Possible seeps'] = possibleWater;
-    }
-  }
-
-  // ── Planting plan ──
-  const plantFc =
-    sm.plantings?.features?.length
-      ? sm.plantings
-      : null;
-  if (plantFc?.features?.length) {
-    const plantLayer = L.layerGroup();
-    const roleColors = {
-      windbreak: '#5b3a73',
-      riparian: '#1d6a9a',
-      canopy: '#2f5d3a',
-      shrub: '#4a7c59',
-      herbaceous: '#a8801f',
-    };
-    plantFc.features.forEach((f) => {
-      const [lng, lat] = f.geometry?.coordinates || [];
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const p = f.properties || {};
-      const role = p.role || 'herbaceous';
-      const color = roleColors[role] || '#a8801f';
-      const m = L.circleMarker([lat, lng], {
-        radius: role === 'canopy' || role === 'windbreak' ? 8 : 6,
-        fillColor: color,
-        fillOpacity: 0.92,
-        color: '#16211b',
-        weight: 1.5,
-      });
-      const yieldLine =
-        p.product_yield_mid_kg != null
-          ? `Yield (mid): ~${esc(p.product_yield_mid_kg)} kg/yr<br/>`
-          : '';
-      const cashLine =
-        p.cash_yield_mid_cad != null
-          ? `Cash (mid): $${Math.round(p.cash_yield_mid_cad).toLocaleString()}/yr<br/>`
-          : '';
-      m.bindPopup(
-        `<strong>${esc(p.common_name || 'Planting')}</strong>` +
-          (p.scientific_name ? `<br/><em class="fine">${esc(p.scientific_name)}</em>` : '') +
-          `<br/>Role: ${esc(role)}` +
-          (p.score != null ? `<br/>Fit score: ${esc(p.score)}` : '') +
-          (p.quantity != null ? `<br/>Qty: ${esc(p.quantity)}` : '') +
-          `<br/>${yieldLine}${cashLine}` +
-          `<span class="fine">Indicative placement — adjust after site walk</span>`
-      );
-      m.bindTooltip(p.common_name || role, { direction: 'top', offset: [0, -6] });
-      m.addTo(plantLayer);
-    });
-    plantLayer.addTo(map);
-    overlays['Proposed plantings'] = plantLayer;
-  }
-
-  // ── Settlements (named places) ──
-  const settleFc = sm.settlements;
-  if (settleFc?.features?.length) {
-    const settleLayer = L.layerGroup();
-    settleFc.features.forEach((f) => {
-      const [lng, lat] = f.geometry?.coordinates || [];
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
-      const p = f.properties || {};
-      L.circleMarker([lat, lng], {
-        radius: p.kind === 'city' ? 7 : 5,
-        fillColor: '#8c2f1d',
-        fillOpacity: 0.85,
-        color: '#fff',
-        weight: 1.5,
-      })
-        .bindPopup(
-          `<strong>${esc(p.name)}</strong><br/>${esc(p.kind || 'settlement')}` +
-            (p.distance_km != null ? `<br/>${esc(p.distance_km)} km from parcel` : '')
-        )
-        .addTo(settleLayer);
-    });
-    overlays['Nearby settlements'] = settleLayer;
-    settleLayer.addTo(map);
-  }
-
-  // No AI / pixel image-analysis layers — only measured data layers above.
-
-  L.control.layers(baseMaps, overlays, { collapsed: true, position: 'topright' }).addTo(map);
-  labels.addTo(map);
-
-  // Legend
   const legendEl = document.getElementById(el.id.replace('report-map-', 'report-map-legend-'));
   if (legendEl) {
     legendEl.innerHTML = `
-      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Parcel</span>
-      <span class="fine"><span class="legend-swatch" style="background:linear-gradient(90deg,#3d2914,#c2ae88);border-color:#5b3a73"></span>Elevation</span>
-      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Contours</span>
-      <span class="fine"><span class="legend-swatch" style="background:#2a9d8f;border-color:#0b6e4f"></span>Wetlands / water</span>
-      <span class="fine"><span class="legend-swatch" style="background:#2f5d3a;border-color:#16211b;border-radius:50%"></span>Plantings</span>
-      <span class="fine"><span class="legend-swatch" style="background:#8c2f1d;border-color:#fff;border-radius:50%"></span>Settlements</span>
+      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Index contour</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:rgba(91,58,115,0.55);border-width:1px"></span>Intermediate contour</span>
     `;
   }
 
   const statusEl = document.getElementById(el.id.replace('report-map-', 'report-map-status-'));
   if (statusEl) {
-    const bits = [];
-    if (elevLayer) bits.push('elevation');
-    if (demFc?.features?.length) bits.push(`${demFc.features.length} contour lines`);
-    if (plantFc?.features?.length) bits.push(`${plantFc.features.length} plantings`);
-    if (waterFc?.features?.length) bits.push(`${waterFc.features.length} water features`);
-    if (settleFc?.features?.length) bits.push('nearby places');
-    statusEl.textContent = bits.length
-      ? `Layers: ${bits.join(' · ')} (data layers only — no image AI)`
-      : 'Parcel boundary only.';
+    statusEl.textContent = contourCount
+      ? `Alberta provincial contours: ${contourCount} line features on this map`
+      : 'Parcel only — provincial contours unavailable for this area (try again or zoom context).';
   }
 
   const fit = () => {
@@ -7429,7 +7296,15 @@ function renderSectionPanes(r, ctx) {
   const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
   const menuN = r.action_menu?.default_selected_ids?.length || r.action_menu?.items?.length || 0;
 
-  // 1) Overview — map + facts + one path forward
+  // 1) Overview = map + facts + findings (one continuous page — no separate Findings tab)
+  let findingsHtml = '';
+  try {
+    findingsHtml = buildFindingsHtml(r, ctx);
+  } catch (e) {
+    console.error('findings render failed', e);
+    findingsHtml = `<p class="fine">Findings could not be fully rendered (${esc(e.message)}). Your plan is still available.</p>`;
+  }
+
   b(
     `
     <div class="panel fade">
@@ -7453,47 +7328,44 @@ function renderSectionPanes(r, ctx) {
       ${mapEmbedSection('overview')}
       ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
       <div class="overview-actions" style="display:flex;flex-wrap:wrap;gap:0.65rem;margin-top:1.1rem">
-        <button type="button" class="btn btn-secondary" data-open-findings>Read findings</button>
-        <button type="button" class="btn" data-open-your-plan>Build your plan${menuN ? ` (${menuN})` : ''} →</button>
+        <button type="button" class="btn btn-secondary" data-scroll-findings onclick="window.__eeScrollFindings&&window.__eeScrollFindings()">Read findings ↓</button>
+        <button type="button" class="btn" data-open-your-plan onclick="window.__eeNav&&window.__eeNav('services')">Build your plan${menuN ? ` (${menuN})` : ''} →</button>
       </div>
-      <p class="fine" style="margin-top:0.75rem">
-        Free analysis first. When you’re ready, choose plantings and water options, download the report, and inquire.
-        Or use <strong>Findings</strong> / <strong>Your plan</strong> in the left menu.
-      </p>
+
+      <div id="site-findings" class="site-findings-block">
+        <span class="mono eyebrow" style="display:block;margin-top:1.5rem">Evidence</span>
+        <h2 style="margin-top:0.25rem">Site findings</h2>
+        <p class="fine" style="margin-top:-0.15rem">
+          Water, climate, soils, and food signals for this parcel.
+        </p>
+        <p class="findings-jump fine">
+          <a href="#findings-water">Water</a> ·
+          <a href="#findings-climate">Climate</a> ·
+          <a href="#findings-land">Land</a> ·
+          <a href="#findings-food">Food</a> ·
+          <a href="#findings-context">Context</a>
+        </p>
+        ${findingsHtml}
+      </div>
+
+      <div class="next-steps-cta panel" style="margin-top:1.25rem;padding:1rem 1.15rem">
+        <h2 style="font-size:1.15rem;margin:0 0 0.4rem">Next: build your plan</h2>
+        <p class="fine" style="margin:0 0 0.75rem">Select interventions, unlock the PDF with email, and send an inquiry.</p>
+        <button type="button" class="btn" data-open-your-plan-findings onclick="window.__eeNav&&window.__eeNav('services')">Your plan →</button>
+      </div>
     </div>
   `,
     $('report-overview')
   );
 
-  // 2) Findings — single evidence scroll (no sales packages)
-  b(
-    `
-    <div class="panel fade">
-      <span class="mono eyebrow">Evidence</span>
-      <h1>Site findings</h1>
-      <p class="fine" style="margin-top:-0.25rem">
-        Water, climate, soils, and food signals for this parcel — one page.
-        When ready, open <strong>Your plan</strong> to choose work and get a price range.
-      </p>
-      <p class="findings-jump fine">
-        <a href="#findings-water">Water</a> ·
-        <a href="#findings-climate">Climate</a> ·
-        <a href="#findings-land">Land</a> ·
-        <a href="#findings-food">Food</a> ·
-        <a href="#findings-context">Context</a>
-      </p>
-      ${buildFindingsHtml(r, ctx)}
-      <div class="next-steps-cta panel" style="margin-top:1.25rem;padding:1rem 1.15rem">
-        <h2 style="font-size:1.15rem;margin:0 0 0.4rem">Next: build your plan</h2>
-        <p class="fine" style="margin:0 0 0.75rem">Select interventions, unlock the PDF with email, and send an inquiry.</p>
-        <button type="button" class="btn" data-open-your-plan-findings>Your plan →</button>
-      </div>
-    </div>
-  `,
-    $('report-findings')
-  );
+  // Clear retired findings pane if still in DOM
+  const retiredFindings = $('report-findings');
+  if (retiredFindings) {
+    retiredFindings.innerHTML =
+      '<p class="fine">Findings are on the <strong>Your site</strong> page.</p>';
+  }
 
-  // 3) Your plan — only conversion surface
+  // 2) Your plan
   b(
     `
     <div class="panel fade">

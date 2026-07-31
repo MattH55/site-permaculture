@@ -49,15 +49,6 @@
           <input id="search-box" type="text" placeholder="Rural address, town, or place name…" autocomplete="off">
         </div>
 
-        <div class="field coord-field">
-          <label>Or enter coordinates</label>
-          <div class="coord-row">
-            <input id="coord-lat" type="text" placeholder="Lat (e.g. 53.55)" autocomplete="off">
-            <input id="coord-lng" type="text" placeholder="Lng (e.g. -113.5)" autocomplete="off">
-            <button type="button" class="btn btn-secondary" id="btn-go-coords" style="padding:0.6rem 0.8rem;font-size:0.85rem">Go</button>
-          </div>
-        </div>
-
         <div class="draw-tools" role="group" aria-label="Drawing tools">
           <button type="button" class="btn" id="btn-draw-poly" aria-pressed="false">Draw parcel</button>
           <button type="button" class="btn btn-secondary" id="btn-draw-rect" aria-pressed="false">Rectangle</button>
@@ -67,6 +58,17 @@
         <p class="help" id="draw-hint">
           Click <strong>Draw parcel</strong>, then click corners on the map. Double-click or press Finish when done.
         </p>
+
+        <details class="map-advanced">
+          <summary class="fine">Advanced: jump to coordinates</summary>
+          <div class="field coord-field" style="margin-top:0.5rem">
+            <div class="coord-row">
+              <input id="coord-lat" type="text" placeholder="Lat (e.g. 53.55)" autocomplete="off">
+              <input id="coord-lng" type="text" placeholder="Lng (e.g. -113.5)" autocomplete="off">
+              <button type="button" class="btn btn-secondary" id="btn-go-coords" style="padding:0.6rem 0.8rem;font-size:0.85rem">Go</button>
+            </div>
+          </div>
+        </details>
 
         <div class="parcel-meta mono" id="parcel-meta" hidden></div>
 
@@ -130,15 +132,9 @@
       <div class="report-panes">
         <section id="pane-overview" class="report-pane is-active" role="tabpanel"><div id="report-overview" aria-live="polite"></div></section>
         <section id="pane-services" class="report-pane" role="tabpanel" hidden><div id="report-services" aria-live="polite"></div></section>
-        <section id="pane-water" class="report-pane" role="tabpanel" hidden><div id="report-water" aria-live="polite"></div></section>
-        <section id="pane-energy" class="report-pane" role="tabpanel" hidden><div id="report-energy" aria-live="polite"></div></section>
-        <section id="pane-food" class="report-pane" role="tabpanel" hidden><div id="report-food" aria-live="polite"></div></section>
-        <section id="pane-shelter" class="report-pane" role="tabpanel" hidden><div id="report-shelter" aria-live="polite"></div></section>
-        <section id="pane-topo" class="report-pane" role="tabpanel" hidden><div id="report-topo" aria-live="polite"></div></section>
-        <section id="pane-fecundity" class="report-pane" role="tabpanel" hidden><div id="report-fecundity" aria-live="polite"></div></section>
-        <section id="pane-rules" class="report-pane" role="tabpanel" hidden><div id="report-rules" aria-live="polite"></div></section>
         <section id="pane-plant" class="report-pane" role="tabpanel" hidden><div id="planting-pane" aria-live="polite"></div></section>
-        <section id="pane-site" class="report-pane" role="tabpanel" hidden><div id="report" aria-live="polite"></div></section>
+        <!-- Hidden linear document for PDF export only (not in nav) -->
+        <section id="pane-site" class="report-pane" role="tabpanel" hidden aria-hidden="true" style="display:none"><div id="report"></div></section>
       </div>
     </div>
   </main>

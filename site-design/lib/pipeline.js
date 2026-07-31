@@ -434,9 +434,10 @@ export async function generateSiteReport(input = {}) {
         'access'
       ),
       withTimeout(
-        queryProvincialContours(bbox, { limit: 400 }),
-        10_000,
-        { features: [] },
+        // Public Alberta contour lines (open.alberta.ca provincial elevation MapServer)
+        queryProvincialContours(bbox, { limit: 1200, includeIndex: true }),
+        20_000,
+        { features: [], source: 'Alberta provincial elevation (timeout)' },
         'provincial_contours'
       ),
       withTimeout(
