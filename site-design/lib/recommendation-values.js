@@ -246,8 +246,6 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
   const slope = num(terrain.slope_percent);
   const wind = climate.prevailing_wind_direction;
   const landform = (terrain.landform_position || '').replace(/_/g, ' ');
-  const ffd = num(climate.frost_free_days);
-  const zone = climate.plant_hardiness_zone;
   const footprint = num(site.footprint_ha);
 
   // Regulatory swale block — keep earthworks off mapped wet areas (details in placement notes)
@@ -282,11 +280,9 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
     case 'windbreak':
     case 'shelterbelt_zone':
       return shelterbeltValueHeadline(site);
-    case 'food_forest_guild': {
-      const z = zone ? ` in zone ${zone}` : '';
-      const days = ffd != null ? ` (~${ffd} frost-free days)` : '';
-      return `Grow layered perennial food${z}${days} once soil-building succession is underway.`;
-    }
+    case 'food_forest_guild':
+      // Headline omitted — technique label + placement notes carry the story
+      return '';
     case 'herb_spiral':
       return footprint != null
         ? `Stack herbal diversity in a compact Zone 1 spiral on your ${fmtNum(footprint)} ha parcel.`

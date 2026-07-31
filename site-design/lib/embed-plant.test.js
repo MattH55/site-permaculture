@@ -105,7 +105,11 @@ describe('embed-api (phase 3)', () => {
     assert.equal(out.engine, 'ee-recommendation-embed-v1');
     assert.ok(out.summary_sentence);
     assert.ok(out.design_elements.length > 0);
-    assert.ok(out.design_elements.every((e) => e.primary_value && e.value_headline));
+    assert.ok(
+      out.design_elements.every(
+        (e) => e.primary_value && (e.value_headline || e.element_type === 'food_forest_guild')
+      )
+    );
     assert.ok(out.recommendations.value_counts.length > 0);
     assert.ok(out.planting?.recommended?.length > 0);
     assert.ok(out.planting.recommended.every((p) => p.primary_value));
