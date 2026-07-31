@@ -4270,6 +4270,9 @@ function recommendationCard(e) {
     VALUE_LABELS[e.primary_value] || e.primary_value || 'Site benefit';
   const technique =
     e.technique_label || ELEMENT_LABELS[e.element_type] || e.element_type;
+  const offering = (e.related_services || [])
+    .map((id) => EE_SERVICE_META[id])
+    .find(Boolean);
   const headline = (e.value_headline || '').trim();
   const secondary = (e.secondary_values || [])
     .map((v) => VALUE_LABELS[v] || v)
@@ -4295,6 +4298,7 @@ function recommendationCard(e) {
 
   return `
     <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
+      ${offering ? `<h3 class="rec-offering-heading">${esc(offering.label)}</h3>` : `<h3 class="rec-offering-heading">${esc(technique || 'Site recommendation')}</h3>`}
       <div class="value-chips">${chips}</div>
       ${headline ? `<p class="value-headline">${esc(headline)}</p>` : ''}
       <div class="el-head">
