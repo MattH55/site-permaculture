@@ -1246,13 +1246,15 @@ function pulseLoading() {
     const sub = document.querySelector('#loading h2');
     if (sub) {
       const sec = Math.round((Date.now() - started) / 1000);
-      if (sec < 5) sub.textContent = 'Reading the land…';
-      else if (sec < 25)
-        sub.textContent = `Reading the land… (${sec}s — elevation & Alberta layers)`;
-      else if (sec < 60)
-        sub.textContent = `Still working… (${sec}s — wetlands, soils, satellite)`;
+      if (sec < 10) sub.textContent = 'Reading the land…';
+      else if (sec < 35)
+        sub.textContent = `Reading the land… (${sec}s of ~60s — elevation & contours)`;
+      else if (sec < 55)
+        sub.textContent = `Still working… (${sec}s of ~60s — wetlands, soils, climate)`;
+      else if (sec < 75)
+        sub.textContent = `Almost there… (${sec}s — finishing report)`;
       else
-        sub.textContent = `Almost there… (${sec}s — slow layers will skip rather than hang)`;
+        sub.textContent = `Finishing… (${sec}s — slow layers will skip rather than hang)`;
     }
   }, 700);
 }
@@ -1565,9 +1567,41 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
     overlays['Your parcel'] = parcelLayer;
 
+    const legendEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-legend-')
+    );
+    const statusEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-status-')
+    );
+    const hrdem = getHrdemOverlay(report);
+
+    const updateLegendStatus = (contourCount) => {
+      if (legendEl) {
+        legendEl.innerHTML = `
+      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
+      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#e8d5ff;border-width:2px"></span>Provincial contour</span>
+      ${
+        hrdem?.available
+          ? '<span class="fine"><span class="legend-swatch" style="background:rgba(80,80,80,0.45);border-color:#444"></span>HRDEM hillshade</span>'
+          : ''
+      }
+    `;
+      }
+      if (statusEl) {
+        const bits = [];
+        if (contourCount) bits.push(`${contourCount} provincial contour lines`);
+        else bits.push('loading contours…');
+        if (hrdem?.available) bits.push('HRDEM hillshade on');
+        else bits.push('HRDEM not available here');
+        statusEl.textContent = bits.join(' · ');
+      }
+    };
+
+    // Contours: use report data, or fetch live from Alberta Titan if missing
+    let contourLayer = null;
     let contourCount = 0;
     try {
-      const contourLayer = addProvincialContoursToMap(map, report);
+      contourLayer = addProvincialContoursToMap(map, report);
       if (contourLayer) {
         overlays['Provincial contours'] = contourLayer;
         contourCount = getProvincialContoursFc(report)?.features?.length || 0;
@@ -1575,6 +1609,20 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     } catch (e) {
       console.warn('Contours overlay skipped', e);
     }
+    updateLegendStatus(contourCount);
+
+    if (!contourCount) {
+      // Async fallback so the satellite map still gets contour lines
+      ensureProvincialContoursOnMap(map, report, latlngs, overlays, parcelLayer)
+        .then((n) => {
+          updateLegendStatus(n || 0);
+          try {
+            parcelLayer.bringToFront();
+          } catch { /* ignore */ }
+        })
+        .catch((e) => console.warn('contour fetch failed', e));
+    }
+
     try {
       parcelLayer.bringToFront();
     } catch { /* ignore */ }
@@ -1585,34 +1633,6 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
       }
     } catch (e) {
       console.warn('layer control skipped', e);
-    }
-
-    const hrdem = getHrdemOverlay(report);
-    const legendEl = document.getElementById(
-      el.id.replace('report-map-', 'report-map-legend-')
-    );
-    if (legendEl) {
-      legendEl.innerHTML = `
-      <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
-      <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Provincial contour</span>
-      ${
-        hrdem?.available
-          ? '<span class="fine"><span class="legend-swatch" style="background:rgba(80,80,80,0.45);border-color:#444"></span>HRDEM hillshade</span>'
-          : ''
-      }
-    `;
-    }
-
-    const statusEl = document.getElementById(
-      el.id.replace('report-map-', 'report-map-status-')
-    );
-    if (statusEl) {
-      const bits = [];
-      if (contourCount) bits.push(`${contourCount} provincial contour lines`);
-      else bits.push('no contours returned for this extent');
-      if (hrdem?.available) bits.push('HRDEM hillshade on');
-      else bits.push('HRDEM not available here');
-      statusEl.textContent = bits.join(' · ');
     }
 
     const fit = () => {
@@ -6036,16 +6056,19 @@ function getHrdemOverlay(report) {
 }
 
 /** Draw provincial contours on a Leaflet map; returns layer or null. */
-function addProvincialContoursToMap(map, report) {
-  const fc = getProvincialContoursFc(report);
+function addProvincialContoursToMap(map, report, fcOverride) {
+  const fc = fcOverride || getProvincialContoursFc(report);
   if (!fc?.features?.length || !map) return null;
+  // High-contrast lines on satellite basemap (light purple / white edge feel)
   return L.geoJSON(fc, {
     style: (f) => {
-      const isIndex = f.properties?.contour_type === 'index';
+      const isIndex =
+        f.properties?.contour_type === 'index' ||
+        /INDEX/i.test(String(f.properties?.feature_type || ''));
       return {
-        color: isIndex ? '#5b3a73' : 'rgba(91,58,115,0.5)',
-        weight: isIndex ? 2 : 1,
-        opacity: isIndex ? 0.95 : 0.7,
+        color: isIndex ? '#f3e8ff' : '#c4b5fd',
+        weight: isIndex ? 2.4 : 1.4,
+        opacity: isIndex ? 0.95 : 0.8,
         fill: false,
       };
     },
@@ -6054,6 +6077,136 @@ function addProvincialContoursToMap(map, report) {
       if (z != null) lyr.bindTooltip(`${z} m`, { sticky: true, className: 'contour-tip' });
     },
   }).addTo(map);
+}
+
+/**
+ * If the report has no contour GeoJSON (timeout / miss), fetch Alberta Titan
+ * contours client-side for the parcel bbox and add them to the map.
+ */
+async function ensureProvincialContoursOnMap(map, report, latlngs, overlays, parcelLayer) {
+  if (!map || !latlngs?.length) return 0;
+  if (getProvincialContoursFc(report)?.features?.length) {
+    return getProvincialContoursFc(report).features.length;
+  }
+  const b = L.latLngBounds(latlngs);
+  const bbox = {
+    west: b.getWest(),
+    south: b.getSouth(),
+    east: b.getEast(),
+    north: b.getNorth(),
+  };
+  // Pad slightly so edge contours appear
+  const padLng = Math.max((bbox.east - bbox.west) * 0.08, 0.0004);
+  const padLat = Math.max((bbox.north - bbox.south) * 0.08, 0.0003);
+  bbox.west -= padLng;
+  bbox.east += padLng;
+  bbox.south -= padLat;
+  bbox.north += padLat;
+
+  const fc = await fetchProvincialContoursClient(bbox, 1500);
+  if (!fc?.features?.length) return 0;
+
+  // Cache on report so wetlands / other maps reuse
+  if (report) {
+    report._provincial_contours = fc;
+    if (!report.elevation_overlays) report.elevation_overlays = {};
+    report.elevation_overlays.contours = fc;
+    if (state.report === report || !state.report) {
+      state.report = report;
+    } else {
+      state.report._provincial_contours = fc;
+      state.report.elevation_overlays = {
+        ...(state.report.elevation_overlays || {}),
+        contours: fc,
+      };
+    }
+  }
+
+  const layer = addProvincialContoursToMap(map, report, fc);
+  if (layer && overlays) overlays['Provincial contours'] = layer;
+  if (parcelLayer) {
+    try {
+      parcelLayer.bringToFront();
+    } catch { /* ignore */ }
+  }
+  return fc.features.length;
+}
+
+/** Client-side query of Alberta provincial contours (Titan MapServer). */
+async function fetchProvincialContoursClient(bbox, limit = 1200) {
+  const base =
+    'https://geospatial.alberta.ca/titan/rest/services/elevation/provincial_elevation/MapServer';
+  const envelope = JSON.stringify({
+    xmin: bbox.west,
+    ymin: bbox.south,
+    xmax: bbox.east,
+    ymax: bbox.north,
+    spatialReference: { wkid: 4326 },
+  });
+  const features = [];
+  // 4 = index, 5 = intermediate (same as server)
+  for (const layerId of [4, 5]) {
+    if (features.length >= limit) break;
+    const params = new URLSearchParams({
+      geometry: envelope,
+      geometryType: 'esriGeometryEnvelope',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: '*',
+      returnGeometry: 'true',
+      outSR: '4326',
+      f: 'json',
+      resultRecordCount: String(limit - features.length),
+      where: '1=1',
+    });
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 20000);
+      const res = await fetch(`${base}/${layerId}/query?${params}`, {
+        signal: ctrl.signal,
+        headers: { Accept: 'application/json' },
+      });
+      clearTimeout(t);
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (data.error || !data.features?.length) continue;
+      for (const feat of data.features) {
+        const paths = feat.geometry?.paths;
+        if (!paths?.length) continue;
+        const attrs = feat.attributes || {};
+        const elevRaw = attrs.TEXT ?? attrs.ELEVATION ?? null;
+        const elev =
+          elevRaw != null && elevRaw !== '' && !Number.isNaN(Number(elevRaw))
+            ? Number(elevRaw)
+            : null;
+        const isIndex =
+          layerId === 4 || /INDEX/i.test(String(attrs.FEATURE_TYPE || ''));
+        for (const path of paths) {
+          if (!path || path.length < 2) continue;
+          features.push({
+            type: 'Feature',
+            properties: {
+              elevation_m: elev,
+              contour_type: isIndex ? 'index' : 'intermediate',
+              feature_type: attrs.FEATURE_TYPE || null,
+              source: 'Alberta provincial elevation (client)',
+            },
+            geometry: { type: 'LineString', coordinates: path },
+          });
+          if (features.length >= limit) break;
+        }
+        if (features.length >= limit) break;
+      }
+    } catch (e) {
+      console.warn('contour layer', layerId, e.message);
+    }
+  }
+  return {
+    type: 'FeatureCollection',
+    features,
+    source: 'Alberta Provincial Elevation MapServer (client fetch)',
+    altalis_map_url: 'https://www.altalis.com/map;id=118',
+  };
 }
 
 /**
