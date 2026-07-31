@@ -1,0 +1,158 @@
+```markdown
+# Coding Agent Instructions: Integrate Satellite Vegetation Indices + Regional SOC Context into Fecundity Pipeline
+
+## Goal
+
+Extend the existing Expanding Edge fecundity assessment (`fecundity_report.js` / related modules) to:
+
+1. Pull free, property-scale vegetation indices from Sentinel-2 (and optionally Landsat / Sentinel-1).
+2. Treat global/regional Soil Organic Carbon (SOC) layers as low-to-moderate confidence context only.
+3. Populate real values for fields that are currently placeholders (e.g. `ndviCoverPct`, vegetative structure inferences).
+4. Enforce the CLAIMS confidence framework: never present satellite-derived SOC as a client-facing precise number; always flag lab or calibrated drone data as higher confidence.
+5. Keep the two-tier philosophy: satellite = screening / regional context; site walk + lab / drone = property-scale claims.
+
+## Core Principles (do not violate)
+
+- Satellite SOC (~30 m products such as SoilGrids-style or research hyperspectral) is **regional context only**. Tag confidence `low` or `low-moderate`. Never use it as the sole source for a numeric SOC claim in a client report.
+- Vegetation indices (NDVI, NDRE, SAVI, EVI, etc.) from Sentinel-2 (10 m, free) are appropriate for property-scale vegetative vigor, canopy density, and stress tracking. These may be used at medium-high confidence when properly processed.
+- Soil moisture proxy from Sentinel-1 SAR is supplementary for the Water lever.
+- Any carbon-related claim that could support credits, certifications, or quantified improvement must remain in the CLAIMS framework as `low-confidence-unless-lab-tested` (or calibrated drone + lab).
+- All new layers must record data source, acquisition date(s), resolution, and confidence level in the report JSON.
+
+## Data Sources (public / free)
+
+- **Sentinel-2** (optical, 10 m, ~5-day revisit): NDVI, NDRE, SAVI, NDMI, etc. via Copernicus Data Space Ecosystem / Sentinel Hub / Google Earth Engine / Planetary Computer.
+- **Landsat 8/9** (30 m, long historical archive): multi-year vegetation trend.
+- **Sentinel-1** (SAR, 10 m, cloud-penetrating): backscatter-based soil-moisture proxy.
+- **Regional SOC**: SoilGrids or equivalent ~30–250 m open products (use only as context layer).
+- Prefer APIs that support AOI (area-of-interest) clipping so only the property + small buffer is processed.
+
+## Implementation Steps for the Agent
+
+### 1. New Module: `satellite_indices.js` (or Python equivalent if the pipeline is hybrid)
+
+- Input: site GeoJSON polygon (or bounding box) + optional date range.
+- Functions:
+  - `fetchSentinel2Indices(aoi, startDate, endDate)` → median or latest cloud-free composite of NDVI, NDRE, SAVI, NDMI, cloud cover %.
+  - `fetchLandsatTrend(aoi, years)` → annual NDVI time series or linear trend slope.
+  - `fetchSentinel1MoistureProxy(aoi, dateRange)` → relative soil-moisture index.
+  - `fetchRegionalSOC(aoi)` → mean / min / max / std of ~30 m SOC product inside AOI (tagged low confidence).
+- Output standardized object:
+
+```json
+{
+  "ndvi": {
+    "median": 0.62,
+    "p10": 0.41,
+    "p90": 0.78,
+    "date": "2026-07-15",
+    "resolution_m": 10,
+    "source": "Sentinel-2",
+    "confidence": "medium-high"
+  },
+  "ndre": { "...": "..." },
+  "savi": { "...": "..." },
+  "soil_moisture_proxy": { "...": "..." },
+  "regional_soc": {
+    "mean_g_kg": 28,
+    "source": "SoilGrids-style",
+    "resolution_m": 30,
+    "confidence": "low-moderate",
+    "note": "Regional context only – not property-scale"
+  }
+}
+```
+
+### 2. Integration into `fecundity_report.js`
+
+- Replace or augment the placeholder `ndviCoverPct` / vegetative-structure inference with real Sentinel-2 values.
+- Map indices to levers:
+  - Vegetative layering & succession ← NDVI / NDRE / canopy density proxies + trend.
+  - Water ← Sentinel-1 moisture proxy + any existing slope/wetland layers.
+  - Microclimate / overall vigor ← multi-temporal NDVI.
+- Keep SOC out of the main numeric levers unless a lab value exists. If regional SOC is shown, place it in a “Regional Context” section with explicit low-confidence banner.
+- Update data-completeness calculation: presence of real Sentinel-2 indices increases completeness for vegetative levers.
+
+### 3. CLAIMS / Confidence Enforcement
+
+- Add a `claims` array or per-field metadata:
+
+```json
+{
+  "field": "soil_organic_carbon",
+  "value": null,
+  "source": "none",
+  "confidence": "none",
+  "allowed_claim": "No numeric SOC claim without lab or calibrated drone data",
+  "regional_context": { "...": "..." }
+}
+```
+
+- Any generated report text that mentions carbon must pull from this structure and insert the confidence disclaimer automatically.
+- Vegetation-index-derived statements (e.g., “canopy vigor improved”) may use medium-high confidence language when backed by multi-date Sentinel-2.
+
+### 4. Processing Pipeline Details
+
+- Cloud masking mandatory (SCL or QA60 for Sentinel-2).
+- Prefer median composite over single date when possible.
+- Clip strictly to property AOI + small buffer (e.g. 50–100 m).
+- Cache results by AOI hash + date range to avoid repeated API calls.
+- Handle Alberta-specific issues: frequent cloud cover → fall back to Sentinel-1 or longer composite windows; winter snow → exclude or flag.
+- Units and scaling: keep NDVI in standard –1 to +1 range; document any scaling applied.
+
+### 5. Map Visualization Extension
+
+- Add optional map layers (building on previous soil-map work):
+  - NDVI / NDRE choropleth or heatmap at 10 m.
+  - Multi-date “before/after” or trend layer.
+  - Regional SOC as a semi-transparent low-opacity context layer with clear legend note.
+- Popup / side panel must display source, date, resolution, and confidence.
+
+### 6. API / CLI Surface
+
+- `node satellite_indices.js --geojson site.geojson --start 2025-05-01 --end 2026-07-01`
+- Or integrate as an async step inside the main fecundity report generator.
+- Return both the indices object and a ready-to-merge patch for the fecundity JSON.
+
+### 7. Error Handling & Fallbacks
+
+- If Sentinel-2 returns high cloud cover → fall back to longer window or Landsat; record the fallback.
+- If no satellite data available → leave vegetative fields as “inferred from land-cover” (current behavior) and lower completeness score.
+- Never invent SOC numbers.
+
+### 8. Documentation & Attribution
+
+- README section: exact APIs used, required credentials (if any), rate limits, and how to refresh tokens.
+- Required map/report attribution:  
+  “Sentinel-2 data via Copernicus / ESA; Landsat via USGS; regional SOC from [source]. Vegetation indices are property-scale indicators; soil organic carbon remains low-confidence without laboratory verification.”
+- Update the existing “Remote assessment — site walk recommended” disclaimer to mention that satellite vegetation indices improve vegetative levers but do not replace soil tests for carbon or biology.
+
+## Acceptance Criteria
+
+- Given a real Alberta property GeoJSON, the pipeline produces real NDVI/NDRE/SAVI values at ~10 m and injects them into the fecundity report.
+- Regional SOC appears only as context with low-moderate confidence tag.
+- No client-facing text claims a precise SOC percentage from satellite alone.
+- Map (if generated) shows vegetation index layer + optional low-opacity SOC context.
+- Data-completeness percentage rises when real indices are present.
+- All sources, dates, resolutions, and confidence levels are recorded in the output JSON.
+
+## Suggested File Structure
+
+```
+src/
+  satellite/
+    fetch.js          # API clients for Sentinel-2 / Landsat / Sentinel-1 / SOC
+    indices.js        # calculation of NDVI, NDRE, SAVI, etc.
+    confidence.js     # CLAIMS tagging helpers
+  fecundity/
+    report.js         # existing – now imports and merges satellite results
+  map/
+    layers.js         # add vegetation + SOC context layers
+```
+
+## Implementation Priority
+
+Implement the satellite vegetation path first (highest practical value). Treat SOC strictly as the secondary, low-confidence regional layer. This keeps the system honest, free where possible, and aligned with the resolution and accuracy realities of current satellite products.
+```
+
+Copy the entire content above into a new file named e.g. `satellite-indices-coding-agent-instructions.md`.

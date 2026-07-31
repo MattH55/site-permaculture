@@ -1,0 +1,205 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://opensourcemed.info/schemas/permaculture-site-design.schema.json",
+  "title": "Permaculture Site & Design Element Schema (Alberta-first)",
+  "description": "Normalized schema joining terrain/hydrology/soil/climate site attributes with permaculture design-element placement logic. Designed to share site-level fields with the companion crop-suitability (EcoCrop-based) schema so both can query the same underlying site record.",
+  "type": "object",
+  "required": ["site_id", "location", "terrain", "design_elements"],
+  "properties": {
+    "site_id": {
+      "type": "string",
+      "description": "Stable unique identifier for the site/parcel."
+    },
+    "site_name": { "type": "string" },
+    "location": {
+      "type": "object",
+      "required": ["latitude", "longitude"],
+      "properties": {
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "elevation_m": { "type": "number" },
+        "legal_land_description": {
+          "type": "object",
+          "description": "Alberta Township System (ATS) description, used to cross-reference Alberta government open data (soil, wetland, elevation datasets are frequently indexed by ATS/section).",
+          "properties": {
+            "quarter_section": { "type": "string" },
+            "section": { "type": "integer" },
+            "township": { "type": "integer" },
+            "range": { "type": "integer" },
+            "meridian": { "type": "integer" }
+          }
+        },
+        "municipality": { "type": "string" },
+        "nearest_town": { "type": "string" }
+      }
+    },
+    "terrain": {
+      "type": "object",
+      "required": ["slope_percent", "aspect"],
+      "properties": {
+        "slope_percent": {
+          "type": "number",
+          "description": "Derived from a Digital Elevation Model (DEM). Alberta source: Alberta Elevation LiDAR-derived DEM (Alberta Open Government Portal); coarser national fallback: Canadian Digital Elevation Model (CDEM), Natural Resources Canada."
+        },
+        "aspect": {
+          "type": "string",
+          "enum": ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "flat"],
+          "description": "Compass direction slope faces; derived from same DEM source as slope_percent."
+        },
+        "landform_position": {
+          "type": "string",
+          "enum": ["ridge", "upper_slope", "mid_slope", "lower_slope", "valley_floor", "floodplain", "depression", "flat_upland"],
+          "description": "Position in the local catena; used to locate keyline keypoints and swale feasibility."
+        },
+        "keypoint_present": {
+          "type": "boolean",
+          "description": "True if a keyline keypoint (slope inflection from convex to concave) is identifiable from contour/DEM analysis on this parcel."
+        },
+        "erosion_risk": {
+          "type": "string",
+          "enum": ["low", "moderate", "high"],
+          "description": "Can be modeled from slope, soil erodibility factor (K-factor), and cover; Alberta source: Agricultural Region of Alberta Soil Inventory Database (AGRASID) erosion risk layers."
+        }
+      }
+    },
+    "hydrology": {
+      "type": "object",
+      "properties": {
+        "annual_precipitation_mm": {
+          "type": "number",
+          "description": "Source: ECCC Canadian Climate Normals (1991-2020), nearest station or gridded product."
+        },
+        "seasonal_distribution": {
+          "type": "string",
+          "enum": ["even", "summer_peak", "winter_peak", "erratic"],
+          "description": "Relevant to swale/pond sizing; Alberta precipitation is strongly summer-peaked (convective storms May-Aug)."
+        },
+        "distance_to_nearest_watercourse_m": { "type": "number" },
+        "watershed": {
+          "type": "string",
+          "description": "Source: Alberta River Basins mapping / Alberta Environment and Parks; also HYDAT (Water Survey of Canada) for gauged streams."
+        },
+        "wetland_class": {
+          "type": ["string", "null"],
+          "description": "Source: Alberta Merged Wetland Inventory (AMWI). Presence of a class III/IV/V wetland restricts swale/pond siting and triggers regulatory review under the Alberta Water Act."
+        },
+        "water_table_depth_m": {
+          "type": ["number", "null"],
+          "description": "Source: Alberta Water Well Information Database (existing well logs) where available; otherwise estimated from landform position."
+        },
+        "flood_risk_zone": {
+          "type": "boolean",
+          "description": "Source: Alberta Flood Hazard Mapping Program."
+        }
+      }
+    },
+    "soil": {
+      "type": "object",
+      "properties": {
+        "soil_series": {
+          "type": "string",
+          "description": "Source: AGRASID (Agricultural Region of Alberta Soil Inventory Database), Alberta Agriculture and Irrigation."
+        },
+        "texture": {
+          "type": "string",
+          "enum": ["sand", "loamy_sand", "sandy_loam", "loam", "silt_loam", "clay_loam", "clay", "organic"]
+        },
+        "drainage_class": {
+          "type": "string",
+          "enum": ["rapid", "well", "moderately_well", "imperfect", "poor", "very_poor"]
+        },
+        "depth_to_bedrock_cm": { "type": ["number", "null"] },
+        "cli_agricultural_capability_class": {
+          "type": "string",
+          "description": "1-7 class + subclass, source: Canada Land Inventory (CLI) soil capability for agriculture, Agriculture and Agri-Food Canada.",
+          "enum": ["1", "2", "3", "4", "5", "6", "7"]
+        },
+        "organic_matter_percent": { "type": ["number", "null"] },
+        "ph": { "type": ["number", "null"] }
+      }
+    },
+    "climate": {
+      "type": "object",
+      "properties": {
+        "plant_hardiness_zone": {
+          "type": "string",
+          "description": "Source: Natural Resources Canada Plant Hardiness Zones (2014 update). Most of central/southern Alberta falls 2b-4a; foothills and northern Alberta colder."
+        },
+        "frost_free_days": {
+          "type": "number",
+          "description": "Source: ECCC Canadian Climate Normals, nearest station."
+        },
+        "growing_degree_days_base5": { "type": "number" },
+        "prevailing_wind_direction": {
+          "type": "string",
+          "enum": ["N", "NE", "E", "SE", "S", "SW", "W", "NW"],
+          "description": "Alberta: predominantly W/NW, with damaging chinook and winter northerlies; drives windbreak sector placement."
+        },
+        "chinook_exposure": {
+          "type": "boolean",
+          "description": "Relevant along the Alberta foothills corridor; causes damaging freeze-thaw cycling that affects perennial/woody plant selection independent of hardiness zone."
+        }
+      }
+    },
+    "existing_vegetation": {
+      "type": "object",
+      "properties": {
+        "cover_type": {
+          "type": "string",
+          "enum": ["bare_disturbed", "annual_cropland", "tame_pasture", "native_grassland", "shrubland", "deciduous_forest", "coniferous_forest", "mixedwood_forest", "wetland_vegetation"],
+          "description": "Source: Alberta Biodiversity Monitoring Institute (ABMI) land cover product, or AAFC Annual Crop Inventory for cropland history."
+        },
+        "successional_stage": {
+          "type": "string",
+          "enum": ["pioneer", "early_successional", "mid_successional", "climax"]
+        }
+      }
+    },
+    "design_elements": {
+      "type": "array",
+      "description": "Recommended/placed design moieties for this site, generated by applying the if-then ruleset below to the terrain/hydrology/soil/climate fields above.",
+      "items": {
+        "type": "object",
+        "required": ["element_type", "condition_basis", "placement_notes"],
+        "properties": {
+          "element_type": {
+            "type": "string",
+            "enum": [
+              "swale", "keyline_cultivation", "pond", "hugelkultur_mound",
+              "windbreak", "herb_spiral", "food_forest_guild", "terrace",
+              "keyhole_bed", "shelterbelt_zone", "water_harvesting_earthwork"
+            ]
+          },
+          "condition_basis": {
+            "type": "string",
+            "description": "Which site attribute(s) triggered this recommendation, e.g. 'slope_percent 3-12 AND drainage_class well-to-imperfect'."
+          },
+          "placement_notes": { "type": "string" },
+          "zone": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5,
+            "description": "Permaculture zone (1=nearest/most-tended, 5=wild) this element belongs in."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["rule_based_high", "rule_based_moderate", "needs_site_visit"]
+          }
+        }
+      }
+    },
+    "data_provenance": {
+      "type": "array",
+      "description": "Track which datasets populated this record, for auditability and re-run when sources update.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "field": { "type": "string" },
+          "source_name": { "type": "string" },
+          "source_date": { "type": "string", "format": "date" },
+          "source_url": { "type": "string", "format": "uri" }
+        }
+      }
+    }
+  }
+}

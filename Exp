@@ -1,0 +1,28 @@
+/**
+ * StatCan Census demographics — 2021 Census Profile data (sync heuristic fallback).
+ * Live WDS queries return Alberta CD-level data; this provides a reliable sync fallback.
+ */
+
+export function demographicsHeuristic(centre) {
+  return {
+    available: true,
+    geography_name: 'Alberta (provincial)',
+    geography_level: 'Province',
+    census_year: 2021,
+    demographics: {
+      total_population: { value: 4262635, unit: 'persons', label: 'Population 2021' },
+      total_dwellings: { value: 1772670, unit: 'dwellings', label: 'Total private dwellings' },
+      pop_density_per_km2: { value: 6.7, unit: '/km²', label: 'Population density' },
+      median_age: { value: 38.4, unit: 'years', label: 'Median age' },
+      median_after_tax_income: { value: 40800, unit: '$', label: 'Median after-tax income' },
+      avg_household_size: { value: 2.5, unit: 'persons', label: 'Average household size' },
+      pct_owner_households: { value: 68.5, unit: '%', label: 'Owner households' },
+      pct_bachelor_or_higher: { value: 28.7, unit: '%', label: 'Bachelor degree or higher' },
+      pct_labour_force_participation: { value: 67.5, unit: '%', label: 'Labour force participation' },
+      pct_car_truck_van_commute: { value: 85.2, unit: '%', label: 'Commute by car/truck/van' },
+      pct_ag_forestry_fishing_industry: { value: 2.8, unit: '%', label: 'Agriculture/forestry/fishing industry' },
+    },
+    methodology: 'Alberta provincial 2021 Census averages',
+    source_url: 'https://www12.statcan.gc.ca/census-recensement/2021/',
+  };
+}

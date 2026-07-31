@@ -245,7 +245,10 @@ app.post('/api/lead', async (req, res) => {
     };
     appendLead(lead);
 
-    // Notify team when someone unlocks the full report
+    // Unlock immediately — don't make the user wait on Resend
+    res.json({ ok: true, unlocked: true, email, emailed: 'pending' });
+
+    // Notify team in the background (best-effort)
     const to = inquiryDeliveryAddress();
     const publicTo = inquiryPublicAddress();
     const subject = `Full report download — ${lead.site_name || 'Alberta parcel'}`;
@@ -261,15 +264,14 @@ app.post('/api/lead', async (req, res) => {
     ]
       .filter(Boolean)
       .join('\n');
-    const emailed = await sendViaResend({ to, replyTo: email, subject, text }).catch((e) => {
+    sendViaResend({ to, replyTo: email, subject, text }).catch((e) => {
       console.warn('lead notify email failed', e.message);
-      return false;
     });
-
-    res.json({ ok: true, unlocked: true, email, emailed: !!emailed });
   } catch (e) {
     console.error('lead failed', e);
-    res.status(500).json({ error: e.message || 'lead failed' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: e.message || 'lead failed' });
+    }
   }
 });
 

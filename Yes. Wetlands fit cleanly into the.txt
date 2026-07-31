@@ -1,0 +1,113 @@
+**Yes.** Wetlands fit cleanly into the same pipeline and strengthen several fecundity levers (Water, Microclimate, Fauna integration, and Vegetative layering).
+
+Here is the **updated section** you can drop into the previous coding-agent instructions (or treat as an addendum).
+
+---
+
+### Addendum: Wetlands Layer Integration
+
+#### Goal
+Add public wetlands data as a first-class input alongside Sentinel-2 vegetation indices and regional SOC. Use it for:
+- Improving the **Water** lever (presence, proximity, and type of wetlands/ponds).
+- Supporting **Microclimate** (local humidity, frost moderation).
+- Supporting **Fauna integration** (wetland-dependent species habitat).
+- Flagging opportunities (e.g. “existing wetland → protect / enhance” or “no wetland + suitable topography → pond candidate”).
+
+#### Recommended Public Data Sources (Alberta priority)
+1. **Alberta Wetland Inventory** (or the most current provincial wetland layer available via GeoDiscover Alberta / open data).  
+   - Prefer vector polygons with wetland class (bog, fen, marsh, swamp, shallow open water, etc.).
+2. **Canadian Wetland Inventory** (national, coarser, good fallback).
+3. **Derived / supplementary**  
+   - Sentinel-1 / Sentinel-2 water/wetness indices (NDWI, MNDWI, or radar-based permanent/temporary water) for recent change detection or gap-filling.  
+   - Any existing “wetlands layer” already referenced in the fecundity report’s inference logic (`hasPondOrWetland`).
+
+#### Implementation Additions for the Agent
+
+**1. Extend the satellite / geospatial module**
+
+Add a new function (or expand the existing fetch module):
+
+```js
+fetchWetlands(aoi, bufferMeters = 200)
+```
+
+Returns a standardized object, for example:
+
+```json
+{
+  "has_wetland_on_site": true,
+  "wetland_area_ha": 1.24,
+  "wetland_types": ["marsh", "shallow_open_water"],
+  "nearest_wetland_distance_m": 0,
+  "wetland_polygons": [ /* GeoJSON FeatureCollection clipped to AOI + buffer */ ],
+  "source": "Alberta Wetland Inventory",
+  "confidence": "high",          // vector inventory
+  "resolution_note": "polygon inventory",
+  "derived_indices": {           // optional Sentinel-based
+    "ndwi_median": 0.31,
+    "source": "Sentinel-2",
+    "confidence": "medium"
+  }
+}
+```
+
+**2. Integration into fecundity levers**
+
+| Lever                        | How wetlands data is used                                      | Confidence guidance                  |
+|-----------------------------|----------------------------------------------------------------|--------------------------------------|
+| Water                       | Boost score when wetland/pond is present or nearby; improve infiltration/storage inference | High if inventory polygon intersects site |
+| Microclimate                | Presence of open water or saturated soil raises local humidity / frost moderation | Medium–High                          |
+| Fauna integration           | Wetland habitat supports amphibians, waterfowl, invertebrates  | Medium (inventory) / Low–Medium (derived) |
+| Vegetative layering         | Wetland vegetation communities contribute to structural diversity | Medium                               |
+
+- Update the existing `hasPondOrWetland` inference so it prefers the real inventory over pure land-cover class.
+- If a wetland intersects the property, surface a recommendation such as “protect / buffer existing wetland” or “enhance with native wetland species”.
+- If no wetland is present but topography + soil + catchment suggest suitability, keep the existing “pond” suggestion logic.
+
+**3. CLAIMS / Confidence rules (same discipline as SOC)**
+
+- Inventory polygons → confidence `high` for presence/absence and type.
+- Purely satellite-derived wetness → confidence `medium` (useful for change or gap-filling, not for legal wetland delineation).
+- Never treat a satellite wetness index as an official wetland boundary or as a substitute for a formal wetland assessment under Alberta’s Wetland Policy.
+
+**4. Map layers**
+
+- Add a wetlands polygon layer (distinct color, e.g. blue/teal fill + outline).
+- Optional: semi-transparent Sentinel-based wetness index as a secondary layer.
+- Popup shows type, area, source, and confidence.
+- Ensure wetlands render above or clearly distinguishable from the vegetation-index and soil layers.
+
+**5. Report output changes**
+
+- In the Water section of the fecundity report, explicitly state:
+  - Whether a mapped wetland intersects the site.
+  - Area and dominant type(s).
+  - Distance to nearest off-site wetland (if relevant).
+- Include wetlands in the data-completeness calculation.
+- Update the “Remote assessment — site walk recommended” disclaimer to note that wetland polygons improve water and fauna inferences but a field check is still advised for regulatory or design decisions.
+
+**6. File / module suggestions**
+
+```
+src/
+  satellite/          # or geospatial/
+    fetch.js          # add wetlands fetch
+    indices.js
+    wetlands.js       # new – inventory + optional NDWI logic
+    confidence.js
+  fecundity/
+    report.js         # merge wetlands into Water / Microclimate / Fauna levers
+  map/
+    layers.js         # add wetlands layer
+```
+
+#### Acceptance Criteria (wetlands-specific)
+- Given an Alberta property GeoJSON, the pipeline correctly detects intersecting or nearby wetlands from the inventory.
+- Water lever score and recommendations update appropriately.
+- Map shows wetlands with clear symbology and source attribution.
+- Confidence is tagged correctly (inventory = high; pure satellite wetness = medium).
+- No claim is made that the layer constitutes a regulatory wetland delineation.
+
+---
+
+This keeps the same two-tier philosophy you already applied to SOC and vegetation indices: use the best free public layer for screening and inference, keep confidence honest, and leave formal design/regulatory work to site visits.
