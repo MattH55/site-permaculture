@@ -3673,21 +3673,24 @@ function floodFloodCardBody(flood, floodClass) {
     </p>`;
 }
 
-function countyAssessmentLinksHtml() {
+function countyAssessmentLinksHtml(ats = null) {
+  const legalDescription = ats?.description ? `Near ${ats.description}` : null;
   return `
     <div class="flag" data-severity="info" style="margin:0.65rem 0 0.85rem">
-      <strong>County assessment viewers — currently available for these counties only</strong>
-      <p>Use the appropriate public viewer to look up one parcel at a time by address, roll number, or legal description. These links provide assessment context; they do not bulk-query all parcels and the values are not appraisals or sale prices.</p>
+      <strong>Find nearby assessed land</strong>
+      <p>Use the county viewer for the parcel or a nearby comparable. These public tools are single-parcel lookups; they provide assessment context, not an appraisal or sale price.</p>
+      ${legalDescription ? `<p class="fine" style="margin:0.45rem 0 0"><strong>Generated search reference:</strong> ${esc(legalDescription)} · ${esc(ats.quarter)} quarter, Section ${esc(ats.section)}, Township ${esc(ats.township)}, Range ${esc(ats.range)}, ${esc(ats.meridian)}</p>` : ''}
       <div class="prox-grid" style="margin-top:0.55rem">
         ${COUNTY_ASSESSMENT_LINKS.map((item) => `
           <article class="prox-card">
             <span class="mono">${esc(item.name)}</span>
             <p class="fine" style="margin:0.3rem 0 0.55rem">${esc(item.detail)}</p>
             <a href="${esc(item.url)}" target="_blank" rel="noopener">Open ${esc(item.name)} viewer →</a>
+            ${legalDescription ? `<p class="fine" style="margin:0.4rem 0 0">Search using the generated legal description above, or pan to the parcel and select a nearby property.</p>` : ''}
           </article>
         `).join('')}
       </div>
-      <p class="fine" style="margin-bottom:0">For bulk parcel data, use the relevant county open-data portal or contact its assessment department.</p>
+      <p class="fine" style="margin-bottom:0">Sturgeon’s public parcel layer identifies roll/legal-description records but does not expose assessed values in the layer used here. Parkland and Leduc likewise require viewer lookup unless an official assessment export is obtained.</p>
     </div>`;
 }
 
@@ -3723,6 +3726,7 @@ function landValueSection(lv) {
   const samples = (mun?.samples || []).filter(
     (s) => s.latitude != null && s.longitude != null && Number.isFinite(Number(s.latitude))
   );
+  const ats = state.report?.ats || null;
   const parcel = getParcelLatLngs();
   const centre = state.report?.location
     ? { lat: state.report.location.latitude, lng: state.report.location.longitude }
@@ -3779,6 +3783,8 @@ function landValueSection(lv) {
               mun?.note || 'No municipal assessment sample for this location.'
             )}</p>`
       }
+
+      ${countyAssessmentLinksHtml(ats)}
 
       ${
         samples.length || parcel
