@@ -1854,6 +1854,7 @@ function topologySection(topo, a) {
 
 /**
  * 3D terrain panel — prefers NRCan HRDEM DTM sample grid, falls back to design DEM.
+ * Overlays: contour lines, catchment, pond candidates, swale hillsides.
  */
 function terrain3dBlock(id, report) {
   const ht = report?.hrdem_terrain;
@@ -1862,10 +1863,18 @@ function terrain3dBlock(id, report) {
   const sourceLabel = hasHrdemGrid
     ? `NRCan HRDEM ${ht.resolution_m || 2} m DTM`
     : 'Design DEM grid (Open-Meteo / regional)';
+  const els = report?.design_elements || report?.recommendations?.priority_ordered || [];
+  const hasSwaleRec = els.some((e) => e.element_type === 'swale' || e.element_type === 'terrace');
+  const hasPondRec = els.some(
+    (e) => e.element_type === 'pond' || e.element_type === 'water_harvesting_earthwork'
+  );
+  const wetlandBlock = els.some(
+    (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
+  );
   return `
     <div class="terrain-3d-panel" style="margin-top:1rem">
       <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
-        <span class="mono topo-label">3D terrain surface</span>
+        <span class="mono topo-label">3D terrain · water placement</span>
         <span class="fine">${esc(sourceLabel)}${
           hrdem?.available && !hasHrdemGrid
             ? ' · HRDEM coverage noted; high-res sample pending'
@@ -1873,31 +1882,177 @@ function terrain3dBlock(id, report) {
         }</span>
       </div>
       <div id="${id}" class="terrain-3d-host report-map"
-        style="height:min(380px,55vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0c1210;position:relative;touch-action:none"
-        role="img" aria-label="Interactive 3D terrain model of the parcel">
+        style="height:min(420px,58vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0c1210;position:relative;touch-action:none"
+        role="img" aria-label="3D terrain with contours, catchment, pond and swale zones">
         <p class="fine" style="padding:1rem;color:#c8cec1">Loading 3D terrain…</p>
       </div>
-      <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-top:0.45rem">
+      <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.65rem 1rem;align-items:center;margin-top:0.5rem">
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="contours" />
+          <span style="display:inline-block;width:14px;height:2px;background:#e8e0ff;vertical-align:middle"></span>
+          Contours
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="catchment" />
+          <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;border-radius:2px;vertical-align:middle"></span>
+          Catchment
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="pond" />
+          <span style="display:inline-block;width:10px;height:10px;background:#1a9bb5;border-radius:2px;vertical-align:middle"></span>
+          Pond sites
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="swale" />
+          <span style="display:inline-block;width:10px;height:10px;background:#c4a035;border-radius:2px;vertical-align:middle"></span>
+          Swale hills
+        </label>
         <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
-          Vertical exaggerate
-          <input type="range" min="1" max="12" step="0.5" value="3" data-terrain-exag="${esc(id)}" style="width:8rem" />
-          <span class="mono" data-terrain-exag-val="${esc(id)}">3×</span>
+          Exaggerate
+          <input type="range" min="1" max="12" step="0.5" value="3.5" data-terrain-exag="${esc(id)}" style="width:7rem" />
+          <span class="mono" data-terrain-exag-val="${esc(id)}">3.5×</span>
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
-      <p class="fine" style="margin-top:0.35rem">
-        Drag to orbit · scroll to zoom · exaggeration for readability (not true scale).
+      <p class="fine" style="margin-top:0.4rem">
+        <strong>Blue / teal</strong> = low catchment &amp; pond candidates ·
+        <strong>Gold</strong> = mid-slope hillsides suited to contour swales ·
+        <strong>Light lines</strong> = elevation contours.
+        Drag to orbit · scroll to zoom. Zones are DEM-derived planning hints
+        ${hasPondRec ? ' · report recommends pond / water storage' : ''}
+        ${hasSwaleRec ? ' · report recommends swale / terrace' : ''}
+        ${wetlandBlock ? ' · <strong>wetland present — earthworks need approvals</strong>' : ''}.
         ${
           hasHrdemGrid
-            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a> (Open Government Licence – Canada).`
-            : 'Built from the design elevation samples used for slope and placement rules.'
+            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a>.`
+            : 'Built from design elevation samples.'
         }
       </p>
     </div>`;
 }
 
 /**
- * Mount Three.js mesh from hrdem_terrain or topology.grid elevations.
+ * Classify DEM cells into catchment / pond / swale / ridge / neutral for 3D colouring.
+ * Pond = low + flat; catchment = broader low basin; swale = mid-slope hillsides.
+ */
+function classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean) {
+  const relief = Math.max(zMax - zMin, 0.5);
+  const n = rows * cols;
+  const zones = new Array(n).fill('neutral'); // pond | catchment | swale | ridge | neutral
+  const slopes = new Array(n).fill(0);
+  const elevAt = (r, c) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return null;
+    const z = elevations[r * cols + c];
+    return z != null && Number.isFinite(z) ? z : null;
+  };
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const i = r * cols + c;
+      const z = elevAt(r, c);
+      if (z == null) continue;
+      const zl = elevAt(r, c - 1) ?? z;
+      const zr = elevAt(r, c + 1) ?? z;
+      const zu = elevAt(r - 1, c) ?? z;
+      const zd = elevAt(r + 1, c) ?? z;
+      // Unit-grid slope proxy (relative)
+      const g = Math.hypot(zr - zl, zd - zu) / 2;
+      const slopePct = (g / relief) * 100; // rough relative slope
+      slopes[i] = slopePct;
+      const t = (z - zMin) / relief;
+      // Concavity: positive when cell lower than neighbours (sink)
+      const neigh = [zl, zr, zu, zd].filter((v) => v != null);
+      const curv = neigh.length
+        ? neigh.reduce((a, b) => a + b, 0) / neigh.length - z
+        : 0;
+      const concave = curv > relief * 0.02;
+
+      if (t <= 0.14 && slopePct < 8) zones[i] = 'pond';
+      else if (t <= 0.28 || (t <= 0.38 && concave)) zones[i] = 'catchment';
+      else if (t >= 0.32 && t <= 0.78 && slopePct >= 1.5 && slopePct <= 22)
+        zones[i] = 'swale';
+      else if (t >= 0.82) zones[i] = 'ridge';
+      else zones[i] = 'neutral';
+    }
+  }
+
+  // Soften pond: keep only connected low patches near mean of lowest 15%
+  const pondThresh = zMin + relief * 0.16;
+  for (let i = 0; i < n; i++) {
+    const z = elevations[i];
+    if (z == null) continue;
+    if (zones[i] === 'pond' && z > pondThresh && slopes[i] > 6) zones[i] = 'catchment';
+  }
+
+  return { zones, slopes };
+}
+
+/**
+ * Marching-squares contour polylines in grid (row,col) space for 3D lift.
+ */
+function extractContourPolylines(elevations, rows, cols, levels) {
+  const elevAt = (r, c) => {
+    if (r < 0 || c < 0 || r >= rows || c >= cols) return null;
+    const z = elevations[r * cols + c];
+    return z != null && Number.isFinite(z) ? z : null;
+  };
+  const lines = []; // { level, points: [[r,c],...] } as segments
+
+  for (const level of levels) {
+    for (let r = 0; r < rows - 1; r++) {
+      for (let c = 0; c < cols - 1; c++) {
+        const tl = elevAt(r, c);
+        const tr = elevAt(r, c + 1);
+        const bl = elevAt(r + 1, c);
+        const br = elevAt(r + 1, c + 1);
+        if ([tl, tr, bl, br].some((v) => v == null)) continue;
+        let code = 0;
+        if (tl >= level) code |= 1;
+        if (tr >= level) code |= 2;
+        if (br >= level) code |= 4;
+        if (bl >= level) code |= 8;
+        if (code === 0 || code === 15) continue;
+
+        const lerp = (a, b, va, vb) => {
+          if (Math.abs(vb - va) < 1e-9) return 0.5;
+          return (level - va) / (vb - va);
+        };
+        // Edge midpoints in (row, col) continuous space
+        const top = [r, c + lerp(0, 1, tl, tr)];
+        const bottom = [r + 1, c + lerp(0, 1, bl, br)];
+        const left = [r + lerp(0, 1, tl, bl), c];
+        const right = [r + lerp(0, 1, tr, br), c + 1];
+
+        const segs = {
+          1: [left, top],
+          2: [top, right],
+          3: [left, right],
+          4: [right, bottom],
+          5: [left, top, right, bottom], // saddle — two segs
+          6: [top, bottom],
+          7: [left, bottom],
+          8: [left, bottom],
+          9: [top, bottom],
+          10: [top, right, left, bottom],
+          11: [right, bottom],
+          12: [left, right],
+          13: [top, right],
+          14: [left, top],
+        };
+        const pts = segs[code];
+        if (!pts) continue;
+        for (let k = 0; k + 1 < pts.length; k += 2) {
+          lines.push({ level, a: pts[k], b: pts[k + 1] });
+        }
+      }
+    }
+  }
+  return lines;
+}
+
+/**
+ * Mount Three.js mesh from hrdem_terrain or topology.grid elevations,
+ * with contour lines + catchment / pond / swale zone colouring.
  */
 function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const el = document.getElementById(hostId);
@@ -1942,7 +2097,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     return;
   }
 
-  // Destroy previous
   if (el._eeTerrain) {
     try {
       el._eeTerrain.dispose();
@@ -1961,6 +2115,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const zMax = Math.max(...valid);
   const zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
   const relief = Math.max(zMax - zMin, 0.5);
+  const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
 
   const W = el.clientWidth || 640;
   const H = el.clientHeight || 360;
@@ -1976,7 +2131,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   renderer.domElement.style.height = '100%';
   renderer.domElement.style.display = 'block';
 
-  // Horizontal scale: unit square-ish mesh, aspect from cols/rows
   const aspect = cols / rows;
   const meshW = aspect >= 1 ? 100 : 100 * aspect;
   const meshD = aspect >= 1 ? 100 / aspect : 100;
@@ -1984,17 +2138,96 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const geo = new THREE.PlaneGeometry(meshW, meshD, cols - 1, rows - 1);
   geo.rotateX(-Math.PI / 2);
 
-  let exaggerate = 3;
+  let exaggerate = 3.5;
+  const layersVisible = { contours: true, catchment: true, pond: true, swale: true };
   const positions = geo.attributes.position;
   const colors = new Float32Array(positions.count * 3);
   const colorAttr = new THREE.BufferAttribute(colors, 3);
 
-  const heightColor = (t) => {
-    // low: deep green → mid: gold → high: pale
-    const r = 0.15 + t * 0.55;
-    const g = 0.28 + t * 0.35;
-    const b = 0.18 + t * 0.25;
+  const baseHeightColor = (t) => {
+    const r = 0.18 + t * 0.4;
+    const g = 0.26 + t * 0.28;
+    const b = 0.16 + t * 0.18;
     return [r, g, b];
+  };
+  const zoneTint = {
+    pond: [0.12, 0.55, 0.72],
+    catchment: [0.15, 0.38, 0.58],
+    swale: [0.72, 0.58, 0.18],
+    ridge: [0.55, 0.52, 0.48],
+    neutral: null,
+  };
+
+  /** Grid (r,c) → world XYZ on current mesh heights */
+  const gridToWorld = (r, c, elevOverride) => {
+    // mesh row 0 = south (bottom of PlaneGeometry after rotateX)
+    const mr = rows - 1 - r;
+    const x = -meshW / 2 + (c / Math.max(cols - 1, 1)) * meshW;
+    const z = -meshD / 2 + (mr / Math.max(rows - 1, 1)) * meshD;
+    const elev =
+      elevOverride != null
+        ? elevOverride
+        : elevations[r * cols + c] != null && Number.isFinite(elevations[r * cols + c])
+          ? elevations[r * cols + c]
+          : zMean;
+    const vertScale = (meshW * 0.08 * exaggerate) / relief;
+    const y = (elev - zMean) * vertScale + 0.15; // slight lift for lines
+    return new THREE.Vector3(x, y, z);
+  };
+
+  let contourGroup = new THREE.Group();
+  scene.add(contourGroup);
+
+  const rebuildContours = () => {
+    while (contourGroup.children.length) {
+      const ch = contourGroup.children.pop();
+      ch.geometry?.dispose();
+      ch.material?.dispose();
+    }
+    if (!layersVisible.contours) return;
+
+    const nLevels = Math.min(14, Math.max(6, Math.round(relief / Math.max(relief / 10, 0.5))));
+    const step = relief / nLevels;
+    const levels = [];
+    for (let k = 1; k < nLevels; k++) levels.push(zMin + k * step);
+
+    const segs = extractContourPolylines(elevations, rows, cols, levels);
+    if (!segs.length) return;
+
+    const elevAtRC = (rr, cc) => {
+      const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
+      const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
+      const fr = Math.max(0, Math.min(1, rr - r0));
+      const fc = Math.max(0, Math.min(1, cc - c0));
+      const e00 = elevations[r0 * cols + c0] ?? zMean;
+      const e10 = elevations[r0 * cols + c0 + 1] ?? e00;
+      const e01 = elevations[(r0 + 1) * cols + c0] ?? e00;
+      const e11 = elevations[(r0 + 1) * cols + c0 + 1] ?? e00;
+      return (
+        e00 * (1 - fr) * (1 - fc) +
+        e10 * (1 - fr) * fc +
+        e01 * fr * (1 - fc) +
+        e11 * fr * fc
+      );
+    };
+    const pos = [];
+    for (const s of segs) {
+      const ea = elevAtRC(s.a[0], s.a[1]);
+      const eb = elevAtRC(s.b[0], s.b[1]);
+      const pa = gridToWorld(s.a[0], s.a[1], ea);
+      const pb = gridToWorld(s.b[0], s.b[1], eb);
+      pos.push(pa.x, pa.y, pa.z, pb.x, pb.y, pb.z);
+    }
+    const lg = new THREE.BufferGeometry();
+    lg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    const lm = new THREE.LineBasicMaterial({
+      color: 0xe8e0ff,
+      transparent: true,
+      opacity: 0.75,
+      depthTest: true,
+    });
+    const lines = new THREE.LineSegments(lg, lm);
+    contourGroup.add(lines);
   };
 
   const applyHeights = () => {
@@ -2002,14 +2235,29 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     for (let i = 0; i < positions.count; i++) {
       const row = Math.floor(i / cols);
       const col = i % cols;
-      // PlaneGeometry UV: row 0 is bottom; our grid row 0 is north — flip Y
       const gr = rows - 1 - row;
       const z = elevations[gr * cols + col];
       const elev = z != null && Number.isFinite(z) ? z : zMean;
       const h = (elev - zMean) * vertScale;
       positions.setY(i, h);
+
       const t = (elev - zMin) / relief;
-      const [cr, cg, cb] = heightColor(Math.max(0, Math.min(1, t)));
+      let [cr, cg, cb] = baseHeightColor(Math.max(0, Math.min(1, t)));
+      const zone = zones[gr * cols + col] || 'neutral';
+      const tint = zoneTint[zone];
+      if (tint) {
+        const show =
+          (zone === 'pond' && layersVisible.pond) ||
+          (zone === 'catchment' && layersVisible.catchment) ||
+          (zone === 'swale' && layersVisible.swale) ||
+          zone === 'ridge';
+        if (show) {
+          const w = zone === 'pond' ? 0.72 : zone === 'catchment' ? 0.55 : zone === 'swale' ? 0.62 : 0.35;
+          cr = cr * (1 - w) + tint[0] * w;
+          cg = cg * (1 - w) + tint[1] * w;
+          cb = cb * (1 - w) + tint[2] * w;
+        }
+      }
       colors[i * 3] = cr;
       colors[i * 3 + 1] = cg;
       colors[i * 3 + 2] = cb;
@@ -2017,6 +2265,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     positions.needsUpdate = true;
     colorAttr.needsUpdate = true;
     geo.computeVertexNormals();
+    rebuildContours();
   };
 
   geo.setAttribute('color', colorAttr);
@@ -2026,37 +2275,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     vertexColors: true,
     flatShading: false,
     metalness: 0.05,
-    roughness: 0.85,
+    roughness: 0.82,
     side: THREE.DoubleSide,
   });
   const mesh = new THREE.Mesh(geo, mat);
   scene.add(mesh);
 
-  // Wireframe overlay for structure
   const wire = new THREE.Mesh(
     geo,
     new THREE.MeshBasicMaterial({
       color: 0xc4a35a,
       wireframe: true,
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.08,
     })
   );
   scene.add(wire);
 
-  const ambient = new THREE.AmbientLight(0xb8c4b0, 0.55);
-  scene.add(ambient);
+  scene.add(new THREE.AmbientLight(0xb8c4b0, 0.55));
   const sun = new THREE.DirectionalLight(0xfff2d6, 0.95);
   sun.position.set(40, 80, 20);
   scene.add(sun);
-  const fill = new THREE.DirectionalLight(0x8ab4d4, 0.25);
+  const fill = new THREE.DirectionalLight(0x8ab4d4, 0.28);
   fill.position.set(-30, 20, -40);
   scene.add(fill);
 
-  // Orbit state
-  let dist = 140;
-  let theta = 0.65;
-  let phi = 0.95;
+  let dist = 145;
+  let theta = 0.7;
+  let phi = 0.92;
   const target = new THREE.Vector3(0, 0, 0);
   const updateCam = () => {
     camera.position.set(
@@ -2123,17 +2369,26 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
   if (exagInput) {
     exagInput.addEventListener('input', () => {
-      exaggerate = Number(exagInput.value) || 3;
+      exaggerate = Number(exagInput.value) || 3.5;
       if (exagVal) exagVal.textContent = `${exaggerate}×`;
       applyHeights();
     });
   }
+  document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const layer = cb.getAttribute('data-layer');
+      if (layer && layersVisible[layer] != null) {
+        layersVisible[layer] = !!cb.checked;
+        applyHeights();
+      }
+    });
+  });
   const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      dist = 140;
-      theta = 0.65;
-      phi = 0.95;
+      dist = 145;
+      theta = 0.7;
+      phi = 0.92;
       updateCam();
     });
   }
@@ -2146,6 +2401,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       window.removeEventListener('resize', onResize);
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('wheel', onWheel);
+      while (contourGroup.children.length) {
+        const ch = contourGroup.children.pop();
+        ch.geometry?.dispose();
+        ch.material?.dispose();
+      }
       geo.dispose();
       mat.dispose();
       renderer.dispose();
@@ -2154,15 +2414,16 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     source,
   };
 
-  // Badge
   const badge = document.createElement('div');
   badge.className = 'fine';
   badge.style.cssText =
-    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none';
+    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;max-width:90%';
+  const nPond = zones.filter((z) => z === 'pond').length;
+  const nSwale = zones.filter((z) => z === 'swale').length;
+  const nCatch = zones.filter((z) => z === 'catchment').length;
   badge.textContent =
-    source === 'hrdem'
-      ? `HRDEM DTM · relief ${relief.toFixed(1)} m · ${rows}×${cols}`
-      : `DEM grid · relief ${relief.toFixed(1)} m · ${rows}×${cols}`;
+    (source === 'hrdem' ? 'HRDEM DTM' : 'DEM') +
+    ` · relief ${relief.toFixed(1)} m · pond ${nPond} · catchment ${nCatch} · swale ${nSwale} cells`;
   el.style.position = 'relative';
   el.appendChild(badge);
 }
