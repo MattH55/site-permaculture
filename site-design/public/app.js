@@ -5182,6 +5182,9 @@ function recommendedPlantingsSection(table, intervention) {
       ${leverCards ? `<span class="mono topo-label" style="display:block;margin-top:0.75rem">Levers this plan is expected to improve</span>${leverCards}` : ''}
       <div class="econ-table-wrap" style="margin-top:0.85rem">
         <table class="econ-table plantings-table">
+          <colgroup>
+            <col><col><col><col><col><col><col><col>
+          </colgroup>
           <thead>
             <tr>
               <th>Species</th>
