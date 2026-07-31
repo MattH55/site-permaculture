@@ -37,17 +37,19 @@ const VALUE_LABELS = {
 };
 
 /** Report flow: site → packages (Food/Water/Energy/Shelter) → evidence */
+/**
+ * Simplified IA (value → plan):
+ *  1. Overview — map + headline facts + CTA
+ *  2. Findings — one scroll of site evidence (was 6 pillar tabs)
+ *  3. Your plan — select / email / estimate / inquire
+ * Planting planner stays a side beta offering.
+ * Removed from nav: Water/Energy/Food/Shelter/Site data/Fecundity/Tech notes/Full report
+ * (Full report HTML still built for PDF export only.)
+ */
 const CORE_LABELS = [
   { id: 'overview', label: 'Overview', color: 'var(--h1)' },
-  { id: 'water', label: 'Water', color: 'var(--h3)' },
-  { id: 'energy', label: 'Energy', color: 'var(--h6)' },
-  { id: 'food', label: 'Food', color: 'var(--h5)' },
-  { id: 'shelter', label: 'Shelter', color: 'var(--h4)' },
-  { id: 'topo', label: 'Site data', color: 'var(--h2)' },
-  { id: 'fecundity', label: 'Fecundity', color: 'var(--h6)' },
+  { id: 'findings', label: 'Findings', color: 'var(--h3)' },
   { id: 'services', label: 'Your plan', color: 'var(--h7)' },
-  { id: 'rules', label: 'Tech notes', color: 'var(--h7)' },
-  { id: 'site', label: 'Full report', color: 'var(--h7)' },
 ];
 /** Side-rail add-ons — not part of the core site design package */
 const SIDE_OFFERINGS = [
@@ -296,7 +298,7 @@ function mainPostInit() {
   $('btn-back-map').onclick = showMap;
   $('btn-back-map-top')?.addEventListener('click', showMap);
   $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
-  $('tab-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('tab-site')?.addEventListener('click', () => switchReportPane('overview'));
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
 
@@ -309,8 +311,22 @@ function mainPostInit() {
 }
 
 function switchReportPane(which) {
+  // Legacy pane ids → simplified IA
+  const aliases = {
+    water: 'findings',
+    energy: 'findings',
+    food: 'findings',
+    shelter: 'findings',
+    topo: 'findings',
+    fecundity: 'findings',
+    rules: 'findings',
+    site: 'overview',
+  };
+  which = aliases[which] || which;
+
   const allPanes = SECTION_IDS.map((id) => $(`pane-${id}`)).filter(Boolean);
-  const target = $(`pane-${which}`);
+  // Never show PDF-only full dump in the main UI
+  const target = which === 'site' ? $('pane-overview') : $(`pane-${which}`);
   if (!target && which !== 'plant') return;
 
   allPanes.forEach((p) => {
@@ -1081,7 +1097,9 @@ async function generateReport() {
 
   const ctrl = new AbortController();
   state._reportAbort = ctrl;
-  const timeoutMs = 90_000;
+  // Free-tier hosts + satellite layers can exceed 90s on cold start; soft pipeline
+  // timeouts still return a report, but keep a long client ceiling as safety net.
+  const timeoutMs = 180_000;
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
 
   try {
@@ -1091,7 +1109,8 @@ async function generateReport() {
       signal: ctrl.signal,
       body: JSON.stringify({
         site_name: $('site_name').value.trim(),
-        polygon: { paths: [state.paths] },
+        // paths: closed ring of [lng, lat] — same shape pipeline expects
+        polygon: { paths: state.paths },
       }),
     });
     let data;
@@ -1115,7 +1134,7 @@ async function generateReport() {
     showLoading(false);
     const msg =
       e.name === 'AbortError'
-        ? 'Timed out waiting for land data (try a smaller parcel or again in a moment).'
+        ? 'Timed out waiting for land data after 3 minutes. The first request after idle can be slow — try Generate again (often cached). A smaller parcel also helps.'
         : e.message || 'Could not generate report';
     setError(msg);
   } finally {
@@ -1162,10 +1181,13 @@ function pulseLoading() {
     const sub = document.querySelector('#loading h2');
     if (sub) {
       const sec = Math.round((Date.now() - started) / 1000);
-      sub.textContent =
-        sec < 3
-          ? 'Reading the land…'
-          : `Reading the land… (${sec}s — elevation & Alberta layers)`;
+      if (sec < 5) sub.textContent = 'Reading the land…';
+      else if (sec < 25)
+        sub.textContent = `Reading the land… (${sec}s — elevation & Alberta layers)`;
+      else if (sec < 60)
+        sub.textContent = `Still working… (${sec}s — wetlands, soils, satellite)`;
+      else
+        sub.textContent = `Almost there… (${sec}s — slow layers will skip rather than hang)`;
     }
   }, 700);
 }
@@ -1270,194 +1292,31 @@ function renderReport(r) {
     // keep normalized grid for re-use; drop raw if needed later
   }
 
-  const solarDaily =
-    solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  const ctx = {
+    topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar,
+    landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts,
+    services, recommendations, exportObj, flags,
+  };
 
+  // Hidden linear document for PDF export (not shown in nav)
   $('report').innerHTML = `
-    <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · Alberta map → report</span>
+    <div class="panel">
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
-      <div class="score-row">
-        <span class="score">${allEls.length}</span>
-        <span class="score-of">recommendations for this parcel</span>
-      </div>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
         ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-        ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
-        ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
-        ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
-      ${
-        recommendations?.summary_sentence
-          ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>`
-          : ''
-      }
-
-      <div class="summary-grid">
-        <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
-        <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
-        <div class="stat"><span class="k">Landform</span><strong>${esc((r.terrain?.landform_position || '—').replace(/_/g, ' '))}</strong></div>
-        <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
-        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
-        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${
-          solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'
-        }</strong></div>
-      </div>
-
-      ${mapEmbedSection('full')}
-
-      ${topologySection(topo, a)}
-      ${temperatureSection(r.temperature || a.temperature)}
-      ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-      ${solarSection(solar)}
-      ${landValueSection(landValue)}
-      ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-      ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
-      ${provincialContoursMap(r._provincial_contours, centre)}
-      ${wildlifeSection(r.wildlife || a.wildlife)}
-      ${treeCoverSection(r.tree_cover)}
-      ${accessSection(r.access, city?.name, city?.distance_km)}
-      ${demographicsSection(r.demographics)}
-      ${atsSection(r.ats, r.parcel_address)}
-      ${windSection(r.climate, r, r.wind_rose)}
-      ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
-      ${smallWaterSection(r.small_water)}
-      ${wetAreasSection(r.wet_areas_mapping)}
-      ${biodiversitySection(r.biodiversity)}
-      ${soilSurveySection(r.soil_survey || a.soil_survey)}
-      ${cellServiceSection(centre)}
-
-      ${
-        flags.length
-          ? `<div class="flags">${flags
-              .map(
-                (f) => `
-            <div class="flag" data-severity="${esc(f.severity)}">
-              <strong>${esc(severityLabel(f.severity))}</strong>
-              <p>${esc(f.message)}</p>
-            </div>`
-              )
-              .join('')}</div>`
-          : ''
-      }
-
-      ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
-
-      ${nextStepsSection(r, 'full')}
-
-      <details class="report-block placement-block tech-notes-details">
-        <summary><h2 style="display:inline">Technical placement notes</h2></summary>
-        <p class="fine" style="margin-top:0.5rem">
-          Technique-level detail from site measurements — reference only. Choose what to pursue in <strong>Your plan</strong> above.
-        </p>
-        ${siteDriversSection(siteDrivers)}
-        ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
-        <div class="elements" id="rec-elements">
-          ${
-            els.length
-              ? els.map((e) => recommendationCard(e)).join('')
-              : allEls.length
-                ? '<p class="fine" id="rec-empty-filter">No recommendations in this value filter — try All or another outcome.</p>'
-                : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'
-          }
-        </div>
-      </details>
-
-      <div class="plant-cta panel side-offer-cta-panel" style="margin-top:1.2rem;padding:1rem 1.2rem">
-        <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
-        <h2 style="font-size:1.25rem;margin:0.2rem 0 0.4rem">Planting planner</h2>
-        <p class="fine" style="margin:0 0 0.8rem">
-          A side tool — not part of the core site design package. Early preview of Alberta-suited
-          crops, gross economics, and vendor search links for seeds, saplings, and fertilizer.
-        </p>
-        <button type="button" class="btn btn-secondary" id="btn-goto-plant">Try planting planner (beta) →</button>
-      </div>
-
-      <div class="sources">
-        <span class="mono">Data provenance</span>
-        <ul>
-          ${(r.data_provenance || [])
-            .map(
-              (p) =>
-                `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${
-                  p.source_url
-                    ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>`
-                    : ''
-                }</li>`
-            )
-            .join('')}
-          ${
-            a.elevation?.source
-              ? `<li>DEM samples: ${esc(a.elevation.source)} (${esc(a.elevation.grid)} grid)</li>`
-              : ''
-          }
-          ${
-            a.hrdem?.note
-              ? `<li>HRDEM: ${esc(a.hrdem.note)}</li>`
-              : ''
-          }
-        </ul>
-      </div>
-
-      <div class="json-box">
-        <header>
-          <span class="mono">Schema export</span>
-          <div>
-            <button type="button" class="btn-quiet" id="copy-json">Copy</button>
-            <button type="button" class="btn-quiet" id="dl-json">Download</button>
-          </div>
-        </header>
-        <pre>${esc(JSON.stringify(exportObj, null, 2))}</pre>
-      </div>
-
-      <div class="actions">
-        <button type="button" class="btn" id="btn-again-map">Draw another parcel</button>
-        <a class="btn btn-secondary" href="https://www.expandingedge.ca/services-landing" target="_blank" rel="noopener">Book a design consult</a>
-      </div>
+      ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
-        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment for a parcel.
-        (780) 236-3630 · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a>
-        ${r._meta?.duration_ms ? ` · generated in ${Math.round(r._meta.duration_ms / 100) / 10}s` : ''}
-        ${r._meta?.cache === 'hit' ? ' · cached' : ''}
+        Planning guidance for Expanding Edge — not engineered drawings.
+        (780) 236-3630 · info@expandingedge.ca
       </p>
     </div>`;
 
-  initReportMapEmbed(r);
-
-  // Populate section panes with grouped content
-  renderSectionPanes(r, { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags });
-
-  $('btn-again-map').onclick = () => {
-    clearShape();
-    showMap();
-  };
-  $('btn-goto-plant')?.addEventListener('click', () => switchReportPane('plant'));
-  bindValueFilters(allEls);
-  bindNextStepsInteractions(r);
+  renderSectionPanes(r, ctx);
   renderPlantingPane(r.planting_plan);
-  // Inject per-section PDF download buttons after DOM is populated
   setTimeout(() => injectSectionPdfButtons(), 200);
-  $('copy-json').onclick = async () => {
-    try {
-      await navigator.clipboard.writeText(JSON.stringify(exportObj, null, 2));
-      $('copy-json').textContent = 'Copied';
-      setTimeout(() => ($('copy-json').textContent = 'Copy'), 1200);
-    } catch { /* ignore */ }
-  };
-  $('dl-json').onclick = () => {
-    const blob = new Blob([JSON.stringify(exportObj, null, 2)], {
-      type: 'application/json',
-    });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${(r.site_id || 'site-report').replace(/[^\w.-]+/g, '_')}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  };
 }
 
 /**
@@ -4141,7 +4000,7 @@ function renderPlantingPane(plan) {
         <p class="fine">Nothing scored well for this site profile. Adjust parcel data or succession stage, or stay with the core site design report.</p>
         <button type="button" class="btn btn-secondary" id="btn-back-site">← Back to site design</button>
       </div>`;
-    $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+    $('btn-back-site')?.addEventListener('click', () => switchReportPane('overview'));
     return;
   }
 
@@ -4566,7 +4425,7 @@ function renderPlantingPane(plan) {
       </div>
     </div>`;
 
-  $('btn-back-site')?.addEventListener('click', () => switchReportPane('site'));
+  $('btn-back-site')?.addEventListener('click', () => switchReportPane('overview'));
   $('btn-plant-map')?.addEventListener('click', showMap);
 
   // Goal chips — exclusive economic/balanced, stack ecological
@@ -6810,18 +6669,8 @@ function bindNextStepsInteractions(r) {
       }
       unlockBtn.disabled = true;
       unlockBtn.textContent = 'Unlocking…';
-      try {
-        const res = await fetch('/api/lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            site_name: r.site_name,
-            source: 'full_report_download',
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Could not unlock report');
+
+      const markUnlocked = () => {
         state.reportEmail = email;
         state.reportUnlocked = true;
         document.querySelectorAll('[data-next-steps]').forEach((el) => {
@@ -6844,7 +6693,42 @@ function bindNextStepsInteractions(r) {
             if (!inp.value) inp.value = email;
           });
         });
+      };
+
+      try {
+        // Cap wait so a slow host never feels like a hung "sign-in"
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 4000);
+        const res = await fetch('/api/lead', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email,
+            site_name: r.site_name,
+            source: 'full_report_download',
+          }),
+          signal: controller.signal,
+        });
+        clearTimeout(timer);
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Could not unlock report');
+        markUnlocked();
       } catch (e) {
+        // Still unlock locally if the request timed out — email is for lead capture only
+        if (e?.name === 'AbortError') {
+          markUnlocked();
+          // Best-effort background retry without blocking UI
+          fetch('/api/lead', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              email,
+              site_name: r.site_name,
+              source: 'full_report_download_retry',
+            }),
+          }).catch(() => {});
+          return;
+        }
         unlockBtn.disabled = false;
         unlockBtn.textContent = 'Unlock full report';
         if (unlockStatus) {
@@ -7639,155 +7523,184 @@ function pillarPackageSlice(sp, category) {
   return servicePackagesSection(slim);
 }
 
-function renderSectionPanes(r, ctx) {
-  const { topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar, landValue, hardiness, flood, zoning, siteDrivers, allEls, els, valueCounts, services, recommendations, exportObj, flags } = ctx;
-  const b = (html, el) => { if (el) el.innerHTML = html; };
-  const sp = r.service_packages;
-  const pkgCount = sp?.packages?.length || 0;
+/**
+ * One scrolled findings document — de-duplicated evidence for the landowner.
+ * Skips sales package cards, extra contour maps, and niche demos.
+ */
+function buildFindingsHtml(r, ctx, opts = {}) {
+  const {
+    topo, a, px, water, city, settlement, crime, nearestCrimes, centre, solar,
+    landValue, hardiness, flood, zoning, allEls, els, valueCounts, flags,
+  } = ctx;
+  const forPdf = !!opts.forPdf;
 
-  // Overview: value first — insights only, plan CTA at end
-  const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
-  const menuCount = r.action_menu?.items?.length || pkgCount;
-  b(`
-    <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge · your site insights</span>
-      <h1>${esc(r.site_name || 'Your parcel')}</h1>
-      <div class="score-row">
-        <span class="score">${allEls.length || menuCount}</span>
-        <span class="score-of">site signals for this parcel</span>
+  const topRecs = (els || allEls || []).slice(0, 6);
+  const recBlock =
+    topRecs.length && !forPdf
+      ? `
+    <section class="report-block">
+      <h2>What this site suggests</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Highest-priority placement ideas. Full choices and pricing are in <strong>Your plan</strong>.
+      </p>
+      <div class="elements">
+        ${topRecs.map((e) => recommendationCard(e)).join('')}
       </div>
+    </section>`
+      : topRecs.length
+        ? `<section class="report-block"><h2>What this site suggests</h2>
+            <ul>${topRecs.map((e) => `<li><strong>${esc(e.element_type || e.technique || 'Item')}</strong> — ${esc(e.condition_basis || e.value_headline || '')}</li>`).join('')}</ul>
+          </section>`
+        : '';
+
+  return `
+    ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
+
+    ${recBlock}
+
+    <div class="findings-anchor mono fine" id="findings-water">Water</div>
+    ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
+    ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
+    ${smallWaterSection(r.small_water)}
+    ${wetAreasSection(r.wet_areas_mapping)}
+
+    <div class="findings-anchor mono fine" id="findings-climate">Climate &amp; energy</div>
+    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
+    ${temperatureSection(r.temperature || a.temperature)}
+    ${windSection(r.climate, r, r.wind_rose)}
+    ${solarSection(solar)}
+
+    <div class="findings-anchor mono fine" id="findings-land">Land &amp; soils</div>
+    ${topologySection(topo, a)}
+    ${soilSurveySection(r.soil_survey || a.soil_survey)}
+    ${landValueSection(landValue)}
+    ${treeCoverSection(r.tree_cover)}
+
+    <div class="findings-anchor mono fine" id="findings-food">Food &amp; fecundity</div>
+    ${fecunditySection(r.fecundity)}
+    ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
+
+    <div class="findings-anchor mono fine" id="findings-context">Context</div>
+    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
+    ${accessSection(r.access, city?.name, city?.distance_km)}
+    ${atsSection(r.ats, r.parcel_address)}
+    ${wildlifeSection(r.wildlife || a.wildlife)}
+    ${biodiversitySection(r.biodiversity)}
+
+    ${
+      !forPdf
+        ? `<details class="report-block tech-notes-details">
+            <summary><strong>Optional detail</strong> — demographics, cell coverage, placement drivers</summary>
+            ${demographicsSection(r.demographics)}
+            ${cellServiceSection(centre)}
+            ${siteDriversSection(ctx.siteDrivers)}
+            ${
+              (allEls || []).length
+                ? `<div class="elements" style="margin-top:0.75rem">${(allEls || [])
+                    .slice(0, 12)
+                    .map((e) => recommendationCard(e))
+                    .join('')}</div>`
+                : ''
+            }
+          </details>`
+        : ''
+    }
+  `;
+}
+
+function renderSectionPanes(r, ctx) {
+  const {
+    topo, a, px, water, city, settlement, centre, solar, landValue,
+    hardiness, recommendations, flags, allEls,
+  } = ctx;
+  const b = (html, el) => {
+    if (el) el.innerHTML = html;
+  };
+
+  const solarDaily = solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt;
+  const menuN = r.action_menu?.default_selected_ids?.length || r.action_menu?.items?.length || 0;
+
+  // 1) Overview — map + facts + one path forward
+  b(
+    `
+    <div class="panel fade">
+      <span class="mono eyebrow">Your site</span>
+      <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <p class="lede">
         ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
         ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
         ${r.climate?.plant_hardiness_zone ? ` · zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-        ${r.hydrology?.watershed ? ` · ${esc(r.hydrology.watershed)}` : ''}
-        ${a.hrdem?.available ? ' · HRDEM LiDAR available' : ''}
         ${solar?.viability?.band ? ` · solar ${esc(solar.viability.band)}` : ''}
       </p>
       ${recommendations?.summary_sentence ? `<p class="rec-summary">${esc(recommendations.summary_sentence)}</p>` : ''}
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Relief</span><strong>${fmt(topo.relief_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
-        <div class="stat"><span class="k">Aspect</span><strong>${esc(r.terrain?.aspect || '—')}</strong></div>
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
-        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
-        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
         <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>
+        <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
       </div>
       ${mapEmbedSection('overview')}
-      ${flags.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
-      <div class="next-steps-cta panel" style="margin-top:1.1rem;padding:1rem 1.15rem">
-        <span class="mono eyebrow">When you’re ready</span>
-        <h2 style="font-size:1.2rem;margin:0.2rem 0 0.4rem">Build your plan</h2>
-        <p class="fine" style="margin:0 0 0.75rem">
-          Explore water, food, energy, and site data free. At the end, choose plantings, shelterbelts,
-          and water options — then download your full report and get an itemized estimate.
-        </p>
-        <button type="button" class="btn" data-open-your-plan>Choose interventions →</button>
+      ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
+      <div class="overview-actions" style="display:flex;flex-wrap:wrap;gap:0.65rem;margin-top:1.1rem">
+        <button type="button" class="btn btn-secondary" data-open-findings>Read findings</button>
+        <button type="button" class="btn" data-open-your-plan>Build your plan${menuN ? ` (${menuN})` : ''} →</button>
       </div>
+      <p class="fine" style="margin-top:0.75rem">
+        Free analysis first. When you’re ready, choose plantings and water options, download the report, and inquire.
+      </p>
     </div>
-  `, $('report-overview'));
+  `,
+    $('report-overview')
+  );
+  $('report-overview')?.querySelector('[data-open-findings]')?.addEventListener('click', () => switchReportPane('findings'));
   $('report-overview')?.querySelector('[data-open-your-plan]')?.addEventListener('click', () => switchReportPane('services'));
 
-  // Your plan: harmonized selectable interventions + email report + estimate + inquiry
-  b(`
+  // 2) Findings — single evidence scroll (no sales packages)
+  b(
+    `
+    <div class="panel fade">
+      <span class="mono eyebrow">Evidence</span>
+      <h1>Site findings</h1>
+      <p class="fine" style="margin-top:-0.25rem">
+        Water, climate, soils, and food signals for this parcel — one page.
+        When ready, open <strong>Your plan</strong> to choose work and get a price range.
+      </p>
+      <p class="findings-jump fine">
+        <a href="#findings-water">Water</a> ·
+        <a href="#findings-climate">Climate</a> ·
+        <a href="#findings-land">Land</a> ·
+        <a href="#findings-food">Food</a> ·
+        <a href="#findings-context">Context</a>
+      </p>
+      ${buildFindingsHtml(r, ctx)}
+      <div class="next-steps-cta panel" style="margin-top:1.25rem;padding:1rem 1.15rem">
+        <h2 style="font-size:1.15rem;margin:0 0 0.4rem">Next: build your plan</h2>
+        <p class="fine" style="margin:0 0 0.75rem">Select interventions, unlock the PDF with email, and send an inquiry.</p>
+        <button type="button" class="btn" data-open-your-plan-findings>Your plan →</button>
+      </div>
+    </div>
+  `,
+    $('report-findings')
+  );
+  $('report-findings')
+    ?.querySelector('[data-open-your-plan-findings]')
+    ?.addEventListener('click', () => switchReportPane('services'));
+
+  // 3) Your plan — only conversion surface
+  b(
+    `
     <div class="panel fade">
       ${nextStepsSection(r, 'services')}
     </div>
-  `, $('report-services'));
+  `,
+    $('report-services')
+  );
   setTimeout(() => bindNextStepsInteractions(r), 50);
 
-  // Water pillar evidence + water packages
-  b(`
-    ${pillarPackageSlice(sp, 'water')}
-    ${wellDepthSection(r.predicted_well_depth || a.well_depth, centre)}
-    ${wetlandsSection(r.wetlands || r.fecundity?.wetlands)}
-    ${smallWaterSection(r.small_water)}
-    ${wetAreasSection(r.wet_areas_mapping)}
-    ${provincialContoursMap(r._provincial_contours, centre)}
-  `, $('report-water'));
-
-  // Energy pillar
-  b(`
-    ${pillarPackageSlice(sp, 'energy')}
-    ${solarSection(solar)}
-  `, $('report-energy'));
-
-  // Food pillar — includes Recommended Plantings summary; full planner is beta side offering
-  b(`
-    ${pillarPackageSlice(sp, 'food')}
-    ${soilSurveySection(r.soil_survey || a.soil_survey)}
-    ${fecunditySection(r.fecundity)}
-    ${recommendedPlantingsSection(r.recommended_plantings || r.planting_plan, r.planting_intervention_value)}
-    <div class="plant-cta panel side-offer-cta-panel" style="margin-top:1.1rem;padding:0.95rem 1.1rem">
-      <span class="mono eyebrow">Separate offering · <span class="badge beta">Beta</span></span>
-      <h2 style="font-size:1.15rem;margin:0.15rem 0 0.35rem">Planting planner</h2>
-      <p class="fine" style="margin:0 0 0.7rem">
-        Re-score goals (max food, max nitrogen, lowest cost…) and economics live — not part of the core
-        Food package. Open from the side rail for the full interactive list.
-      </p>
-      <button type="button" class="btn btn-secondary" data-open-plant-beta>Open planting planner (beta) →</button>
-    </div>
-  `, $('report-food'));
-  $('report-food')?.querySelector('[data-open-plant-beta]')?.addEventListener('click', () => switchReportPane('plant'));
-
-  // Shelter pillar
-  b(`
-    ${pillarPackageSlice(sp, 'shelter')}
-    ${windSection(r.climate, r, r.wind_rose)}
-    ${proximitySection(px, water, city, settlement, crime, nearestCrimes, centre)}
-    ${accessSection(r.access, city?.name, city?.distance_km)}
-  `, $('report-shelter'));
-
-  // Site data (topo + climate + access remainder)
-  b(`
-    ${topologySection(topo, a)}
-    ${temperatureSection(r.temperature || a.temperature)}
-    ${hardinessFloodZoningSection(hardiness, flood, zoning, r)}
-    ${landValueSection(landValue)}
-    ${demographicsSection(r.demographics)}
-    ${atsSection(r.ats, r.parcel_address)}
-    ${wildlifeSection(r.wildlife || a.wildlife)}
-    ${biodiversitySection(r.biodiversity)}
-    ${treeCoverSection(r.tree_cover)}
-    ${cellServiceSection(centre)}
-  `, $('report-topo'));
-
-  // Technical placement notes (reference) — conversion lives in Your plan
-  b(`
-    <section class="report-block placement-block">
-      <h2>Technical placement notes</h2>
-      <p class="fine" style="margin-top:-0.3rem">
-        Technique-level if→then detail. Choose what to pursue in <strong>Your plan</strong>.
-      </p>
-      ${siteDriversSection(siteDrivers)}
-      ${valueFilterBar(valueCounts, state.valueFilter, allEls.length)}
-      <div class="elements" id="rec-elements-rules">
-        ${els.length
-          ? els.map((e) => recommendationCard(e)).join('')
-          : allEls.length
-            ? '<p class="fine">No recommendations in this value filter — try All or another outcome.</p>'
-            : '<p class="fine">No recommendations matched — try a larger parcel or different ground.</p>'}
-      </div>
-    </section>
-    <p class="fine" style="margin-top:1rem">
-      <button type="button" class="btn" data-open-your-plan-rules>Build your plan →</button>
-    </p>
-    <div class="sources" style="margin-top:2rem">
-      <span class="mono">Data provenance</span>
-      <ul>
-        ${(r.data_provenance || []).map((p) => `<li><strong>${esc(p.field)}</strong> — ${esc(p.source_name)}${p.source_url ? ` · <a href="${esc(p.source_url)}" target="_blank" rel="noopener">source</a>` : ''}</li>`).join('')}
-      </ul>
-    </div>
-  `, $('report-rules'));
-  $('report-rules')?.querySelector('[data-open-your-plan-rules]')?.addEventListener('click', () => switchReportPane('services'));
-
-  // Fecundity: fecundity assessment
-  b(fecunditySection(r.fecundity), $('report-fecundity'));
-
-  // Init map embed in overview pane
   initReportMapEmbed(r);
+  if (ctx.allEls) bindValueFilters(ctx.allEls);
 }
 
 function paintCore(done) {

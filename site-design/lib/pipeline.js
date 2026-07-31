@@ -56,6 +56,33 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 const CACHE_MAX = 200;
 
 /**
+ * Soft timeout so one hung Alberta/PC/NASA call cannot kill the whole report.
+ * Resolves to fallback on timeout or rejection (never rejects).
+ */
+function withTimeout(promise, ms, fallback, label = 'layer') {
+  let timer;
+  const timed = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[pipeline] ${label} soft-timeout ${ms}ms`);
+      resolve(typeof fallback === 'function' ? fallback(new Error('timeout')) : fallback);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise)
+      .then((v) => {
+        clearTimeout(timer);
+        return v;
+      })
+      .catch((e) => {
+        clearTimeout(timer);
+        console.warn(`[pipeline] ${label} failed:`, e?.message || e);
+        return typeof fallback === 'function' ? fallback(e) : fallback;
+      }),
+    timed,
+  ]);
+}
+
+/**
  * @param {{ polygon: object, site_name?: string, force?: boolean, plant_goals?: string[] }} input
  */
 export async function generateSiteReport(input = {}) {
@@ -71,41 +98,69 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] = await Promise.all([
-    gatherSiteLayers({
-      ring,
-      bbox,
-      site_name: input.site_name,
-    }),
-    gatherProximity(centre, bbox),
-    fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }).catch(
-      (e) => ({
-        available: false,
-        nearest: [],
-        error: e.message,
-      })
-    ),
-    queryHardiness(centre).catch((e) => ({
-      available: false,
-      hardiness_zone: null,
-      error: e.message,
-    })),
-    queryFloodHazard(centre, bbox).catch((e) => ({
-      available: false,
-      flood_hazard_class: 'unknown',
-      flood_risk_zone: false,
-      error: e.message,
-    })),
-    assessTemperature(centre).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
-    assessWildlife(bbox, centre).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
-  ]);
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] =
+    await Promise.all([
+      // Core elevation/layers — allow longer; still soft-capped
+      withTimeout(
+        gatherSiteLayers({ ring, bbox, site_name: input.site_name }),
+        35_000,
+        null,
+        'site_layers'
+      ),
+      withTimeout(
+        gatherProximity(centre, bbox),
+        15_000,
+        {
+          nearest_city: null,
+          nearest_settlement: null,
+          nearest_water_source: null,
+          amenities: [],
+          crime_risk: null,
+        },
+        'proximity'
+      ),
+      withTimeout(
+        fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }),
+        10_000,
+        { available: false, nearest: [], error: 'timeout' },
+        'crimes'
+      ),
+      withTimeout(
+        queryHardiness(centre),
+        10_000,
+        { available: false, hardiness_zone: null, error: 'timeout' },
+        'hardiness'
+      ),
+      withTimeout(
+        queryFloodHazard(centre, bbox),
+        10_000,
+        {
+          available: false,
+          flood_hazard_class: 'unknown',
+          flood_risk_zone: false,
+          error: 'timeout',
+        },
+        'flood'
+      ),
+      withTimeout(
+        assessTemperature(centre),
+        12_000,
+        { available: false, error: 'timeout' },
+        'temperature'
+      ),
+      withTimeout(
+        assessWildlife(bbox, centre),
+        12_000,
+        { available: false, error: 'timeout' },
+        'wildlife'
+      ),
+    ]);
 
+  if (!layers?.elevation && !layers?.terrain) {
+    throw new Error(
+      'Could not load elevation / site layers in time. Try Generate again in a moment (cold starts are slower).'
+    );
+  }
   const areaHa = polygonAreaHa(ring);
   const t = layers.terrain;
   const soils = layers.soils || {};
@@ -169,38 +224,46 @@ export async function generateSiteReport(input = {}) {
     nearest_name: nearestName || layers.preset?.municipality,
   });
 
-  // Land value — informational only (does NOT feed placement rules)
-  const land_value = await assessLandValue(centre, {
-    footprint_ha: Math.round(areaHa * 1000) / 1000,
-    nearest_city: proximity.nearest_city,
-    nearest_settlement: proximity.nearest_settlement,
-    cli_class: soils.cli_class || null,
-  }).catch((e) => ({
-    land_value_source: 'none',
-    error: e.message,
-    disclaimer:
-      'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
-  }));
-
-  // Zoning portal lookup (designation not auto-assigned — municipal bylaws)
+  // Zoning is local/sync. Land value, Sturgeon, soil survey run in parallel with soft caps.
   const zoning = resolveZoningContext(centre, {
     nearest_city: proximity.nearest_city,
     nearest_settlement: proximity.nearest_settlement,
     municipality: layers.preset?.municipality,
   });
 
-  // Sturgeon County ArcGIS Property Viewer lookup (parcel, land use, neighbourhood)
-  const sturgeonCounty = await querySturgeonCounty(centre.latitude, centre.longitude)
-    .catch(() => ({ available: false, error: 'Lookup failed' }));
+  const [land_value, sturgeonCounty, soilSurvey] = await Promise.all([
+    withTimeout(
+      assessLandValue(centre, {
+        footprint_ha: Math.round(areaHa * 1000) / 1000,
+        nearest_city: proximity.nearest_city,
+        nearest_settlement: proximity.nearest_settlement,
+        cli_class: soils.cli_class || null,
+      }),
+      12_000,
+      {
+        land_value_source: 'none',
+        error: 'timeout',
+        disclaimer:
+          'Land value assessment timed out. Planning context only — not an appraisal.',
+      },
+      'land_value'
+    ),
+    withTimeout(
+      querySturgeonCounty(centre.latitude, centre.longitude),
+      8_000,
+      { available: false, error: 'timeout' },
+      'sturgeon_county'
+    ),
+    withTimeout(
+      querySoilSurvey(centre.latitude, centre.longitude, { bbox, samples: 9 }),
+      12_000,
+      { available: false, error: 'Soil survey timed out' },
+      'soil_survey'
+    ),
+  ]);
   const landUseInterpretation = sturgeonCounty?.land_use
     ? interpretLandUse(sturgeonCounty.land_use)
     : null;
-
-  // AGRASID/AGRASIS soil survey + SoilGrids sample grid mapped across parcel
-  const soilSurvey = await querySoilSurvey(centre.latitude, centre.longitude, {
-    bbox,
-    samples: 9,
-  }).catch(() => ({ available: false, error: 'Soil survey lookup failed' }));
 
   // Prefer live NRCan hardiness + frost table over Alberta preset alone
   const hardinessZone =
@@ -329,133 +392,168 @@ export async function generateSiteReport(input = {}) {
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
 
-    // Await road access so the report does not ship with empty "Loading..." roads
-    let access = await assessAccess(centre, nearestCityDist).catch((e) => ({
-      available: true,
-      nearest_road: {
-        available: false,
-        error: e.message,
-        note: `Road lookup failed (${e.message})`,
-      },
-      trip_costs_to_city: nearestCityDist
-        ? undefined // filled below if needed
-        : [],
-      nearest_city_distance_km: nearestCityDist,
-      gas_price_cad_l: 1.45,
-      methodology: 'Access lookup failed',
-    }));
-    if (access && !access.trip_costs_to_city && nearestCityDist) {
+  // Access + heavy remote layers in parallel, each soft-capped so free-tier
+  // cold starts still return a usable report within the client timeout.
+  const accessFallback = {
+    available: true,
+    nearest_road: {
+      available: false,
+      error: 'timeout',
+      note: 'Road lookup timed out',
+    },
+    trip_costs_to_city: [],
+    nearest_city_distance_km: nearestCityDist,
+    gas_price_cad_l: 1.45,
+    methodology: 'Access lookup timed out',
+  };
+
+  const satFallback = (e) => ({
+    available: false,
+    fallbacks: [`satellite: ${e?.message || 'timeout'}`],
+    claims: [],
+  });
+  const wetFallback = (e) => ({
+    available: false,
+    has_wetland_on_site: !!wetlands.present,
+    wetland_types: wetlands.wetland_class ? [String(wetlands.wetland_class)] : [],
+    error: e?.message || 'timeout',
+    claims: [],
+  });
+  const windFallback = (e) => ({
+    available: false,
+    error: e?.message || 'timeout',
+    source: 'NASA POWER',
+  });
+
+  const [accessRaw, provincialContours, satellite, wetlandsDetail, windRose] =
+    await Promise.all([
+      withTimeout(
+        assessAccess(centre, nearestCityDist),
+        12_000,
+        accessFallback,
+        'access'
+      ),
+      withTimeout(
+        queryProvincialContours(bbox, { limit: 400 }),
+        10_000,
+        { features: [] },
+        'provincial_contours'
+      ),
+      withTimeout(
+        fetchSatelliteIndices(
+          { type: 'Polygon', coordinates: [ring] },
+          { buffer_m: 75 }
+        ),
+        22_000,
+        satFallback,
+        'satellite'
+      ),
+      withTimeout(
+        fetchWetlands(bbox, { buffer_m: 200, centre }),
+        15_000,
+        wetFallback,
+        'wetlands_detail'
+      ),
+      withTimeout(
+        getWindRose(centre, { years: 2 }),
+        15_000,
+        windFallback,
+        'wind_rose'
+      ),
+    ]);
+
+  let access = accessRaw || accessFallback;
+  if (access && !access.trip_costs_to_city && nearestCityDist) {
+    try {
       const { tripCostsForDistance } = await import('./access.js');
       access.trip_costs_to_city = tripCostsForDistance(nearestCityDist);
+    } catch {
+      /* ignore */
     }
-    // Fallback: Sturgeon County parcel address → road name
-    if (
-      (!access?.nearest_road?.available || !access?.nearest_road?.named) &&
-      sturgeonCounty?.parcel?.full_address
-    ) {
-      const addr = sturgeonCounty.parcel.full_address;
-      const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
-      const roadName = roadMatch ? roadMatch[1].trim() : null;
-      if (roadName) {
-        access = {
-          ...access,
+  }
+  // Fallback: Sturgeon County parcel address → road name
+  if (
+    (!access?.nearest_road?.available || !access?.nearest_road?.named) &&
+    sturgeonCounty?.parcel?.full_address
+  ) {
+    const addr = sturgeonCounty.parcel.full_address;
+    const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
+    const roadName = roadMatch ? roadMatch[1].trim() : null;
+    if (roadName) {
+      access = {
+        ...access,
+        available: true,
+        nearest_road: {
+          name: roadName,
+          type: access?.nearest_road?.type || 'road',
+          distance_m: access?.nearest_road?.distance_m ?? null,
           available: true,
-          nearest_road: {
-            name: roadName,
-            type: access?.nearest_road?.type || 'road',
-            distance_m: access?.nearest_road?.distance_m ?? null,
-            available: true,
-            named: true,
-            source: access?.nearest_road?.available
-              ? `${access.nearest_road.source || 'OSM'} + Sturgeon County address`
-              : 'Sturgeon County parcel address',
-          },
-          methodology: (access.methodology || '') + ' + Sturgeon County parcel address fallback',
-        };
-      }
+          named: true,
+          source: access?.nearest_road?.available
+            ? `${access.nearest_road.source || 'OSM'} + Sturgeon County address`
+            : 'Sturgeon County parcel address',
+        },
+        methodology:
+          (access.methodology || '') + ' + Sturgeon County parcel address fallback',
+      };
     }
-    record.access = access;
+  }
+  record.access = access;
 
-    assessBiodiversity(centre).then((bio) => {
+  assessBiodiversity(centre)
+    .then((bio) => {
       record.biodiversity = bio;
-    }).catch(() => {});
+    })
+    .catch(() => {});
 
-    // NASA POWER wind rose (awaited below with other late enrichments)
-    record.demographics = demographicsHeuristic(centre);
-    record.ats = latLngToAts(centre);
-    record.parcel_address = {
-      ats: record.ats,
-      centroid: { lat: centre.latitude, lng: centre.longitude },
-      nearest_road: access?.nearest_road || null,
-      locality: proximity.nearest_settlement?.name || proximity.nearest_city?.name || null,
-    };
+  record.demographics = demographicsHeuristic(centre);
+  record.ats = latLngToAts(centre);
+  record.parcel_address = {
+    ats: record.ats,
+    centroid: { lat: centre.latitude, lng: centre.longitude },
+    nearest_road: access?.nearest_road || null,
+    locality:
+      proximity.nearest_settlement?.name || proximity.nearest_city?.name || null,
+  };
 
-    const treeCover = estimateTreeCover(layers, proximity);
+  const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
-  record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
-
-  // Provincial contours — await for report, then attach to record
-  const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
+  record.wet_areas_mapping = {
+    depth_to_water: depthToWater,
+    predicted_streams: predictedStreams,
+  };
   record._provincial_contours = provincialContours;
 
-  // Satellite vegetation indices (Sentinel-2) + regional SOC (SoilGrids)
-  // + NASA POWER wind rose. Tier 1 screening — never precise SOC claims.
-  const [satellite, wetlandsDetail, windRose] = await Promise.all([
-    fetchSatelliteIndices(
+  // Small water — expensive Planetary Computer stack; soft-cap hard
+  const smallWater = await withTimeout(
+    fetchSmallWater(
+      { type: 'Polygon', coordinates: [ring] },
       {
-        type: 'Polygon',
-        coordinates: [ring],
-      },
-      { buffer_m: 75 }
-    ).catch((e) => ({
-      available: false,
-      fallbacks: [`satellite fetch failed: ${e.message}`],
-      claims: [],
-    })),
-    // AMWI polygons + area/type for fecundity (first-class wetlands layer)
-    fetchWetlands(bbox, {
-      buffer_m: 200,
-      centre,
-    }).catch((e) => ({
-      available: false,
-      has_wetland_on_site: !!wetlands.present,
-      wetland_types: wetlands.wetland_class ? [String(wetlands.wetland_class)] : [],
-      error: e.message,
-      claims: [],
-    })),
-    getWindRose(centre, { years: 2 }).catch((e) => ({
-      available: false,
-      error: e.message,
-      source: 'NASA POWER',
-    })),
-  ]);
-
-  // Small water: inventory + S2 NDWI/MNDWI + S1 + DEM TWI proxy
-  // Runs after wetlands so inventory can be reused; elev grid for TWI
-  const smallWater = await fetchSmallWater(
-    { type: 'Polygon', coordinates: [ring] },
+        bufferMeters: 100,
+        minPixels: 2,
+        ndwiThreshold: 0.15,
+        mndwiThreshold: 0.1,
+        includeTWI: true,
+        wetlands: wetlandsDetail,
+        centre,
+        elevations: layers.elevation?.elevations,
+        elevRows: layers.elevation?.rows,
+        elevCols: layers.elevation?.cols,
+        elevBbox: bbox,
+      }
+    ),
+    20_000,
     {
-      bufferMeters: 100,
-      minPixels: 2,
-      ndwiThreshold: 0.15,
-      mndwiThreshold: 0.1,
-      includeTWI: true,
-      wetlands: wetlandsDetail,
-      centre,
-      elevations: layers.elevation?.elevations,
-      elevRows: layers.elevation?.rows,
-      elevCols: layers.elevation?.cols,
-      elevBbox: bbox,
-    }
-  ).catch((e) => ({
-    available: false,
-    summary: { has_any_water: false },
-    open_water_features: [],
-    possible_small_water_or_seeps: [],
-    fallbacks: [`small water failed: ${e.message}`],
-    claims: [],
-  }));
+      available: false,
+      summary: { has_any_water: false },
+      open_water_features: [],
+      possible_small_water_or_seeps: [],
+      fallbacks: ['small water timed out — using inventory-only screening'],
+      claims: [],
+    },
+    'small_water'
+  );
 
   const satPatch = toFecundityPatch(satellite);
   const wetPatch = toFecundityWetlandPatch(wetlandsDetail);
