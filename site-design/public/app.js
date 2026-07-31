@@ -1350,11 +1350,14 @@ function renderReport(r) {
   const services =
     recommendations?.related_services || collectServicesClient(allEls);
 
-  // Slim export for JSON (drop dense elevation grids if huge — keep topology summary)
-  const exportObj = JSON.parse(JSON.stringify(r));
-  delete exportObj._meta;
-  if (exportObj.topology?.grid?.elevations_m) {
-    // keep normalized grid for re-use; drop raw if needed later
+  // Slim export for JSON — never let stringify crash the UI
+  let exportObj = r;
+  try {
+    exportObj = JSON.parse(JSON.stringify(r));
+    delete exportObj._meta;
+  } catch (e) {
+    console.warn('exportObj clone failed', e);
+    exportObj = { site_name: r.site_name, error: 'export clone failed' };
   }
 
   const ctx = {
@@ -1364,7 +1367,10 @@ function renderReport(r) {
   };
 
   // Hidden linear document for PDF export (not shown in nav)
-  $('report').innerHTML = `
+  try {
+    const reportEl = $('report');
+    if (reportEl) {
+      reportEl.innerHTML = `
     <div class="panel">
       <h1>${esc(r.site_name || 'Your parcel')}</h1>
       <p class="lede">
@@ -1378,10 +1384,53 @@ function renderReport(r) {
         (780) 236-3630 · info@expandingedge.ca
       </p>
     </div>`;
+    }
+  } catch (e) {
+    console.warn('PDF shell render failed', e);
+  }
 
   renderSectionPanes(r, ctx);
-  renderPlantingPane(r.planting_plan);
-  setTimeout(() => injectSectionPdfButtons(), 200);
+  try {
+    renderPlantingPane(r.planting_plan);
+  } catch (e) {
+    console.warn('planting pane render failed', e);
+  }
+  setTimeout(() => {
+    try {
+      injectSectionPdfButtons();
+    } catch (e) {
+      console.warn('pdf buttons failed', e);
+    }
+  }, 200);
+}
+
+/** Tear down a Leaflet map on a container without throwing parentNode errors. */
+function destroyLeafletOn(el) {
+  if (!el) return;
+  try {
+    if (el._eeLeafletMap) {
+      el._eeLeafletMap.off();
+      el._eeLeafletMap.remove();
+    }
+  } catch (e) {
+    console.warn('leaflet remove', e);
+  }
+  el._eeLeafletMap = null;
+  // Leaflet stamps _leaflet_id on the container; clear so L.map can re-init
+  try {
+    if (el._leaflet_id) {
+      // eslint-disable-next-line no-underscore-dangle
+      delete el._leaflet_id;
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    el.innerHTML = '';
+  } catch {
+    /* ignore */
+  }
+  el.dataset.leafletReady = '0';
 }
 
 /**
@@ -1465,76 +1514,85 @@ function getParcelLatLngsFromReport(r) {
  */
 function mountUnifiedPropertyMap(el, latlngs, report) {
   if (!el || typeof L === 'undefined' || !latlngs?.length) return;
-  if (el._leaflet_id && el._eeLeafletMap) {
-    try {
-      el._eeLeafletMap.remove();
-    } catch { /* ignore */ }
-    el._eeLeafletMap = null;
-  }
-  el.innerHTML = '';
-  el.classList.add('report-map', 'report-map-unified');
-  if (!el.style.height) el.style.minHeight = '380px';
-
-  let map;
   try {
-    map = L.map(el, {
-      zoomControl: true,
-      attributionControl: true,
-      scrollWheelZoom: true,
-    });
-  } catch (err) {
-    console.warn('Parcel map init failed', err);
-    el.innerHTML = '<p class="fine">Map could not load — try reopening this section.</p>';
-    return;
-  }
-  el._eeLeafletMap = map;
+    destroyLeafletOn(el);
+    el.classList.add('report-map', 'report-map-unified');
+    if (!el.style.height) el.style.minHeight = '380px';
 
-  const imagery = L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-    {
-      attribution:
-        'Esri · Alberta contours (Titan / Altalis map 118 family) · HRDEM (NRCan)',
-      maxZoom: 20,
+    let map;
+    try {
+      map = L.map(el, {
+        zoomControl: true,
+        attributionControl: true,
+        scrollWheelZoom: true,
+      });
+    } catch (err) {
+      console.warn('Parcel map init failed', err);
+      el.innerHTML = '<p class="fine">Map could not load — try reopening this section.</p>';
+      return;
     }
-  ).addTo(map);
+    el._eeLeafletMap = map;
+    el.dataset.leafletReady = '1';
 
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-    { opacity: 0.5, maxZoom: 20 }
-  ).addTo(map);
+    const imagery = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      {
+        attribution:
+          'Esri · Alberta contours (Titan / Altalis map 118 family) · HRDEM (NRCan)',
+        maxZoom: 20,
+      }
+    ).addTo(map);
 
-  const overlays = {};
-  const hrdemLayer = addHrdemWmsToMap(map, report);
-  if (hrdemLayer) overlays['HRDEM hillshade'] = hrdemLayer;
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
+      { opacity: 0.5, maxZoom: 20 }
+    ).addTo(map);
 
-  const parcelLayer = L.polygon(latlngs, {
-    color: '#a8801f',
-    fillColor: '#a8801f',
-    fillOpacity: 0.12,
-    weight: 3,
-  }).addTo(map);
-  parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
-  overlays['Your parcel'] = parcelLayer;
+    const overlays = {};
+    try {
+      const hrdemLayer = addHrdemWmsToMap(map, report);
+      if (hrdemLayer) overlays['HRDEM hillshade'] = hrdemLayer;
+    } catch (e) {
+      console.warn('HRDEM overlay skipped', e);
+    }
 
-  const contourLayer = addProvincialContoursToMap(map, report);
-  let contourCount = 0;
-  if (contourLayer) {
-    overlays['Provincial contours'] = contourLayer;
-    contourCount =
-      getProvincialContoursFc(report)?.features?.length ||
-      contourLayer.getLayers?.().length ||
-      0;
-  }
-  parcelLayer.bringToFront();
+    const parcelLayer = L.polygon(latlngs, {
+      color: '#a8801f',
+      fillColor: '#a8801f',
+      fillOpacity: 0.12,
+      weight: 3,
+    }).addTo(map);
+    parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
+    overlays['Your parcel'] = parcelLayer;
 
-  if (Object.keys(overlays).length > 1) {
-    L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
-  }
+    let contourCount = 0;
+    try {
+      const contourLayer = addProvincialContoursToMap(map, report);
+      if (contourLayer) {
+        overlays['Provincial contours'] = contourLayer;
+        contourCount = getProvincialContoursFc(report)?.features?.length || 0;
+      }
+    } catch (e) {
+      console.warn('Contours overlay skipped', e);
+    }
+    try {
+      parcelLayer.bringToFront();
+    } catch { /* ignore */ }
 
-  const hrdem = getHrdemOverlay(report);
-  const legendEl = document.getElementById(el.id.replace('report-map-', 'report-map-legend-'));
-  if (legendEl) {
-    legendEl.innerHTML = `
+    try {
+      if (Object.keys(overlays).length > 1) {
+        L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
+      }
+    } catch (e) {
+      console.warn('layer control skipped', e);
+    }
+
+    const hrdem = getHrdemOverlay(report);
+    const legendEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-legend-')
+    );
+    if (legendEl) {
+      legendEl.innerHTML = `
       <span class="fine"><span class="legend-swatch" style="background:rgba(168,128,31,0.25);border-color:#a8801f"></span>Your parcel</span>
       <span class="fine"><span class="legend-swatch" style="background:transparent;border-color:#5b3a73;border-width:2px"></span>Provincial contour</span>
       ${
@@ -1543,30 +1601,39 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
           : ''
       }
     `;
-  }
+    }
 
-  const statusEl = document.getElementById(el.id.replace('report-map-', 'report-map-status-'));
-  if (statusEl) {
-    const bits = [];
-    if (contourCount) bits.push(`${contourCount} provincial contour lines`);
-    else bits.push('no contours returned for this extent');
-    if (hrdem?.available) bits.push('HRDEM hillshade on');
-    else bits.push('HRDEM not available here');
-    statusEl.textContent = bits.join(' · ');
-  }
+    const statusEl = document.getElementById(
+      el.id.replace('report-map-', 'report-map-status-')
+    );
+    if (statusEl) {
+      const bits = [];
+      if (contourCount) bits.push(`${contourCount} provincial contour lines`);
+      else bits.push('no contours returned for this extent');
+      if (hrdem?.available) bits.push('HRDEM hillshade on');
+      else bits.push('HRDEM not available here');
+      statusEl.textContent = bits.join(' · ');
+    }
 
-  const fit = () => {
+    const fit = () => {
+      try {
+        map.invalidateSize({ animate: false });
+        map.fitBounds(parcelLayer.getBounds(), { padding: [32, 32], maxZoom: 18 });
+        parcelLayer.bringToFront();
+      } catch { /* ignore */ }
+    };
+    requestAnimationFrame(() => {
+      fit();
+      setTimeout(fit, 80);
+      setTimeout(fit, 320);
+    });
+  } catch (err) {
+    console.warn('mountUnifiedPropertyMap failed', err);
     try {
-      map.invalidateSize({ animate: false });
-      map.fitBounds(parcelLayer.getBounds(), { padding: [32, 32], maxZoom: 18 });
-      parcelLayer.bringToFront();
+      el.innerHTML =
+        '<p class="fine">Map could not load. Scroll down for findings and use Your plan.</p>';
     } catch { /* ignore */ }
-  };
-  requestAnimationFrame(() => {
-    fit();
-    setTimeout(fit, 80);
-    setTimeout(fit, 320);
-  });
+  }
 }
 
 /** Build elevation overlay payload from topology when site_map is absent. */
@@ -5686,15 +5753,17 @@ function smallWaterSection(sw) {
 function initSmallWaterMap(elId, featureCollection, mapLayers, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
-  if (el._eeLeafletMap) {
-    try {
-      el._eeLeafletMap.remove();
-    } catch { /* ignore */ }
-    el._eeLeafletMap = null;
+  destroyLeafletOn(el);
+  let map;
+  try {
+    map = L.map(el, { zoomControl: true, attributionControl: true });
+  } catch (e) {
+    console.warn('small-water map failed', e);
+    el.innerHTML = '<p class="fine">Water map could not load.</p>';
+    return;
   }
-  el.innerHTML = '';
-  const map = L.map(el, { zoomControl: true, attributionControl: true });
   el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
   const base = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Esri · Copernicus · AMWI · Alberta provincial contours',
     maxZoom: 18,
@@ -6031,15 +6100,17 @@ function addHrdemWmsToMap(map, report) {
 function initWetlandsMap(elId, featureCollection, bbox, parcelLatLngs) {
   const el = document.getElementById(elId);
   if (!el || typeof L === 'undefined') return;
-  if (el._eeLeafletMap) {
-    try {
-      el._eeLeafletMap.remove();
-    } catch { /* ignore */ }
-    el._eeLeafletMap = null;
+  destroyLeafletOn(el);
+  let map;
+  try {
+    map = L.map(el, { zoomControl: true, attributionControl: true });
+  } catch (e) {
+    console.warn('wetlands map failed', e);
+    el.innerHTML = '<p class="fine">Wetlands map could not load.</p>';
+    return;
   }
-  el.innerHTML = '';
-  const map = L.map(el, { zoomControl: true, attributionControl: true });
   el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
   L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
     attribution: 'Esri · AMWI (OGL-A) · Alberta provincial contours',
     maxZoom: 18,
@@ -7829,8 +7900,14 @@ function renderSectionPanes(r, ctx) {
   );
   setTimeout(() => bindNextStepsInteractions(r), 50);
 
-  initReportMapEmbed(r);
-  if (ctx.allEls) bindValueFilters(ctx.allEls);
+  // Map init is deferred from generateReport after showReport() so the container has size
+  if (ctx.allEls) {
+    try {
+      bindValueFilters(ctx.allEls);
+    } catch (e) {
+      console.warn('value filters bind failed', e);
+    }
+  }
 }
 
 function paintCore(done) {
