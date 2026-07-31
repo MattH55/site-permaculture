@@ -195,9 +195,23 @@ const CATEGORIES = {
         key: 'texture',
         fields: ['soilTexture'],
         score(d) {
-          const t = d.soilTexture;
+          const t = normalizeTextureKey(d.soilTexture);
           if (!t) return null;
-          const table = { loam: 90, 'sandy-loam': 75, 'clay-loam': 70, silt: 65, sandy: 40, clay: 40 };
+          const table = {
+            loam: 90,
+            'sandy-loam': 75,
+            'clay-loam': 70,
+            'silt-loam': 72,
+            silt: 65,
+            sandy: 40,
+            sand: 35,
+            'loamy-sand': 50,
+            clay: 40,
+            'silty-clay': 45,
+            'sandy-clay': 48,
+            'sandy-clay-loam': 68,
+            'silty-clay-loam': 72,
+          };
           return table[t] ?? 55;
         },
       },
@@ -236,7 +250,7 @@ const CATEGORIES = {
           return d.fungalNetworkObserved ? 85 : 45;
         },
       },
-      // Former nutrient-cycling indicators — chemistry that drives biology
+      // Chemistry that drives biology (from soil survey / SoilGrids screening)
       {
         key: 'soilPh',
         fields: ['soilPh'],
@@ -246,6 +260,7 @@ const CATEGORIES = {
           if (ph >= 6.0 && ph <= 7.0) return 90;
           if (ph >= 5.5 && ph < 6.0) return 65;
           if (ph > 7.0 && ph <= 7.5) return 65;
+          if (ph > 7.5 && ph <= 8.2) return 45;
           return 30;
         },
       },
@@ -255,6 +270,14 @@ const CATEGORIES = {
         score(d) {
           if (d.compostOrManureHistory == null) return null;
           return d.compostOrManureHistory ? 80 : 40;
+        },
+      },
+      // Green biomass proxy — healthy vegetation feeds soil biology (screening only)
+      {
+        key: 'canopyBiomassProxy',
+        fields: ['laiMean', 'fcoverMean', 'ndviMedian', 'vegetationVigor'],
+        score(d) {
+          return scorePlantHealthProxy(d);
         },
       },
     ],
@@ -294,12 +317,58 @@ const CATEGORIES = {
         },
       },
       {
-        // Sentinel-2 NDVI / NDRE vigor (property-scale, medium-high confidence)
+        // NRCan LAI — leaf area index (m²/m²), primary open-Canada plant-health measure
+        key: 'satelliteLai',
+        fields: ['laiMean'],
+        score(d) {
+          const lai = d.laiMean;
+          if (lai == null || !Number.isFinite(lai)) return null;
+          // Prairie/parkland: 0.5 sparse, 1–2 moderate pasture/crop, 3+ dense canopy
+          if (lai >= 3.5) return 92;
+          if (lai >= 2.0) return 80;
+          if (lai >= 1.2) return 68;
+          if (lai >= 0.7) return 52;
+          if (lai >= 0.3) return 35;
+          return 18;
+        },
+      },
+      {
+        // NRCan fCOVER — fraction of green vegetation cover (0–1)
+        key: 'satelliteFcover',
+        fields: ['fcoverMean'],
+        score(d) {
+          const f = d.fcoverMean;
+          if (f == null || !Number.isFinite(f)) return null;
+          if (f >= 0.7) return 92;
+          if (f >= 0.5) return 78;
+          if (f >= 0.35) return 65;
+          if (f >= 0.2) return 48;
+          if (f >= 0.1) return 32;
+          return 15;
+        },
+      },
+      {
+        // NRCan fAPAR — absorbed PAR fraction (0–1) when available
+        key: 'satelliteFapar',
+        fields: ['faparMean'],
+        score(d) {
+          const f = d.faparMean;
+          if (f == null || !Number.isFinite(f)) return null;
+          if (f >= 0.65) return 90;
+          if (f >= 0.45) return 75;
+          if (f >= 0.3) return 58;
+          if (f >= 0.15) return 40;
+          return 20;
+        },
+      },
+      {
+        // Sentinel-2 NDVI / vigor class (supplementary when NRCan sparse)
         key: 'satelliteVigor',
         fields: ['vegetationVigor', 'ndviMedian'],
         score(d) {
-          if (d.ndviMedian != null) {
+          if (d.ndviMedian != null && Number.isFinite(d.ndviMedian)) {
             const n = d.ndviMedian;
+            // Accept both 0–1 NDVI and vigor proxies from fCOVER/fAPAR
             if (n >= 0.6) return 90;
             if (n >= 0.45) return 75;
             if (n >= 0.3) return 55;
@@ -308,6 +377,20 @@ const CATEGORIES = {
           }
           const table = { high: 88, moderate: 65, low: 40, very_low: 18 };
           return table[d.vegetationVigor] ?? null;
+        },
+      },
+      {
+        key: 'treeCover',
+        fields: ['treeCoverPct'],
+        score(d) {
+          const pct = d.treeCoverPct;
+          if (pct == null || !Number.isFinite(pct)) return null;
+          // Open prairie may be low; moderate structure is useful without full forest
+          if (pct >= 50) return 88;
+          if (pct >= 25) return 72;
+          if (pct >= 10) return 55;
+          if (pct >= 3) return 40;
+          return 25;
         },
       },
       {
@@ -324,7 +407,6 @@ const CATEGORIES = {
             const n = (d.wetlandTypes || []).length;
             return n >= 2 ? 80 : 70;
           }
-          // Confirmed open water / possible seeps — modest structure signal
           if (d.hasPondOrDugout === true) return 62;
           if (d.hasSmallWaterOrSeep === true) return 54;
           if (d.hasPondOrWetlandInventory === false) return 45;
@@ -454,23 +536,77 @@ function distanceDecay(nearestM) {
   return Math.max(0.15, 1 - nearestM / 300);
 }
 
+/** Normalize soil texture labels from AGRASID / SoilGrids for the score table. */
+function normalizeTextureKey(t) {
+  if (t == null || t === '') return null;
+  return String(t)
+    .toLowerCase()
+    .trim()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/loamy-sand/g, 'loamy-sand')
+    .replace(/clayloam|clay-loam/g, 'clay-loam')
+    .replace(/sandyloam|sandy-loam/g, 'sandy-loam')
+    .replace(/siltloam|silt-loam/g, 'silt-loam');
+}
+
+/**
+ * Combined plant-health proxy for soil biology when lab biology is absent.
+ * Prefers NRCan LAI/fCOVER, then NDVI vigor index.
+ */
+function scorePlantHealthProxy(d) {
+  if (d.laiMean != null && Number.isFinite(d.laiMean)) {
+    const lai = d.laiMean;
+    if (lai >= 2.5) return 82;
+    if (lai >= 1.2) return 68;
+    if (lai >= 0.6) return 50;
+    return 30;
+  }
+  if (d.fcoverMean != null && Number.isFinite(d.fcoverMean)) {
+    const f = d.fcoverMean;
+    if (f >= 0.55) return 80;
+    if (f >= 0.35) return 65;
+    if (f >= 0.2) return 48;
+    return 28;
+  }
+  if (d.ndviMedian != null && Number.isFinite(d.ndviMedian)) {
+    const n = d.ndviMedian;
+    if (n >= 0.5) return 75;
+    if (n >= 0.3) return 55;
+    return 32;
+  }
+  const table = { high: 80, moderate: 62, low: 40, very_low: 22 };
+  return table[d.vegetationVigor] ?? null;
+}
+
 function scoreCategory(categoryKey, siteData) {
   const cat = CATEGORIES[categoryKey];
-  const values = cat.indicators
-    .map((ind) => ind.score(siteData))
-    .filter((v) => v !== null && v !== undefined);
-  if (values.length === 0) return null;
-  return Math.round(values.reduce((a, v) => a + v, 0) / values.length);
+  const scored = cat.indicators
+    .map((ind) => {
+      const v = ind.score(siteData);
+      if (v === null || v === undefined) return null;
+      return { key: ind.key, score: v };
+    })
+    .filter(Boolean);
+  if (!scored.length) return { score: null, indicators: [] };
+  const score = Math.round(scored.reduce((a, x) => a + x.score, 0) / scored.length);
+  return { score, indicators: scored };
 }
 
 export function assessFecundity(siteData = {}) {
   const categoryScores = {};
+  const categoryDetails = {};
   let weightedSum = 0;
   let weightUsed = 0;
 
   for (const key of Object.keys(CATEGORIES)) {
-    const score = scoreCategory(key, siteData);
+    const { score, indicators } = scoreCategory(key, siteData);
     categoryScores[key] = score;
+    categoryDetails[key] = {
+      score,
+      indicators,
+      n_indicators: indicators.length,
+    };
     if (score !== null) {
       weightedSum += score * CATEGORY_WEIGHTS[key];
       weightUsed += CATEGORY_WEIGHTS[key];
@@ -485,23 +621,49 @@ export function assessFecundity(siteData = {}) {
     .slice(0, 3)
     .map(([key, score]) => ({ category: key, label: CATEGORIES[key].label, score }));
 
-  const suggestedServices = [...new Set(
-    weakestCategories.flatMap((w) => CATEGORIES[w.category].suggestedServices)
-  )];
+  const suggestedServices = [
+    ...new Set(weakestCategories.flatMap((w) => CATEGORIES[w.category].suggestedServices)),
+  ];
 
-  const totalIndicators = Object.values(CATEGORIES).reduce((a, c) => a + c.indicators.length, 0);
-  const answeredIndicators = Object.values(CATEGORIES)
-    .flatMap((c) => c.indicators)
-    .filter((ind) => ind.score(siteData) !== null).length;
+  const totalIndicators = Object.values(CATEGORIES).reduce(
+    (a, c) => a + c.indicators.length,
+    0
+  );
+  const answeredIndicators = Object.values(categoryDetails).reduce(
+    (a, c) => a + (c.n_indicators || 0),
+    0
+  );
+
+  // Plant-health subscore for UI (satellite measures only)
+  const plantHealthKeys = [
+    'satelliteLai',
+    'satelliteFcover',
+    'satelliteFapar',
+    'satelliteVigor',
+    'bareGround',
+    'treeCover',
+  ];
+  const plantHealthVals = Object.values(categoryDetails)
+    .flatMap((c) => c.indicators || [])
+    .filter((i) => plantHealthKeys.includes(i.key))
+    .map((i) => i.score);
+  const plantHealthScore =
+    plantHealthVals.length > 0
+      ? Math.round(plantHealthVals.reduce((a, b) => a + b, 0) / plantHealthVals.length)
+      : null;
 
   return {
     categoryScores,
+    categoryDetails,
     overallScore,
+    plantHealthScore,
     weakestCategories,
     suggestedServices,
     dataCompleteness: Math.round((answeredIndicators / totalIndicators) * 100),
+    indicatorsAnswered: answeredIndicators,
+    indicatorsTotal: totalIndicators,
     generatedAt: new Date().toISOString(),
   };
 }
 
-export { CATEGORY_WEIGHTS, CATEGORIES };
+export { CATEGORY_WEIGHTS, CATEGORIES, normalizeTextureKey, scorePlantHealthProxy };

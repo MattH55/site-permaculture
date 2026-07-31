@@ -124,26 +124,95 @@ function inferIndicators(rawData = {}) {
       'medium — nearest detected water distance (m)'
     );
 
-  // Soil — texture only from survey; NEVER set organicMatterPct from satellite SOC
-  if (rawData.regionalSoilTexture)
-    set('soilTexture', rawData.regionalSoilTexture, 'moderate — soil survey');
+  // Soil — survey + SoilGrids screening; NEVER set organicMatterPct from satellite SOC alone
+  const ss = rawData.soil_survey || rawData.soilSurvey || null;
+  const sampleSum = ss?.sample_summary || null;
+  const chars = ss?.characteristics || {};
+
+  const texture =
+    rawData.regionalSoilTexture ||
+    chars.texture_class ||
+    sampleSum?.texture_class ||
+    null;
+  if (texture) set('soilTexture', texture, 'moderate — AGRASID / SoilGrids texture');
+
+  const ph =
+    rawData.soilPh ??
+    chars.ph_h2o_mean ??
+    sampleSum?.mean_ph ??
+    null;
+  if (ph != null) set('soilPh', Number(ph), 'moderate — SoilGrids / survey pH (screening)');
+
   if (rawData.labOrganicMatterPct != null)
     set('organicMatterPct', rawData.labOrganicMatterPct, 'high — laboratory');
 
-  // Vegetation — prefer real Sentinel-2 ndviCoverPct over coarse tree-cover estimate
-  if (rawData.ndviCoverPct != null) {
-    const conf = rawData.satellite?.ndvi
-      ? 'medium-high — Sentinel-2 NDVI'
-      : 'moderate — canopy imagery';
-    set('bareGroundPct', Math.max(0, 100 - rawData.ndviCoverPct), conf);
+  // ── Satellite plant health (NRCan LAI / fCOVER / fAPAR + S2 NDVI) ──
+  const sat = rawData.satellite || {};
+  const nrcan = sat.nrcan_vegetation || rawData.nrcan_vegetation || {};
+  const laiMean =
+    rawData.laiMean ??
+    rawData.lai ??
+    sat.lai?.mean ??
+    nrcan.lai?.mean ??
+    null;
+  const fcoverMean =
+    rawData.fcoverMean ??
+    rawData.fcover ??
+    sat.fcover?.mean ??
+    nrcan.fcover?.mean ??
+    null;
+  const faparMean =
+    rawData.faparMean ??
+    rawData.fapar ??
+    sat.fapar?.mean ??
+    nrcan.fapar?.mean ??
+    null;
+
+  if (laiMean != null)
+    set('laiMean', Number(laiMean), 'medium-high — NRCan LAI (Sentinel-2 biophysical)');
+  if (fcoverMean != null)
+    set('fcoverMean', Number(fcoverMean), 'medium-high — NRCan fCOVER');
+  if (faparMean != null)
+    set('faparMean', Number(faparMean), 'medium-high — NRCan fAPAR');
+
+  // Green cover % → bare ground (prefer NRCan fCOVER, then ndviCoverPct, then tree cover)
+  const coverPct =
+    rawData.ndviCoverPct != null
+      ? Number(rawData.ndviCoverPct)
+      : fcoverMean != null
+        ? Number(fcoverMean) * 100
+        : rawData.treeCoverPct != null
+          ? Number(rawData.treeCoverPct)
+          : null;
+  if (coverPct != null) {
+    const conf =
+      fcoverMean != null
+        ? 'medium-high — NRCan fCOVER'
+        : sat.ndvi || rawData.ndviMedian != null
+          ? 'medium-high — Sentinel-2 / vigor proxy'
+          : 'moderate — canopy / tree cover';
+    set('bareGroundPct', Math.max(0, Math.min(100, 100 - coverPct)), conf);
   }
+
   if (rawData.ndviMedian != null)
-    set('ndviMedian', rawData.ndviMedian, 'medium-high — Sentinel-2 NDVI');
+    set('ndviMedian', rawData.ndviMedian, 'medium-high — NDVI / vigor index');
   if (rawData.vegetationVigor != null)
-    set('vegetationVigor', rawData.vegetationVigor, 'medium-high — Sentinel-2 vigor class');
+    set(
+      'vegetationVigor',
+      rawData.vegetationVigor,
+      'medium-high — plant vigor class (NRCan / S2)'
+    );
   if (rawData.ndviTrendSlope != null)
     set('ndviTrendSlope', rawData.ndviTrendSlope, 'moderate — Landsat multi-year NDVI trend');
 
+  const treeCoverPct =
+    rawData.treeCoverPct ??
+    rawData.tree_cover?.tree_cover_pct ??
+    null;
+  if (treeCoverPct != null)
+    set('treeCoverPct', Number(treeCoverPct), 'moderate — tree canopy estimate');
+
+  // Succession / layers from land cover, refined by satellite cover + LAI
   if (rawData.landCoverClass) {
     const sm = {
       bare: 'bare',
@@ -159,6 +228,26 @@ function inferIndicators(rawData = {}) {
     );
     const lm = { bare: 0, cropland: 1, grassland: 1, shrubland: 3, forest: 5 };
     set('observedLayerCount', lm[rawData.landCoverClass], 'low — land-cover class');
+  }
+  // Satellite refinement when land cover is thin
+  if (siteData.successionalStage == null && (laiMean != null || fcoverMean != null || coverPct != null)) {
+    const f = fcoverMean != null ? fcoverMean : coverPct != null ? coverPct / 100 : null;
+    const lai = laiMean;
+    let stage = 'pioneer';
+    if ((lai != null && lai >= 2.5) || (f != null && f >= 0.55) || (treeCoverPct != null && treeCoverPct >= 40))
+      stage = 'intermediate';
+    if ((lai != null && lai >= 3.5) || (treeCoverPct != null && treeCoverPct >= 60))
+      stage = 'climax';
+    if ((lai != null && lai < 0.4) || (f != null && f < 0.12)) stage = 'bare';
+    set('successionalStage', stage, 'moderate — inferred from LAI/fCOVER/tree cover');
+  }
+  if (siteData.observedLayerCount == null && (laiMean != null || fcoverMean != null || treeCoverPct != null)) {
+    let layers = 1;
+    if ((fcoverMean != null && fcoverMean >= 0.25) || (coverPct != null && coverPct >= 25)) layers = 2;
+    if ((laiMean != null && laiMean >= 1.5) || (treeCoverPct != null && treeCoverPct >= 15)) layers = 3;
+    if ((laiMean != null && laiMean >= 2.5) || (treeCoverPct != null && treeCoverPct >= 35)) layers = 4;
+    if (treeCoverPct != null && treeCoverPct >= 55) layers = 5;
+    set('observedLayerCount', layers, 'moderate — inferred from plant-health / canopy');
   }
 
   // Fauna
@@ -237,8 +326,17 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
   const { siteData, provenance } = inferIndicators(rawData);
   const assessment = assessFecundity(siteData);
 
-  const hasSatellite =
-    !!(rawData.satellite?.available || rawData.ndviMedian != null || rawData.ndviCoverPct != null);
+  const hasSatellite = !!(
+    rawData.satellite?.available ||
+    rawData.ndviMedian != null ||
+    rawData.ndviCoverPct != null ||
+    rawData.lai != null ||
+    rawData.laiMean != null ||
+    rawData.fcover != null ||
+    rawData.fcoverMean != null ||
+    siteData.laiMean != null ||
+    siteData.fcoverMean != null
+  );
   const hasWetlands = !!(
     rawData.wetlands?.available ||
     rawData.hasPondOrWetlandInventory != null ||
@@ -305,6 +403,11 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       narrative = carbonSafeText(rawData.satelliteClaims?.find((c) => c.field === 'soil_organic_carbon'), narrative);
     }
 
+    if (key === 'vegetativeStructure') {
+      narrative = plantHealthNarrative(siteData, narrative);
+    }
+
+    const detail = assessment.categoryDetails?.[key];
     return {
       category: key,
       label: cfg.label,
@@ -313,6 +416,7 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       color: band ? band.color : 'var(--ink-soft)',
       narrative,
       dataBasis: fieldSources.length ? fieldSources : ['no data available'],
+      indicatorScores: detail?.indicators || [],
       recommendations,
     };
   });
@@ -379,11 +483,15 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
   return {
     propertyLabel: opts.propertyLabel || null,
     overallScore: assessment.overallScore,
+    plantHealthScore: assessment.plantHealthScore,
     dataCompleteness: assessment.dataCompleteness,
+    indicatorsAnswered: assessment.indicatorsAnswered,
+    indicatorsTotal: assessment.indicatorsTotal,
     weakestCategories: assessment.weakestCategories,
     suggestedServices: assessment.suggestedServices,
     waterFeatureSummary,
     categories,
+    siteDataUsed: summarizeSiteDataUsed(siteData, provenance),
     interventionValue,
     satellite: rawData.satellite || null,
     wetlands: rawData.wetlands || null,
@@ -401,6 +509,47 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
       ? rawData.satellite?.attribution || satelliteAttribution()
       : null,
     generatedAt: new Date().toISOString(),
+  };
+}
+
+/** Narrative for vegetative structure when satellite plant-health is present. */
+function plantHealthNarrative(siteData, base) {
+  const bits = [];
+  if (siteData.laiMean != null)
+    bits.push(`LAI ≈ ${Number(siteData.laiMean).toFixed(2)} m²/m²`);
+  if (siteData.fcoverMean != null)
+    bits.push(`fCOVER ≈ ${(Number(siteData.fcoverMean) * 100).toFixed(0)}%`);
+  if (siteData.faparMean != null)
+    bits.push(`fAPAR ≈ ${Number(siteData.faparMean).toFixed(2)}`);
+  if (siteData.ndviMedian != null && siteData.laiMean == null)
+    bits.push(`vigor index ≈ ${Number(siteData.ndviMedian).toFixed(2)}`);
+  if (siteData.treeCoverPct != null)
+    bits.push(`tree cover ~${Number(siteData.treeCoverPct).toFixed(0)}%`);
+  if (!bits.length) return base;
+  return `Satellite plant health: ${bits.join(' · ')}. ${base}`;
+}
+
+function summarizeSiteDataUsed(siteData, provenance) {
+  const keys = Object.keys(siteData || {});
+  return {
+    n_fields: keys.length,
+    fields: keys.slice(0, 40),
+    plant_health: {
+      laiMean: siteData.laiMean ?? null,
+      fcoverMean: siteData.fcoverMean ?? null,
+      faparMean: siteData.faparMean ?? null,
+      ndviMedian: siteData.ndviMedian ?? null,
+      vegetationVigor: siteData.vegetationVigor ?? null,
+      bareGroundPct: siteData.bareGroundPct ?? null,
+      treeCoverPct: siteData.treeCoverPct ?? null,
+    },
+    soil: {
+      soilTexture: siteData.soilTexture ?? null,
+      soilPh: siteData.soilPh ?? null,
+    },
+    provenance_sample: Object.fromEntries(
+      Object.entries(provenance || {}).slice(0, 24)
+    ),
   };
 }
 

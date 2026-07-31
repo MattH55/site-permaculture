@@ -7146,6 +7146,9 @@ function fecunditySection(fec) {
     const recs = (c.recommendations || []).map((r) =>
       `<span class="plant-chip gate-chip on" style="font-size:0.6rem"><strong>${esc(r.serviceId)}</strong> ${esc(r.rationale)}</span>`
     ).join('');
+    const indLine = (c.indicatorScores || [])
+      .map((i) => `${esc(i.key)} ${esc(i.score)}`)
+      .join(' · ');
     return `
       <div class="el rec-card" style="border-left-color:${barColor};padding:0.75rem 0.85rem">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:0.25rem">
@@ -7156,7 +7159,8 @@ function fecunditySection(fec) {
           <div style="background:${barColor};height:100%;width:${barW}%;border-radius:3px;transition:width 0.3s"></div>
         </div>
         <p class="fine" style="margin:0">${esc(c.narrative)}</p>
-        <p class="fine" style="margin:0.2rem 0 0;font-size:0.72rem"><strong>Basis:</strong> ${esc(c.dataBasis.join('; '))}</p>
+        ${indLine ? `<p class="fine" style="margin:0.25rem 0 0;font-size:0.7rem"><strong>Indicators:</strong> ${indLine}</p>` : ''}
+        <p class="fine" style="margin:0.2rem 0 0;font-size:0.72rem"><strong>Basis:</strong> ${esc((c.dataBasis || []).join('; '))}</p>
         ${recs ? `<div class="plant-chips" style="margin-top:0.3rem">${recs}</div>` : ''}
       </div>`;
   }).join('');
@@ -7268,9 +7272,11 @@ function fecunditySection(fec) {
     <section class="report-block">
       <h2>Land fecundity assessment</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Six levers that drive land productivity (including soil biology), scored from available site, satellite, and regional data.
-        Every indicator is optional — missing data drops out rather than penalizing the score.
-        ${sat?.available ? 'Vegetative levers use <strong>Sentinel-2</strong> indices at ~10 m (property-scale screening).' : ''}
+        Six levers scored from live site data: topography, wetlands, soil survey, wind, wildlife,
+        and <strong>satellite plant health</strong> (NRCan LAI / fCOVER / fAPAR${sat?.ndvi ? ' + Sentinel-2 NDVI' : ''}).
+        Missing indicators drop out rather than penalizing the score.
+        ${fec.indicatorsAnswered != null ? ` · <strong>${esc(fec.indicatorsAnswered)}</strong>/${esc(fec.indicatorsTotal || '—')} indicators answered` : ''}
+        ${fec.plantHealthScore != null ? ` · plant-health subscore <strong>${esc(fec.plantHealthScore)}</strong>/100` : ''}
       </p>
 
       <div class="split-2col">
@@ -7289,8 +7295,9 @@ function fecunditySection(fec) {
             <div class="well-range-value" style="color:${scoreColor}">${overall != null ? `${overall}/100` : '—'}</div>
             <p class="fine">
               ${overall != null ? scoreBandLocal(overall).tone : 'Insufficient data for overall score.'}
-              · Data completeness: <strong>${completeness}%</strong> of possible indicators
-              ${sat?.available ? ' · satellite vegetation present' : ''}
+              · Data completeness: <strong>${completeness}%</strong>
+              ${fec.plantHealthScore != null ? ` · satellite plant health <strong>${esc(fec.plantHealthScore)}</strong>/100` : ''}
+              ${sat?.available || fec.siteDataUsed?.plant_health?.laiMean != null ? ' · LAI/fCOVER wired into score' : ''}
             </p>
           </div>
           ${fec.weakestCategories?.length ? `

@@ -665,8 +665,8 @@ export async function generateSiteReport(input = {}) {
     };
   }
 
-  // Fecundity assessment — prefer real NDVI cover over coarse tree-cover estimate
-  // Wetlands: AMWI inventory preferred over boolean presence alone
+  // Fecundity assessment — recreate score from inventory + satellite plant health
+  // (NRCan LAI/fCOVER/fAPAR, NDVI, soil survey pH/texture, wetlands, wind, wildlife)
   const fecundityReport = generateFecundityReport(
     {
       measured: {}, // no direct site measurements from remote report
@@ -690,18 +690,37 @@ export async function generateSiteReport(input = {}) {
       smallWaterPossibleAreaM2: swPatch.smallWaterPossibleAreaM2,
       satelliteOpenWater: swPatch.satelliteOpenWater,
       smallWater: swPatch.smallWater || smallWater,
-      regionalSoilTexture: soils.texture || null,
-      // Satellite first; land-cover / tree-cover remain fallbacks
+      // Soil survey + SoilGrids screening (texture, pH) — not lab SOC as OM%
+      soil_survey: soilSurvey,
+      regionalSoilTexture:
+        soilSurvey?.characteristics?.texture_class ||
+        soilSurvey?.sample_summary?.texture_class ||
+        soils.texture ||
+        null,
+      soilPh:
+        soilSurvey?.characteristics?.ph_h2o_mean ??
+        soilSurvey?.sample_summary?.mean_ph ??
+        null,
+      // Satellite plant health — NRCan biophysical + S2 vigor
       ndviCoverPct:
         satPatch.ndviCoverPct ??
+        (satPatch.fcover != null ? Number(satPatch.fcover) * 100 : undefined) ??
         (treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined),
       ndviMedian: satPatch.ndviMedian,
       vegetationVigor: satPatch.vegetationVigor,
       soilMoistureProxy: satPatch.soilMoistureProxy,
       ndviTrendSlope: satPatch.ndviTrendSlope,
+      lai: satPatch.lai,
+      laiMean: satPatch.lai,
+      fcover: satPatch.fcover,
+      fcoverMean: satPatch.fcover,
+      fapar: satPatch.fapar,
+      faparMean: satPatch.fapar,
       satellite: satPatch.satellite,
       satelliteClaims: satPatch.satelliteClaims,
       regionalSocContext: satPatch.regionalSocContext,
+      treeCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : null,
+      tree_cover: treeCover,
       landCoverClass: wetlands.present
         ? 'shrubland'
         : layers.alberta?.land_cover || null,
