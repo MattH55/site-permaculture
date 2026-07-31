@@ -269,7 +269,7 @@ export function generateFecundityReport(rawData = {}, opts = {}) {
         {
           serviceId: 'wetland_protect',
           rationale:
-            'Mapped wetland intersects the parcel — protect / buffer and confirm Water Act approvals before earthworks.',
+            'Mapped wetland intersects the parcel — keep earthworks clear and enhance the wet edge with native moisture-loving species.',
         },
         ...recommendations.filter((r) => r.serviceId !== 'swale' && r.serviceId !== 'pond'),
       ];
