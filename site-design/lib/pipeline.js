@@ -1139,6 +1139,12 @@ function buildProvenance(
       source_url: solar.source_url,
     });
   }
+  rows.push({
+    field: 'proximity_context.rural_crime_map',
+    source_name: 'RCMP Area Crime Map (Alberta Rural Crime Watch)',
+    source_date: new Date().toISOString().slice(0, 10),
+    source_url: 'https://www.ruralcrimewatch.ab.ca/resources/RCMP-area-crime-map',
+  });
   if (nearest_crimes?.available || nearest_crimes?.in_eps_coverage) {
     rows.push({
       field: 'proximity_context.nearest_crimes',
