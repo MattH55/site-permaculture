@@ -3208,7 +3208,7 @@ function wildlifeSection(wl) {
   if (!deer) return '';
 
   const recList = (deer.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
-  const sightings = wl.recent_sightings;
+  const sightings = wl.recent_sightings && typeof wl.recent_sightings === 'object' && !Array.isArray(wl.recent_sightings) ? wl.recent_sightings : null;
 
   return `
     <section class="report-block">
@@ -6129,6 +6129,110 @@ function soilSamplesMapBlock(ss) {
  * Small water / seeps detection (S2 NDWI-MNDWI + S1 + TWI + inventory).
  * Strict confidence language — never regulatory wetlands.
  */
+function mineralsSection(m) {
+  if (!m || !m.available) return '';
+  const occ = m.all_occurrences || [];
+  const topComm = m.top_commodities || [];
+  const bedrock = m.bedrock_context || {};
+  const metallic = m.metallic || [];
+  const industrial = m.industrial || [];
+  const prospective = m.prospective_areas || [];
+
+  const occRows = occ.slice(0, 10).map((o) => `
+    <tr>
+      <td>${esc(o.name || '—')}</td>
+      <td class="fine">${esc(o.commodity || '—')}</td>
+      <td class="fine">${esc(o.geo_age || '—')}</td>
+      <td class="fine">${esc(o.geo_unit || '—')}</td>
+      <td class="fine">${o.distance_m != null ? fmtDistance(o.distance_m) : '—'}</td>
+    </tr>
+  `).join('');
+
+  const commChips = topComm.map((c) =>
+    `<span class="chip">${esc(c.name)} <span class="chip-count">${c.count}</span></span>`
+  ).join('');
+
+  return `
+    <section class="report-block minerals-block">
+      <h2>Geology & minerals</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Alberta Geological Survey mineral occurrence inventory and bedrock geology context for the surrounding area.
+      </p>
+
+      ${bedrock.dominant_age || bedrock.dominant_unit ? `
+      <div class="metric-row" style="margin-bottom:0.6rem">
+        ${bedrock.dominant_age ? `<span class="metric"><span class="metric-label">Dominant age</span><span class="metric-value">${esc(bedrock.dominant_age)}</span></span>` : ''}
+        ${bedrock.dominant_unit ? `<span class="metric"><span class="metric-label">Dominant geology</span><span class="metric-value">${esc(bedrock.dominant_unit)}</span></span>` : ''}
+        ${bedrock.dominant_region ? `<span class="metric"><span class="metric-label">Region</span><span class="metric-value">${esc(bedrock.dominant_region)}</span></span>` : ''}
+      </div>
+      ` : ''}
+
+      ${topComm.length ? `
+      <div style="margin-bottom:0.5rem">
+        <span class="fine" style="margin-right:0.35rem">Commodities:</span>
+        ${commChips}
+      </div>
+      ` : ''}
+
+      ${occ.length ? `
+      <details class="inner-details">
+        <summary>Nearby mineral occurrences (${m.unique_count || occ.length})</summary>
+        <div class="econ-table-wrap">
+          <table class="econ-table">
+            <thead>
+              <tr><th>Name</th><th>Commodity</th><th>Age</th><th>Unit</th><th>Distance</th></tr>
+            </thead>
+            <tbody>${occRows}</tbody>
+          </table>
+        </div>
+      </details>
+      ` : ''}
+
+      ${metallic.length ? `
+      <details class="inner-details">
+        <summary>Metallic mineral occurrences (${metallic.length})</summary>
+        <div class="fine">
+          <ul>${metallic.slice(0, 8).map((o) => `
+            <li><strong>${esc(o.name || 'Unknown')}</strong> — ${esc(o.commodity || '—')}
+            ${o.deposit_type ? ` · ${esc(o.deposit_type)}` : ''}
+            ${o.ore_minerals ? ` · Ore: ${esc(o.ore_minerals)}` : ''}
+            ${o.geo_age ? ` · ${esc(o.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      ${industrial.length ? `
+      <details class="inner-details">
+        <summary>Industrial minerals (${industrial.length})</summary>
+        <div class="fine">
+          <ul>${industrial.slice(0, 8).map((o) => `
+            <li><strong>${esc(o.name || 'Unknown')}</strong> — ${esc(o.commodity || '—')}${o.geo_age ? ` · ${esc(o.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      ${prospective.length ? `
+      <details class="inner-details">
+        <summary>Prospective exploration areas (${prospective.length})</summary>
+        <div class="fine">
+          <ul>${prospective.map((p) => `
+            <li><strong>${esc(p.name || 'Unknown')}</strong>${p.commodity ? ` — ${esc(p.commodity)}` : ''}${p.geo_age ? ` · ${esc(p.geo_age)}` : ''}</li>
+          `).join('')}</ul>
+        </div>
+      </details>
+      ` : ''}
+
+      <p class="fine" style="margin-top:0.5rem">
+        Source: ${esc(m.source || 'AER')} · ${m.search_radius_km || 15} km search radius.
+        ${m.source_urls?.length ? ` · <a href="${esc(m.source_urls[0])}" target="_blank" rel="noopener">DIG 2025-0009</a>` : ''}
+      </p>
+      <p class="fine">${esc(m.disclaimer || '')}</p>
+    </section>
+  `;
+}
+
 function smallWaterSection(sw) {
   if (!sw || (!sw.available && !sw.summary?.has_any_water && !sw.open_water_features?.length && !sw.possible_small_water_or_seeps?.length)) {
     return '';
@@ -8294,6 +8398,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     ${acc('findings-wildlife', 'Wildlife', 'Habitat and biodiversity signals', wildlifeBody)}
     ${acc('findings-energy', 'Energy', 'Solar resource and wind', energyBody)}
     ${acc('findings-vegetation', 'Vegetation & food', 'Canopy and land productivity (assessment)', vegBody)}
+    ${acc('findings-minerals', 'Geology & minerals', 'Bedrock geology and mineral occurrences', [mineralsSection(r.minerals)].filter(Boolean).join(''))}
     ${acc('findings-recommendations', 'Recommendations', 'Placement ideas and plant fits — after the evidence', recBody)}
   `;
 }
@@ -8533,6 +8638,7 @@ function renderSectionPanes(r, ctx) {
           <a href="#findings-wildlife">Wildlife</a> ·
           <a href="#findings-energy">Energy</a> ·
           <a href="#findings-vegetation">Vegetation &amp; food</a> ·
+          <a href="#findings-minerals">Geology &amp; minerals</a> ·
           <a href="#findings-recommendations">Recommendations</a>
         </p>
         ${findingsHtml}
