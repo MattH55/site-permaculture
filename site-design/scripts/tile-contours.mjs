@@ -1,11 +1,11 @@
 /**
- * Preprocess the Parkland County contour shapefile into tiled GeoJSON.
- * 
- * Reads the 1.7 GB ESRI shapefile, simplifies coordinates, and writes
- * small GeoJSON tiles organized by bbox. Each tile covers ~0.05° × 0.05°.
- * 
- * Usage: node scripts/tile-contours.mjs
- * Output: data/contours-tiles/{lat}_{lng}.geojson
+ * Reproject Parkland County contours from NAD83 CSRS 10TM AEP Forest → WGS84.
+ * Streams from SHP file (record-by-record via SHX index) to avoid OOM.
+ *
+ * Projection parameters from ContoursIntermittent.prj:
+ *   Transverse Mercator, CM=-115°, FE=500000m, FN=0, k0=0.9992, GRS80 ellipsoid
+ *
+ * Strategy: generate simplified GeoJSON line strings at 0.05° tile size.
  */
 
 import fs from 'fs';
@@ -13,203 +13,224 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DATA_DIR = path.join(__dirname, '..', 'data', 'contours');
-const OUT_DIR = path.join(__dirname, '..', 'data', 'contours-tiles');
-const SHP = path.join(DATA_DIR, 'ContoursIntermittent.shp');
-const SHX = path.join(DATA_DIR, 'ContoursIntermittent.shx');
+const DATA = path.join(__dirname, '..', 'data', 'contours');
+const OUT = path.join(__dirname, '..', 'data', 'contours-tiles');
+const SHP = path.join(DATA, 'ContoursIntermittent.shp');
+const SHX = path.join(DATA, 'ContoursIntermittent.shx');
+const DBF = path.join(DATA, 'ContoursIntermittent.dbf');
 
-if (!fs.existsSync(SHP)) {
-  console.error('Shapefile not found at:', SHP);
-  console.error('Extract the zip first.');
-  process.exit(1);
+// ---------- Inverse Transverse Mercator (GRS80) ----------
+const A = 6378137;
+const F = 1 / 298.257222101;
+const E2 = 2 * F - F * F;
+const E4 = E2 * E2;
+const E6 = E4 * E2;
+const K0 = 0.9992;
+const CM_DEG = -115;
+const FE = 500000;
+
+function tmToLatLng(x, y) {
+  // Remove false easting
+  const dx = (x - FE) / (A * K0);
+  const dy = y / (A * K0);
+
+  // Footprint latitude
+  const mu = dy;
+  const e1 = (1 - Math.sqrt(1 - E2)) / (1 + Math.sqrt(1 - E2));
+  const e1sq = e1 * e1;
+  const e1cu = e1sq * e1;
+  const e1qu = e1sq * e1sq;
+  const phi1 =
+    mu + (1.5 * e1 - (27 / 32) * e1cu) * Math.sin(2 * mu) +
+    ((21 / 16) * e1sq - (55 / 32) * e1qu) * Math.sin(4 * mu) +
+    ((151 / 96) * e1cu) * Math.sin(6 * mu);
+
+  const sin1 = Math.sin(phi1);
+  const cos1 = Math.cos(phi1);
+  const tan1 = sin1 / cos1;
+  const N1 = A / Math.sqrt(1 - E2 * sin1 * sin1);
+  const T1 = tan1 * tan1;
+  const C1 = (E2 / (1 - E2)) * cos1 * cos1;
+
+  const D = dx / (N1 * K0);
+  const lat =
+    phi1 -
+    (N1 * tan1) / (A * K0) *
+      (D * D / 2 - D * D * D * D / 24 * (5 + 3 * T1 + 10 * C1 - 4 * C1 * C1 - 9 * (E2 / (1 - E2))) +
+        D * D * D * D * D * D / 720 * (61 + 90 * T1 + 298 * C1 + 45 * T1 * T1 - 252 * (E2 / (1 - E2)) - 3 * C1 * C1));
+
+  const lng =
+    CM_DEG +
+    ((D - D * D * D / 6 * (1 + 2 * T1 + C1) +
+      D * D * D * D * D / 120 * (5 - 2 * C1 + 28 * T1 - 3 * C1 * C1 + 8 * (E2 / (1 - E2)) + 24 * T1 * T1)) /
+      cos1) *
+      (180 / Math.PI);
+
+  return {
+    lat: +(lat * (180 / Math.PI)).toFixed(5),
+    lng: +((lng + 360) % 360 - 180).toFixed(5),
+  };
 }
 
-const TILE_SIZE = 0.05; // degrees (~5.5km at this latitude)
-const PRECISION = 4; // decimal places (~11m)
+// ---------- DBF elevation reader ----------
+let dbfInfo = null;
+function loadDbf() {
+  if (dbfInfo) return dbfInfo;
+  const buf = fs.readFileSync(DBF);
+  const numRec = buf.readUInt32LE(4);
+  const hdrSize = buf.readUInt16LE(8);
+  const recSize = buf.readUInt16LE(10);
 
-console.log('Reading shapefile header…');
-const shpBuf = fs.readFileSync(SHP);
-const shxBuf = fs.readFileSync(SHX);
-
-// Parse SHP header
-const xmin = shpBuf.readDoubleLE(36);
-const ymin = shpBuf.readDoubleLE(44);
-const xmax = shpBuf.readDoubleLE(52);
-const ymax = shpBuf.readDoubleLE(60);
-const shapeType = shpBuf.readInt32LE(32);
-
-console.log(`Shape type: ${shapeType} (3=PolyLine)`);
-console.log(`Bounds: [${xmin.toFixed(4)}, ${ymin.toFixed(4)}] to [${xmax.toFixed(4)}, ${ymax.toFixed(4)}]`);
-
-// Parse SHX (record offset index)
-const shxNumRecords = (shxBuf.length - 100) / 8;
-console.log(`SHX records: ${shxNumRecords.toLocaleString()}`);
-
-// Read elevation values from DBF
-const DBF = path.join(DATA_DIR, 'ContoursIntermittent.dbf');
-let elevations = null;
-if (fs.existsSync(DBF)) {
-  console.log('Reading DBF for elevation values…');
-  const dbfBuf = fs.readFileSync(DBF);
-  const numRecords = dbfBuf.readUInt32LE(4);
-  const headerSize = dbfBuf.readUInt16LE(8);
-  const recordSize = dbfBuf.readUInt16LE(10);
-  
-  // Parse field descriptors
   const fields = [];
   let off = 32;
-  while (off < headerSize - 1) {
-    if (dbfBuf[off + 11] === 0x0D) break;
+  while (off < hdrSize - 1) {
+    if (buf[off + 11] === 0x0D) break;
     let ne = off;
-    while (ne < off + 11 && dbfBuf[ne] !== 0) ne++;
-    const name = dbfBuf.toString('ascii', off, ne);
-    fields.push({ name, offset: off - 32 });
+    while (ne < off + 11 && buf[ne] !== 0) ne++;
+    const name = buf.toString('ascii', off, ne);
+    fields.push({ name, len: buf[off + 16] || 11, dbfOff: off - 32 });
     off += 32;
   }
-  
-  const elevField = fields.find(f => f.name === 'ELEVATION');
-  elevations = new Array(numRecords).fill(null);
-  
-  for (let i = 0; i < numRecords; i++) {
-    if (dbfBuf[headerSize + i * recordSize] === 0x2A) continue; // deleted
-    if (!elevField) continue;
-    const fStart = headerSize + i * recordSize + 1 + elevField.offset;
-    const raw = dbfBuf.toString('ascii', fStart, fStart + 11).replace(/\0/g, '').trim();
-    if (raw) elevations[i] = parseFloat(raw);
-    if (i % 500000 === 0) console.log(`  DBF record ${i.toLocaleString()} / ${numRecords.toLocaleString()}`);
-  }
-  console.log(`  DBF done: ${elevations.filter(v => v !== null).length.toLocaleString()} elevation values`);
+  // Find the elevation field
+  const elevField = fields.find((f) => f.name === 'Contour' || f.name.includes('ELEV') || f.name.includes('CONTOUR'));
+  console.log(`DBF fields: ${fields.map((f) => `${f.name}(${f.len})`).join(', ')}`);
+  console.log(`Elevation field: ${elevField?.name || 'NOT FOUND'}`);
+
+  dbfInfo = { buf, numRec, hdrSize, recSize, fields, elevField };
+  return dbfInfo;
 }
 
-// Create tile structure
+function getElevation(recordNum) {
+  const dbf = loadDbf();
+  if (!dbf.elevField || recordNum < 1 || recordNum > dbf.numRec) return null;
+  const recStart = dbf.hdrSize + (recordNum - 1) * dbf.recSize;
+  if (dbf.buf[recStart] === 0x2A) return null;
+  const fStart = recStart + 1 + dbf.elevField.dbfOff;
+  const raw = dbf.buf.toString('ascii', fStart, fStart + dbf.elevField.len).replace(/\0/g, '').trim();
+  return raw ? +parseFloat(raw).toFixed(1) : null;
+}
+
+// ---------- Main tiling ----------
+
+function tileKey(lat, lng) {
+  const ts = 0.05;
+  return `${Math.floor(lat / ts)}_${Math.floor(lng / ts)}`;
+}
+
+console.log('Loading DBF…');
+loadDbf();
+
+console.log('Streaming shapefile via SHX index…');
+const shxBuf = fs.readFileSync(SHX);
+const numRecords = (shxBuf.length - 100) / 8;
+console.log(`${numRecords.toLocaleString()} shapefile records`);
+
+// Open SHP as a file descriptor for streaming
+const shpFd = fs.openSync(SHP, 'r');
+const shpBuf = Buffer.alloc(4096); // Working buffer for reads
+
 const tiles = new Map();
-function tileKey(lng, lat) {
-  const tx = Math.floor(lng / TILE_SIZE);
-  const ty = Math.floor(lat / TILE_SIZE);
-  return `${ty}_${tx}`;
-}
-
-console.log('Processing shapefile records…');
+let skipped = 0;
 let processed = 0;
-let offset = 100;
+const MAX_TILE_FEATURES = 5000;
 
-function parseLine(buf, off) {
-  const type = buf.readInt32LE(off + 8);
-  if (type !== 3 && type !== 13 && type !== 23) return null;
+for (let i = 0; i < numRecords; i++) {
+  const shxOff = 100 + i * 8;
+  const recOffset = shxBuf.readInt32BE(shxOff) * 2;
+  const recContentLen = shxBuf.readInt32BE(shxOff + 4) * 2;
   
-  const numParts = buf.readInt32LE(off + 44);
-  const numPoints = buf.readInt32LE(off + 48);
-  if (numPoints < 2 || numPoints > 50000) return null;
-  
-  const recordBox = {
-    xmin: buf.readDoubleLE(off + 12),
-    ymin: buf.readDoubleLE(off + 20),
-    xmax: buf.readDoubleLE(off + 28),
-    ymax: buf.readDoubleLE(off + 36),
-  };
-  
-  const partsStart = off + 52;
+  if (recContentLen < 4) { skipped++; continue; }
+
+  // Read record header + shape type + bbox
+  const headerLen = 12; // record header + shape type
+  const readLen = Math.min(headerLen + 68, recContentLen + 8);
+  const buf = Buffer.alloc(readLen);
+  fs.readSync(shpFd, buf, 0, readLen, recOffset);
+
+  const type = buf.readInt32LE(8);
+  if (type !== 3 && type !== 13 && type !== 23) { skipped++; continue; }
+
+  // Bounding box at byte 12-43 (4 doubles)
+  const numParts = buf.readInt32LE(52);
+  const numPoints = buf.readInt32LE(56);
+  if (numPoints < 2 || numPoints > 100000) { skipped++; continue; }
+
+  // Read parts + points
+  const partsBytes = numParts * 4;
+  const pointsBytes = numPoints * 16;
+  const dataOff = recOffset + 60;
+  const dataLen = partsBytes + pointsBytes;
+  const dataBuf = Buffer.alloc(dataLen);
+  fs.readSync(shpFd, dataBuf, 0, dataLen, dataOff);
+
   const parts = [];
-  for (let i = 0; i < numParts; i++) parts.push(buf.readInt32LE(partsStart + i * 4));
-  
-  const ptsStart = partsStart + numParts * 4;
-  const allPts = [];
-  for (let i = 0; i < numPoints; i++) {
-    const x = +buf.readDoubleLE(ptsStart + i * 16).toFixed(PRECISION);
-    const y = +buf.readDoubleLE(ptsStart + i * 16 + 8).toFixed(PRECISION);
-    allPts.push([x, y]);
-  }
-  
-  const lines = [];
-  for (let i = 0; i < numParts; i++) {
-    const s = parts[i];
-    const e = (i + 1 < numParts) ? parts[i + 1] : numPoints;
-    if (e - s >= 2) lines.push(allPts.slice(s, e));
-  }
-  
-  return { box: recordBox, lines };
-}
+  for (let p = 0; p < numParts; p++) parts.push(dataBuf.readInt32LE(p * 4));
 
-while (offset + 12 <= shpBuf.length) {
-  const recordNum = shpBuf.readInt32BE(offset);
-  const contentLen = shpBuf.readInt32BE(offset + 4) * 2;
-  
-  if (contentLen >= 4) {
-    const parsed = parseLine(shpBuf, offset);
-    if (parsed) {
-      const elev = elevations?.[recordNum - 1] ?? null;
-      const { box } = parsed;
-      
-      // Determine which tiles this record touches
-      const tMinX = Math.floor(box.xmin / TILE_SIZE);
-      const tMaxX = Math.floor(box.xmax / TILE_SIZE);
-      const tMinY = Math.floor(box.ymin / TILE_SIZE);
-      const tMaxY = Math.floor(box.ymax / TILE_SIZE);
-      
-      for (const line of parsed.lines) {
-        // Use midpoint to assign to a single tile
-        const mid = line[Math.floor(line.length / 2)];
-        const key = tileKey(mid[0], mid[1]);
-        
-        if (!tiles.has(key)) tiles.set(key, []);
-        tiles.get(key).push({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: line },
-          properties: { elevation_m: elev },
-        });
-      }
+  const allPts = [];
+  const ptStart = partsBytes;
+  for (let p = 0; p < numPoints; p++) {
+    const ox = dataBuf.readDoubleLE(ptStart + p * 16);
+    const oy = dataBuf.readDoubleLE(ptStart + p * 16 + 8);
+    const ll = tmToLatLng(ox, oy);
+    allPts.push([ll.lng, ll.lat]);
+  }
+
+  // Elevation from DBF
+  const elev = getElevation(i + 1);
+
+  // Split into lines, assign to tiles
+  for (let p = 0; p < numParts; p++) {
+    const s = parts[p];
+    const e = (p + 1 < numParts) ? parts[p + 1] : numPoints;
+    if (e - s < 2) continue;
+    const line = allPts.slice(s, e);
+    
+    // Assign to tile by midpoint
+    const mid = line[Math.floor(line.length / 2)];
+    const key = tileKey(mid[1], mid[0]);
+    
+    if (!tiles.has(key)) tiles.set(key, []);
+    if (tiles.get(key).length < MAX_TILE_FEATURES) {
+      tiles.get(key).push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: line },
+        properties: elev != null ? { elevation_m: elev } : {},
+      });
     }
   }
-  
-  offset += 8 + contentLen;
+
   processed++;
   if (processed % 200000 === 0) {
-    console.log(`  ${processed.toLocaleString()} records, ${tiles.size.toLocaleString()} tiles`);
+    console.log(`  ${processed.toLocaleString()} records, ${tiles.size.toLocaleString()} tiles, ${skipped.toLocaleString()} skipped`);
   }
 }
 
-console.log(`\nWriting ${tiles.size.toLocaleString()} tiles…`);
-fs.mkdirSync(OUT_DIR, { recursive: true });
+fs.closeSync(shpFd);
+console.log(`Done processing: ${processed.toLocaleString()} records, ${tiles.size.toLocaleString()} tiles`);
 
-// Write tile index
+// Write tiles
+fs.mkdirSync(OUT, { recursive: true });
 const tileIndex = [];
+
 for (const [key, features] of tiles) {
   const [ty, tx] = key.split('_').map(Number);
-  const tileBbox = {
-    west: tx * TILE_SIZE,
-    south: ty * TILE_SIZE, 
-    east: (tx + 1) * TILE_SIZE,
-    north: (ty + 1) * TILE_SIZE,
-  };
-  
   const geojson = {
     type: 'FeatureCollection',
-    features: features.slice(0, 8000), // cap per tile
-    bbox: [tileBbox.west, tileBbox.south, tileBbox.east, tileBbox.north],
+    features,
+    bbox: [tx * 0.05, ty * 0.05, (tx + 1) * 0.05, (ty + 1) * 0.05],
   };
-  
   const filename = `${key}.geojson`;
-  fs.writeFileSync(path.join(OUT_DIR, filename), JSON.stringify(geojson));
-  
-  tileIndex.push({
-    key,
-    bbox: tileBbox,
-    filename,
-    featureCount: geojson.features.length,
-  });
+  fs.writeFileSync(path.join(OUT, filename), JSON.stringify(geojson));
+  tileIndex.push({ key, filename, features: features.length });
 }
 
-fs.writeFileSync(path.join(OUT_DIR, 'index.json'), JSON.stringify({
-  tileSize: TILE_SIZE,
-  precision: PRECISION,
-  totalFeatures: processed,
+// Write index
+fs.writeFileSync(path.join(OUT, 'index.json'), JSON.stringify({
+  tileSize: 0.05,
+  projection: 'WGS84',
   totalTiles: tiles.size,
-  bounds: { west: xmin, south: ymin, east: xmax, north: ymax },
   tiles: tileIndex,
 }, null, 2));
 
-const totalSize = fs.readdirSync(OUT_DIR)
-  .filter(f => f.endsWith('.geojson'))
-  .reduce((sum, f) => sum + fs.statSync(path.join(OUT_DIR, f)).size, 0);
-
-console.log(`Done! ${tiles.size} tiles, ${(totalSize / 1024 / 1024).toFixed(1)} MB total`);
+const totalMB = tileIndex.reduce((s, t) => s + t.features, 0) * 0.3 / 1024 / 1024;
+console.log(`Wrote ${tileIndex.length} tiles, ~${totalMB.toFixed(1)} MB total`);
