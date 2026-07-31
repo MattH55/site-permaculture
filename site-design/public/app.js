@@ -3678,7 +3678,7 @@ function countyAssessmentLinksHtml(ats = null) {
   return `
     <div class="flag" data-severity="info" style="margin:0.65rem 0 0.85rem">
       <strong>Find nearby assessed land</strong>
-      <p>Use the county viewer for the parcel or a nearby comparable. These public tools are single-parcel lookups; they provide assessment context, not an appraisal or sale price.</p>
+      <p>Use the county viewer for the parcel or a nearby comparable. Where a public parcel-value layer is available, nearby properties are mapped above; these tools provide assessment context, not an appraisal or sale price.</p>
       ${legalDescription ? `<p class="fine" style="margin:0.45rem 0 0"><strong>Generated search reference:</strong> ${esc(legalDescription)} · ${esc(ats.quarter)} quarter, Section ${esc(ats.section)}, Township ${esc(ats.township)}, Range ${esc(ats.range)}, ${esc(ats.meridian)}</p>` : ''}
       <div class="prox-grid" style="margin-top:0.55rem">
         ${COUNTY_ASSESSMENT_LINKS.map((item) => `
@@ -3690,7 +3690,7 @@ function countyAssessmentLinksHtml(ats = null) {
           </article>
         `).join('')}
       </div>
-      <p class="fine" style="margin-bottom:0">Sturgeon’s public parcel layer identifies roll/legal-description records but does not expose assessed values in the layer used here. Parkland and Leduc likewise require viewer lookup unless an official assessment export is obtained.</p>
+      <p class="fine" style="margin-bottom:0">Automated parcel-value mapping is shown when the report location falls inside a published assessment layer. Sturgeon’s queried parcel layer identifies roll/legal-description records but does not expose values; Parkland’s public pages do not expose a queryable parcel-value layer, so those locations remain viewer-only.</p>
     </div>`;
 }
 
@@ -3791,14 +3791,14 @@ function landValueSection(lv) {
           ? `<div style="margin-top:0.85rem">
               <span class="mono topo-label">Nearby assessments map</span>
               <p class="fine" style="margin:0.2rem 0 0.35rem">
-                Gold outline = your parcel · Circles = nearby assessed parcels (colour = relative $/acre).
+                Gold outline = your parcel · Nearby parcel polygons/points are coloured by assessed $/acre.
               </p>
               <div id="${mapId}" class="report-map minimap-embed" style="height:300px"></div>
               <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center">
                 <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(42,111,151,0.55);border:1px solid #2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(233,196,106,0.65);border:1px solid #e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(196,92,38,0.65);border:1px solid #c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
               </div>
             </div>`
           : ''
@@ -3909,25 +3909,40 @@ function initLandValueMap(elId, samples, parcelLatLngs, centre, refRate) {
     bounds.push(L.latLngBounds([[centre.lat, centre.lng]]));
   }
 
+  const assessmentPopup = (s, rate) =>
+    `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
+    `Assessed total: ${s.assessed_total_cad != null ? fmtCad(s.assessed_total_cad) : '—'}<br/>` +
+    `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${s.land_separable ? 'land residual' : 'total assessed'}<br/>` +
+    `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
+    `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}` +
+    `${s.property_type ? `<br/>Type: ${esc(s.property_type)}` : ''}<br/>` +
+    `<span class="fine">Public assessment value — not sale price or appraisal</span>`;
+
   samples.forEach((s) => {
     const rate = s.land_value_per_acre ?? s.assessed_total_per_acre;
-    const m = L.circleMarker([s.latitude, s.longitude], {
-      radius: 7,
-      color: '#fff',
-      weight: 1.5,
-      fillColor: colorFor(rate),
-      fillOpacity: 0.9,
-    }).addTo(map);
-    m.bindPopup(
-      `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
-        `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${
-          s.land_separable ? 'land residual' : 'total assessed'
-        }<br/>` +
-        `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
-        `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}<br/>` +
-        `<span class="fine">Assessed value — not sale price</span>`
-    );
-    bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+    const fill = colorFor(rate);
+    const ring = s.geometry?.type === 'Polygon' ? s.geometry.coordinates?.[0] : null;
+    if (ring?.length >= 3) {
+      const latlngs = ring.map(([lng, lat]) => [lat, lng]);
+      const polygon = L.polygon(latlngs, {
+        color: fill,
+        weight: 1,
+        fillColor: fill,
+        fillOpacity: 0.48,
+      }).addTo(map);
+      polygon.bindPopup(assessmentPopup(s, rate));
+      bounds.push(polygon.getBounds());
+    } else if (s.latitude != null && s.longitude != null) {
+      const marker = L.circleMarker([s.latitude, s.longitude], {
+        radius: 7,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: fill,
+        fillOpacity: 0.9,
+      }).addTo(map);
+      marker.bindPopup(assessmentPopup(s, rate));
+      bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+    }
   });
 
   try {
