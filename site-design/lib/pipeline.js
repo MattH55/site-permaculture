@@ -16,13 +16,19 @@ import { generateContourLines } from './contours.js';
 import { predictWellDepth } from './well-depth.js';
 import { buildServiceQuote } from './quote.js';
 import { planPlantings } from './planting.js';
+import {
+  enrichDesignElementsWithPlants,
+  plantingPlanInterventionValue,
+  plantingReportTable,
+} from './plant-interventions.js';
 import { assessSolar } from './solar.js';
-import { fetchNearestEpsCrimes } from './crime.js';
+import { fetchNearestEpsCrimes, ruralCrimeWatchContext } from './crime.js';
 import { assessLandValue } from './land-value.js';
 import { queryHardiness } from './hardiness.js';
 import { queryFloodHazard } from './flood.js';
 import { resolveZoningContext } from './zoning.js';
 import { buildSiteRecord } from './rules.js';
+import { groupRecommendationsByValue } from './recommendation-values.js';
 import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
 import { checkWildlifeSensitivity, queryGbig, lookupWmu } from './wildlife-enrich.js';
@@ -31,10 +37,22 @@ import { assessAccess } from './access.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
+import { buildElevationOverlays } from './elevation-overlays.js';
+import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { queryDepthToWater, queryPredictedStreams } from './wet-areas.js';
 import { assessBiodiversity } from './biodiversity.js';
 import { getWindRose } from './wind-rose.js';
 import { generateFecundityReport } from './fecundity-report.js';
+import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
+import { fetchWetlands, toFecundityWetlandPatch } from './wetlands.js';
+import { fetchSmallWater, toFecunditySmallWaterPatch } from './small-water.js';
+import { recommendServicePackages } from './service-packages.js';
+import { querySturgeonCounty, interpretLandUse } from './sturgeon-county.js';
+import { querySoilSurvey } from './soil-survey.js';
+import { buildSiteMapFeatures } from './site-map-features.js';
+import { buildActionMenu } from './action-menu.js';
+import { fetchPrecipitation } from './precipitation.js';
+import { fetchMinerals } from './minerals.js';
 
 const cache = new Map();
 
@@ -42,7 +60,34 @@ const CACHE_TTL_MS = 1000 * 60 * 60 * 24; // 24h
 const CACHE_MAX = 200;
 
 /**
- * @param {{ polygon: object, site_name?: string, force?: boolean }} input
+ * Soft timeout so one hung Alberta/PC/NASA call cannot kill the whole report.
+ * Resolves to fallback on timeout or rejection (never rejects).
+ */
+function withTimeout(promise, ms, fallback, label = 'layer') {
+  let timer;
+  const timed = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[pipeline] ${label} soft-timeout ${ms}ms`);
+      resolve(typeof fallback === 'function' ? fallback(new Error('timeout')) : fallback);
+    }, ms);
+  });
+  return Promise.race([
+    Promise.resolve(promise)
+      .then((v) => {
+        clearTimeout(timer);
+        return v;
+      })
+      .catch((e) => {
+        clearTimeout(timer);
+        console.warn(`[pipeline] ${label} failed:`, e?.message || e);
+        return typeof fallback === 'function' ? fallback(e) : fallback;
+      }),
+    timed,
+  ]);
+}
+
+/**
+ * @param {{ polygon: object, site_name?: string, force?: boolean, plant_goals?: string[] }} input
  */
 export async function generateSiteReport(input = {}) {
   const ring = normalizePolygon(input.polygon);
@@ -57,41 +102,69 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] = await Promise.all([
-    gatherSiteLayers({
-      ring,
-      bbox,
-      site_name: input.site_name,
-    }),
-    gatherProximity(centre, bbox),
-    fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }).catch(
-      (e) => ({
-        available: false,
-        nearest: [],
-        error: e.message,
-      })
-    ),
-    queryHardiness(centre).catch((e) => ({
-      available: false,
-      hardiness_zone: null,
-      error: e.message,
-    })),
-    queryFloodHazard(centre, bbox).catch((e) => ({
-      available: false,
-      flood_hazard_class: 'unknown',
-      flood_risk_zone: false,
-      error: e.message,
-    })),
-    assessTemperature(centre).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
-    assessWildlife(bbox, centre).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
-  ]);
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife] =
+    await Promise.all([
+      // Core elevation/layers — allow longer; still soft-capped
+      withTimeout(
+        gatherSiteLayers({ ring, bbox, site_name: input.site_name }),
+        35_000,
+        null,
+        'site_layers'
+      ),
+      withTimeout(
+        gatherProximity(centre, bbox),
+        15_000,
+        {
+          nearest_city: null,
+          nearest_settlement: null,
+          nearest_water_source: null,
+          amenities: [],
+          crime_risk: null,
+        },
+        'proximity'
+      ),
+      withTimeout(
+        fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }),
+        10_000,
+        { available: false, nearest: [], error: 'timeout' },
+        'crimes'
+      ),
+      withTimeout(
+        queryHardiness(centre),
+        10_000,
+        { available: false, hardiness_zone: null, error: 'timeout' },
+        'hardiness'
+      ),
+      withTimeout(
+        queryFloodHazard(centre, bbox),
+        10_000,
+        {
+          available: false,
+          flood_hazard_class: 'unknown',
+          flood_risk_zone: false,
+          error: 'timeout',
+        },
+        'flood'
+      ),
+      withTimeout(
+        assessTemperature(centre),
+        12_000,
+        { available: false, error: 'timeout' },
+        'temperature'
+      ),
+      withTimeout(
+        assessWildlife(bbox, centre),
+        12_000,
+        { available: false, error: 'timeout' },
+        'wildlife'
+      ),
+    ]);
 
+  if (!layers?.elevation && !layers?.terrain) {
+    throw new Error(
+      'Could not load elevation / site layers in time. Try Generate again in a moment (cold starts are slower).'
+    );
+  }
   const areaHa = polygonAreaHa(ring);
   const t = layers.terrain;
   const soils = layers.soils || {};
@@ -109,17 +182,22 @@ export async function generateSiteReport(input = {}) {
     t
   );
 
-  // Step 6c — well depth prediction (AWWI nearby + bedrock covariate / IDW)
-  const predicted_well_depth = predictWellDepth(centre, {
-    elevation_m: t.elevation_m,
-    search_radius_km: 5,
-  });
-
-  // Wet Areas Mapping — depth-to-water + predicted streams
+  // Wet Areas Mapping first — feeds subsurface hydrology well model
   const [depthToWater, predictedStreams] = await Promise.all([
     queryDepthToWater(centre).catch(() => null),
     queryPredictedStreams(bbox).catch(() => ({ available: false, count: null })),
   ]);
+
+  // Step 6c — well depth from subsurface hydrology (SWL, screens, wet lithology, WAM DTW)
+  const predicted_well_depth = predictWellDepth(centre, {
+    elevation_m: t.elevation_m,
+    search_radius_km: 5,
+    depth_to_water_m:
+      depthToWater?.depth_m ??
+      depthToWater?.category?.representative_m ??
+      null,
+    depth_to_water_category: depthToWater?.category || null,
+  });
 
   // Contour lines reduced from the same sampled elevation grid — feeds the
   // rate engine's swale-meterage estimate (see lib/quote.js, lib/rate-engine.js).
@@ -150,25 +228,84 @@ export async function generateSiteReport(input = {}) {
     nearest_name: nearestName || layers.preset?.municipality,
   });
 
-  // Land value — informational only (does NOT feed placement rules)
-  const land_value = await assessLandValue(centre, {
-    footprint_ha: Math.round(areaHa * 1000) / 1000,
-    nearest_city: proximity.nearest_city,
-    nearest_settlement: proximity.nearest_settlement,
-    cli_class: soils.cli_class || null,
-  }).catch((e) => ({
-    land_value_source: 'none',
-    error: e.message,
-    disclaimer:
-      'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
-  }));
-
-  // Zoning portal lookup (designation not auto-assigned — municipal bylaws)
+  // Zoning is local/sync. Land value, Sturgeon, soil survey run in parallel with soft caps.
   const zoning = resolveZoningContext(centre, {
     nearest_city: proximity.nearest_city,
     nearest_settlement: proximity.nearest_settlement,
     municipality: layers.preset?.municipality,
   });
+
+  const [land_value, sturgeonCounty, soilSurvey] = await Promise.all([
+    withTimeout(
+      assessLandValue(centre, {
+        footprint_ha: Math.round(areaHa * 1000) / 1000,
+        nearest_city: proximity.nearest_city,
+        nearest_settlement: proximity.nearest_settlement,
+        cli_class: soils.cli_class || null,
+      }),
+      12_000,
+      {
+        land_value_source: 'none',
+        error: 'timeout',
+        disclaimer:
+          'Land value assessment timed out. Planning context only — not an appraisal.',
+      },
+      'land_value'
+    ),
+    withTimeout(
+      querySturgeonCounty(centre.latitude, centre.longitude),
+      8_000,
+      { available: false, error: 'timeout' },
+      'sturgeon_county'
+    ),
+    withTimeout(
+      querySoilSurvey(centre.latitude, centre.longitude, { bbox, samples: 5 }),
+      35_000,
+      {
+        available: false,
+        error: 'Soil survey timed out',
+        recommended_lab_tests: {
+          available: true,
+          title: 'Recommended soil tests',
+          intro:
+            'Soil inventory timed out on this run. These lab/field tests still form the high-confidence design baseline.',
+          sample_protocol:
+            'Composite 8–12 cores from the management unit. Keep topsoil separate if planning earthworks.',
+          tests: [
+            {
+              id: 'standard_chemistry',
+              name: 'Standard chemistry panel',
+              priority: 1,
+              method: 'Accredited lab',
+              measures: ['pH', 'EC', 'OM %', 'N-P-K-S', 'Ca', 'Mg', 'Na'],
+              why: 'Baseline fertility for plantings and amendments.',
+            },
+            {
+              id: 'organic_carbon',
+              name: 'Lab SOC / organic matter',
+              priority: 1,
+              method: 'Laboratory',
+              measures: ['SOC g/kg or OM %'],
+              why: 'Required before any numeric soil-carbon claim.',
+            },
+            {
+              id: 'texture_structure',
+              name: 'Texture & structure',
+              priority: 1,
+              method: 'Lab particle size + field jar test',
+              measures: ['sand/silt/clay %', 'texture class'],
+              why: 'Confirms infiltration and water-holding capacity.',
+            },
+          ],
+          labs_note: 'Use any Alberta-serving agricultural lab; bring results to the site walk.',
+        },
+      },
+      'soil_survey'
+    ),
+  ]);
+  const landUseInterpretation = sturgeonCounty?.land_use
+    ? interpretLandUse(sturgeonCounty.land_use)
+    : null;
 
   // Prefer live NRCan hardiness + frost table over Alberta preset alone
   const hardinessZone =
@@ -202,7 +339,11 @@ export async function generateSiteReport(input = {}) {
       distance_to_nearest_watercourse_m: waterDist,
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
-      water_table_depth_m: null,
+      // Prefer pump-test SWL (subsurface); WAM DTW is near-surface context only
+      water_table_depth_m:
+        predicted_well_depth?.estimated_static_water_level_m ??
+        depthToWater?.depth_m ??
+        null,
       flood_risk_zone: floodRisk,
     },
     soil: {
@@ -254,14 +395,9 @@ export async function generateSiteReport(input = {}) {
     ),
   };
 
-  // Step 8-style join: EcoCrop / Growing Guide planting plan (after climate+soil assembled)
-  const planting_plan = planPlantings(siteInput, { limit: 18 });
-
   const record = buildSiteRecord(siteInput);
 
-  // Recommendation engine → rough field-cost quote (site assessment always
-  // included; swale/pond/shelterbelt/food-forest lines only when rules.js
-  // fired that element). Booking/deposit payment intentionally not wired up.
+  // Field-cost quote from fired design elements (swale/pond/shelterbelt/food forest)
   const service_quote = buildServiceQuote({
     design_elements: record.design_elements,
     footprint_ha: siteInput.footprint_ha,
@@ -272,11 +408,14 @@ export async function generateSiteReport(input = {}) {
   });
 
   // Attach full proximity / well / solar / crime / temperature / wildlife blocks for the UI
+  const rural_crime_map = ruralCrimeWatchContext(centre);
   record.proximity_context = {
     ...siteInput.proximity_context,
     crime_risk: proximity.crime_risk,
     nearest_crimes,
+    rural_crime_map,
   };
+  record.rural_crime_map = rural_crime_map;
   record.predicted_well_depth = predicted_well_depth;
   record.solar = solar;
   record.land_value = land_value;
@@ -285,6 +424,9 @@ export async function generateSiteReport(input = {}) {
   record.zoning = zoning;
   record.temperature = temperature;
   record.wildlife = wildlife;
+  record.sturgeon_county = sturgeonCounty;
+  record.land_use_interpretation = landUseInterpretation;
+  record.soil_survey = soilSurvey;
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
 
@@ -294,56 +436,551 @@ export async function generateSiteReport(input = {}) {
     }).catch(() => {});
 
     const nearestCityDist = proximity.nearest_city?.distance_km || null;
-    assessAccess(centre, nearestCityDist).then((access) => {
-      record.access = access;
-    }).catch(() => {});
 
-    assessBiodiversity(centre).then((bio) => {
-      record.biodiversity = bio;
-    }).catch(() => {});
+  // Access + heavy remote layers in parallel, each soft-capped so free-tier
+  // cold starts still return a usable report within the client timeout.
+  const accessFallback = {
+    available: true,
+    nearest_road: {
+      available: false,
+      error: 'timeout',
+      note: 'Road lookup timed out',
+    },
+    trip_costs_to_city: [],
+    nearest_city_distance_km: nearestCityDist,
+    gas_price_cad_l: 1.45,
+    methodology: 'Access lookup timed out',
+  };
 
-    getWindRose(centre).then((wr) => {
-      record.wind_rose = wr;
-    }).catch(() => {});
-    record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
-    record.demographics = demographicsHeuristic(centre);
-    record.ats = latLngToAts(centre);
-    record.parcel_address = {
-      ats: record.ats,
-      centroid: { lat: centre.latitude, lng: centre.longitude },
-      nearest_road: null,
-      locality: proximity.nearest_settlement?.name || proximity.nearest_city?.name || null,
+  const satFallback = (e) => ({
+    available: false,
+    fallbacks: [`satellite: ${e?.message || 'timeout'}`],
+    claims: [],
+  });
+  const wetFallback = (e) => ({
+    available: false,
+    has_wetland_on_site: !!wetlands.present,
+    wetland_types: wetlands.wetland_class ? [String(wetlands.wetland_class)] : [],
+    wetland_polygons: { type: 'FeatureCollection', features: [] },
+    query_bbox: bbox,
+    feature_count: 0,
+    nearest_wetland_distance_m: null,
+    wetland_area_ha: null,
+    confidence: 'none',
+    source: 'Alberta Merged Wetland Inventory (AMWI)',
+    error: e?.message || 'timeout',
+    claims: [],
+  });
+  const windFallback = (e) => ({
+    available: false,
+    error: e?.message || 'timeout',
+    source: 'NASA POWER',
+  });
+
+  const precipFallback = {
+    available: false,
+    error: 'timeout',
+    source: 'NASA POWER',
+    gpm_pps: {
+      archive_url: 'https://arthurhouhttps.pps.eosdis.nasa.gov/',
+      registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
+    },
+  };
+
+  const hrdemHint = layers.hrdem || {};
+  const [accessRaw, elevationOverlays, hrdemTerrain, satellite, wetlandsDetail, windRose, precipitation] =
+    await Promise.all([
+      withTimeout(
+        assessAccess(centre, nearestCityDist),
+        12_000,
+        accessFallback,
+        'access'
+      ),
+      withTimeout(
+        // Altalis map id=118 product family (open Titan) + HRDEM when available
+        buildElevationOverlays(bbox, {
+          limit: 1200,
+          hrdem_hint: hrdemHint,
+        }),
+        22_000,
+        {
+          contours: {
+            type: 'FeatureCollection',
+            features: [],
+            source: 'Alberta provincial elevation (timeout)',
+          },
+          hrdem: hrdemHint || { available: false },
+        },
+        'elevation_overlays'
+      ),
+      // 3D terrain grid from HRDEM DTM COG (STAC finds coverage; soft-miss if none)
+      withTimeout(
+        sampleHrdemTerrain(bbox, { size: 64, prefer: 'dtm' }),
+        28_000,
+        { available: false, error: 'timeout' },
+        'hrdem_terrain'
+      ),
+      withTimeout(
+        fetchSatelliteIndices(
+          { type: 'Polygon', coordinates: [ring] },
+          { buffer_m: 75 }
+        ),
+        22_000,
+        satFallback,
+        'satellite'
+      ),
+      withTimeout(
+        fetchWetlands(bbox, { buffer_m: 200, centre }),
+        15_000,
+        wetFallback,
+        'wetlands_detail'
+      ),
+      withTimeout(
+        getWindRose(centre, { years: 2 }),
+        15_000,
+        windFallback,
+        'wind_rose'
+      ),
+      withTimeout(
+        fetchPrecipitation(centre, { years: 5 }),
+        18_000,
+        precipFallback,
+        'precipitation'
+      ),
+    ]);
+  record.precipitation = precipitation;
+  // Prefer POWER annual precip when climate proxy is coarse
+  if (precipitation?.mean_annual_mm != null) {
+    record.climate = {
+      ...(record.climate || siteInput.climate || {}),
+      annual_precipitation_mm: precipitation.mean_annual_mm,
+      precipitation_source: precipitation.source,
     };
+  }
+  let access = accessRaw || accessFallback;
+  if (access && !access.trip_costs_to_city && nearestCityDist) {
+    try {
+      const { tripCostsForDistance } = await import('./access.js');
+      access.trip_costs_to_city = tripCostsForDistance(nearestCityDist);
+    } catch {
+      /* ignore */
+    }
+  }
+  // Fallback: Sturgeon County parcel address → road name
+  if (
+    (!access?.nearest_road?.available || !access?.nearest_road?.named) &&
+    sturgeonCounty?.parcel?.full_address
+  ) {
+    const addr = sturgeonCounty.parcel.full_address;
+    const roadMatch = addr.match(/^\d+\s+(.+?)(?:\s*,|\s*$)/);
+    const roadName = roadMatch ? roadMatch[1].trim() : null;
+    if (roadName) {
+      access = {
+        ...access,
+        available: true,
+        nearest_road: {
+          name: roadName,
+          type: access?.nearest_road?.type || 'road',
+          distance_m: access?.nearest_road?.distance_m ?? null,
+          available: true,
+          named: true,
+          source: access?.nearest_road?.available
+            ? `${access.nearest_road.source || 'OSM'} + Sturgeon County address`
+            : 'Sturgeon County parcel address',
+        },
+        methodology:
+          (access.methodology || '') + ' + Sturgeon County parcel address fallback',
+      };
+    }
+  }
+  record.access = access;
 
-    const treeCover = estimateTreeCover(layers, proximity);
+  assessBiodiversity(centre)
+    .then((bio) => {
+      record.biodiversity = bio;
+    })
+    .catch(() => {});
+
+  record.demographics = demographicsHeuristic(centre);
+  record.ats = latLngToAts(centre);
+  record.parcel_address = {
+    ats: record.ats,
+    centroid: { lat: centre.latitude, lng: centre.longitude },
+    nearest_road: access?.nearest_road || null,
+    locality:
+      proximity.nearest_settlement?.name || proximity.nearest_city?.name || null,
+  };
+
+  const treeCover = estimateTreeCover(layers, proximity);
   record.tree_cover = treeCover;
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
-  record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
-
-  // Provincial contours — await for report, then attach to record
-  const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
+  record.wet_areas_mapping = {
+    depth_to_water: depthToWater,
+    predicted_streams: predictedStreams,
+  };
+  const provincialContours =
+    elevationOverlays?.contours || {
+      type: 'FeatureCollection',
+      features: [],
+    };
   record._provincial_contours = provincialContours;
+  record.elevation_overlays = {
+    contours: provincialContours,
+    hrdem: elevationOverlays?.hrdem || layers.hrdem || { available: false },
+    sources: elevationOverlays?.sources || null,
+  };
+  // Enrich layers.hrdem for UI flags / provenance
+  if (elevationOverlays?.hrdem) {
+    record.hrdem = {
+      ...(layers.hrdem || {}),
+      ...elevationOverlays.hrdem,
+    };
+  }
+  // HRDEM sampled terrain for 3D viewer (prefer over coarse DEM when available)
+  record.hrdem_terrain = hrdemTerrain || { available: false };
+  if (hrdemTerrain?.available) {
+    record.hrdem = {
+      ...(record.hrdem || layers.hrdem || {}),
+      terrain_sampled: true,
+      terrain_rows: hrdemTerrain.rows,
+      terrain_cols: hrdemTerrain.cols,
+      terrain_relief_m: hrdemTerrain.relief_m,
+      terrain_source: hrdemTerrain.source,
+    };
+  }
 
-  // Fecundity assessment — infer from available pipeline data
-  const fecundityReport = generateFecundityReport({
-    measured: {},  // no direct site measurements from remote report
-    topoData: { avgSlopePercent: t.slope_percent },
-    wetlandsPresent: !!wetlands.present,
-    regionalSoilTexture: soils.texture || null,
-    ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
-    landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
-    wildlifeObservations: wildlife?.recent_sightings?.map((s) => s.species || s.common_name || '') || [],
-    windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
-    frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
-  }, { propertyLabel: siteInput.site_name });
+  // Minerals & geology — AER mineral occurrences (DIG 2025-0009 family)
+  const minerals = await withTimeout(
+    fetchMinerals(bbox, { centre, search_radius_km: 15 }),
+    15_000,
+    {
+      available: false,
+      error: 'timeout',
+      source: 'Alberta Geological Survey (AER)',
+      disclaimer: 'Mineral data timed out. Try again in a moment.',
+    },
+    'minerals'
+  );
+  record.minerals = minerals;
+  if (minerals?.available) {
+    record.data_provenance.push({
+      field: 'minerals / geological occurrences',
+      source_name: 'Alberta Geological Survey — Mineral Occurrences (DIG 2025-0009, DIG 2019-0026, DIG 2019-0027)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: 'https://ags.aer.ca/publications/all-publications/dig-2025-0009',
+    });
+  }
+
+  // Small water — expensive Planetary Computer stack; soft-cap hard
+  const smallWater = await withTimeout(
+    fetchSmallWater(
+      { type: 'Polygon', coordinates: [ring] },
+      {
+        bufferMeters: 100,
+        minPixels: 2,
+        ndwiThreshold: 0.15,
+        mndwiThreshold: 0.1,
+        includeTWI: true,
+        wetlands: wetlandsDetail,
+        centre,
+        elevations: layers.elevation?.elevations,
+        elevRows: layers.elevation?.rows,
+        elevCols: layers.elevation?.cols,
+        elevBbox: bbox,
+      }
+    ),
+    20_000,
+    {
+      available: false,
+      summary: { has_any_water: false },
+      open_water_features: [],
+      possible_small_water_or_seeps: [],
+      fallbacks: ['small water timed out — using inventory-only screening'],
+      claims: [],
+    },
+    'small_water'
+  );
+
+  const satPatch = toFecundityPatch(satellite);
+  const wetPatch = toFecundityWetlandPatch(wetlandsDetail);
+  const swPatch = toFecunditySmallWaterPatch(smallWater);
+  record.satellite = satellite;
+  record.wetlands = wetlandsDetail;
+  record.small_water = smallWater;
+  record.wind_rose = windRose;
+  // Prefer NASA primary wind direction for shelterbelt / climate summary
+  if (windRose?.available && windRose.primary_direction) {
+    record.climate = {
+      ...(record.climate || {}),
+      prevailing_wind_direction: windRose.primary_direction,
+      secondary_wind_direction: windRose.secondary_direction || null,
+      mean_wind_speed_ms: windRose.mean_speed_ms ?? null,
+      wind_source: windRose.source,
+    };
+  }
+
+  // Fecundity assessment — recreate score from inventory + satellite plant health
+  // (NRCan LAI/fCOVER/fAPAR, NDVI, soil survey pH/texture, wetlands, wind, wildlife)
+  const fecundityReport = generateFecundityReport(
+    {
+      measured: {}, // no direct site measurements from remote report
+      topoData: { avgSlopePercent: t.slope_percent },
+      wetlandsPresent:
+        wetPatch.wetlandsPresent != null
+          ? wetPatch.wetlandsPresent
+          : !!wetlands.present,
+      hasPondOrWetlandInventory: wetPatch.hasPondOrWetlandInventory,
+      wetlandHabitatPresent: wetPatch.wetlandHabitatPresent,
+      wetlandProximityBoost: wetPatch.wetlandProximityBoost,
+      wetlandTypes: wetPatch.wetlandTypes,
+      wetlandAreaHa: wetPatch.wetlandAreaHa,
+      wetlands: wetPatch.wetlands || wetlandsDetail,
+      // Small water / seeps (satellite + inventory stack) — never regulatory
+      hasPondOrDugout: swPatch.hasPondOrDugout,
+      hasSmallWaterOrSeep: swPatch.hasSmallWaterOrSeep,
+      smallWaterDensity: swPatch.smallWaterDensity,
+      smallWaterNearestM: swPatch.smallWaterNearestM,
+      smallWaterConfirmedAreaM2: swPatch.smallWaterConfirmedAreaM2,
+      smallWaterPossibleAreaM2: swPatch.smallWaterPossibleAreaM2,
+      satelliteOpenWater: swPatch.satelliteOpenWater,
+      smallWater: swPatch.smallWater || smallWater,
+      // Soil survey + SoilGrids screening (texture, pH) — not lab SOC as OM%
+      soil_survey: soilSurvey,
+      regionalSoilTexture:
+        soilSurvey?.characteristics?.texture_class ||
+        soilSurvey?.sample_summary?.texture_class ||
+        soils.texture ||
+        null,
+      soilPh:
+        soilSurvey?.characteristics?.ph_h2o_mean ??
+        soilSurvey?.sample_summary?.mean_ph ??
+        null,
+      // Satellite plant health — NRCan biophysical + S2 vigor
+      ndviCoverPct:
+        satPatch.ndviCoverPct ??
+        (satPatch.fcover != null ? Number(satPatch.fcover) * 100 : undefined) ??
+        (treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined),
+      ndviMedian: satPatch.ndviMedian,
+      vegetationVigor: satPatch.vegetationVigor,
+      soilMoistureProxy: satPatch.soilMoistureProxy,
+      ndviTrendSlope: satPatch.ndviTrendSlope,
+      lai: satPatch.lai,
+      laiMean: satPatch.lai,
+      fcover: satPatch.fcover,
+      fcoverMean: satPatch.fcover,
+      fapar: satPatch.fapar,
+      faparMean: satPatch.fapar,
+      satellite: satPatch.satellite,
+      satelliteClaims: satPatch.satelliteClaims,
+      regionalSocContext: satPatch.regionalSocContext,
+      treeCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : null,
+      tree_cover: treeCover,
+      landCoverClass: wetlands.present
+        ? 'shrubland'
+        : layers.alberta?.land_cover || null,
+      wildlifeObservations: wildlife?.sighting_species || [],
+      windExposureHint:
+        layers.elevation?.tree_density_hint ||
+        (treeCover?.tree_cover_pct > 40
+          ? 'sheltered'
+          : treeCover?.tree_cover_pct > 15
+            ? 'partial'
+            : 'open'),
+      frostPoolingHint:
+        t.landform_position === 'depression'
+          ? 'high'
+          : t.landform_position === 'valley_floor'
+            ? 'moderate'
+            : 'low',
+      footprintHa: siteInput.footprint_ha,
+      annualPrecipMm: climate.annual_precipitation_mm || null,
+    },
+    { propertyLabel: siteInput.site_name }
+  );
   record.fecundity = fecundityReport;
 
+  // Plant Recommendation + Economics Engine (after fecundity → Site Condition Profile)
+  // Separate beta offering in the UI — intelligence for the planting planner pane.
+  const planting_plan = planPlantings(siteInput, {
+    limit: 18,
+    scenario: 'market_garden',
+    goals: input.plant_goals || input.goals || undefined,
+    fecundity: fecundityReport,
+    hardiness,
+    soil_survey: soilSurvey,
+    satellite,
+    wetlands: wetlandsDetail,
+    small_water: smallWater,
+    wind_rose: windRose,
+    tree_cover: treeCover,
+    windExposureHint:
+      treeCover?.tree_cover_pct > 40
+        ? 'sheltered'
+        : treeCover?.tree_cover_pct > 15
+          ? 'partial'
+          : 'open',
+    frostPoolingHint:
+      t.landform_position === 'depression'
+        ? 'high'
+        : t.landform_position === 'valley_floor'
+          ? 'moderate'
+          : 'low',
+  });
   record.planting_plan = planting_plan;
+  record.site_condition_profile = planting_plan.site_condition_profile || null;
+
+  // Species-specific placement notes (shelterbelt / food forest with named plants)
+  if (Array.isArray(record.design_elements) && planting_plan?.recommended?.length) {
+    record.design_elements = enrichDesignElementsWithPlants(
+      record.design_elements,
+      planting_plan,
+      planting_plan.site_condition_profile
+    );
+    const recs = groupRecommendationsByValue(record.design_elements);
+    record.recommendations = {
+      ...(record.recommendations || {}),
+      ...recs,
+    };
+    if (record._meta) {
+      record._meta.recommendations = record.recommendations;
+    }
+  }
+
+  // Planting plan as intervention — lever deltas + cash-flow for value-of-improvements
+  const baselineScores = Object.fromEntries(
+    (fecundityReport?.categories || []).map((c) => [c.category, c.score])
+  );
+  let plantingIntervention = null;
+  try {
+    plantingIntervention = plantingPlanInterventionValue(planting_plan, baselineScores, {
+      scenario: 'mid',
+      timeHorizonYears: 10,
+      footprintHa: siteInput.footprint_ha,
+    });
+  } catch (e) {
+    console.warn('planting intervention value failed', e.message);
+  }
+  record.planting_intervention_value = plantingIntervention;
+  record.recommended_plantings = plantingReportTable(planting_plan, plantingIntervention);
+  if (fecundityReport && plantingIntervention) {
+    fecundityReport.plantingInterventionValue = plantingIntervention;
+    // Merge plant cash into intervention value narrative when earthworks ROI also present
+    if (fecundityReport.interventionValue) {
+      fecundityReport.interventionValue.planting_plan_overlay = {
+        upfrontCost_cad: plantingIntervention.financialSummary?.upfrontCost_cad,
+        annualBenefit_cad: plantingIntervention.financialSummary?.annualBenefit_cad,
+        npv_cad: plantingIntervention.financialSummary?.npv_cad,
+        overall_lever_delta: plantingIntervention.scoreComparison?.deltas?.overall,
+        note: 'Separate planting-plan economics; not double-counted in earthworks ROI totals.',
+      };
+    }
+  }
+
+  // High-level service packages: Food · Water · Energy · Shelter
+  // fed by design_elements, wells, solar, fecundity, and field quotes
+  const service_packages = recommendServicePackages({
+    design_elements: record.design_elements,
+    predicted_well_depth,
+    solar,
+    fecundity: fecundityReport,
+    footprint_ha: siteInput.footprint_ha,
+    slope_percent: t.slope_percent,
+    hydrology: siteInput.hydrology,
+    service_quote,
+    travel_km: service_quote?.sizing_basis?.travel_km_one_way,
+    propertyLabel: siteInput.site_name,
+  });
+  record.service_packages = service_packages;
+
   record.service_quote = service_quote;
+
+  // Harmonized selectable intervention menu (value-first UX → choose → estimate → inquire)
+  try {
+    record.action_menu = buildActionMenu({
+      service_packages,
+      service_quote,
+      planting_plan,
+      recommended_plantings: record.recommended_plantings,
+      wetlands: wetlandsDetail,
+      small_water: smallWater,
+      proximity,
+      proximity_context: record.proximity_context,
+      predicted_well_depth,
+      terrain: t,
+      hydrology: siteInput.hydrology,
+    });
+  } catch (e) {
+    console.warn('action_menu build failed', e.message);
+    record.action_menu = { items: [], error: e.message };
+  }
+
+  // Unified property map: parcel + elevation/contours + plantings + water + settlements
+  // Built from the same drawn ring used for all other spatial displays.
+  try {
+    record.site_map = buildSiteMapFeatures({
+      ring,
+      bbox,
+      centre,
+      topology,
+      planting_plan,
+      wetlands: wetlandsDetail,
+      small_water: smallWater,
+      provincial_contours: provincialContours,
+      elevation_overlays: record.elevation_overlays,
+      tree_cover: treeCover,
+      tree_sample_grid: record.tree_sample_grid,
+      proximity,
+      climate: record.climate || climate,
+      wind_rose: windRose,
+      satellite,
+    });
+  } catch (e) {
+    console.warn('site_map build failed', e.message);
+    record.site_map = {
+      version: 1,
+      error: e.message,
+      parcel: {
+        type: 'Polygon',
+        coordinates: [ring],
+        bbox: [bbox.west, bbox.south, bbox.east, bbox.north],
+      },
+    };
+  }
+
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
       source_name: 'Expanding Edge rate engine (2024 rate sheet, +8% est.) applied to fired design_elements',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: null,
+    });
+    record.data_provenance.push({
+      field: 'service_packages',
+      source_name:
+        'EE service package engine — Food / Water / Energy / Shelter (wells, solar+generator, soil carbon, $250k off-grid garage)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: null,
+    });
+    if (wetlandsDetail?.source) {
+      record.data_provenance.push({
+        field: 'wetlands / fecundity water-fauna-microclimate',
+        source_name: wetlandsDetail.source,
+        source_date: new Date().toISOString().slice(0, 10),
+        source_url: wetlandsDetail.source_url || null,
+      });
+    }
+    if (smallWater?.metadata?.sources?.length) {
+      record.data_provenance.push({
+        field: 'small_water_detection',
+        source_name: smallWater.metadata.sources.join(' + '),
+        source_date: smallWater.metadata.processing_date || new Date().toISOString().slice(0, 10),
+        source_url: null,
+      });
+    }
+    record.data_provenance.push({
+      field: 'site_map',
+      source_name:
+        'Unified property map — DEM contours, plant placement, AMWI/S2 water, proximity settlements, canopy image analysis (client)',
       source_date: new Date().toISOString().slice(0, 10),
       source_url: null,
     });
@@ -391,16 +1028,24 @@ export async function generateSiteReport(input = {}) {
       zoning,
       temperature,
       wildlife,
+      sturgeon_county: sturgeonCounty,
+      land_use_interpretation: landUseInterpretation,
+      soil_survey: soilSurvey,
       planting: {
+        engine: planting_plan.engine,
         catalog: planting_plan.growing_guide?.catalog_source,
         recommended_count: planting_plan.recommended?.length || 0,
+        guilds: planting_plan.suggested_guilds?.length || 0,
+        plan_economics: planting_plan.plan_economics || null,
+        hardiness_zone: planting_plan.site_filters?.plant_hardiness_zone,
+        effective_zone: planting_plan.site_filters?.effective_hardiness_zone,
       },
       alberta: layers.alberta,
     },
     planting_plan,
     _meta: {
       ...record._meta,
-      pipeline: 'bbox-live-v8-phase3',
+      pipeline: 'bbox-live-v13-small-water',
       cache: 'miss',
       cache_key: key,
     },
@@ -426,10 +1071,12 @@ function stripWellForSchema(w) {
     estimated_depth_m: w.estimated_depth_m,
     estimated_depth_range_m: w.estimated_depth_range_m,
     estimated_static_water_level_m: w.estimated_static_water_level_m,
+    estimated_aquifer_top_m: w.estimated_aquifer_top_m ?? null,
     target_hydrostratigraphic_unit: w.target_hydrostratigraphic_unit,
     nearby_well_count: w.nearby_well_count,
     nearby_well_search_radius_km: w.nearby_well_search_radius_km,
     confidence: w.confidence,
+    hydrology_basis: w.hydrology_basis || [],
     disclaimer_required: true,
   };
 }
@@ -530,7 +1177,7 @@ function buildProvenance(
   if (well) {
     rows.push({
       field: 'predicted_well_depth',
-      source_name: `Well depth IDW (${well._meta?.well_data_source || 'wells'}) · AGS Map 610 bedrock proxy`,
+      source_name: `Well hydrology IDW (${well._meta?.method || 'idw'}; ${well._meta?.well_data_source || 'wells'}) · SWL/screens/lithology · AGS bedrock proxy`,
       source_date: new Date().toISOString().slice(0, 10),
       source_url: 'https://groundwater.alberta.ca/WaterWells/d/',
     });
@@ -543,6 +1190,12 @@ function buildProvenance(
       source_url: solar.source_url,
     });
   }
+  rows.push({
+    field: 'proximity_context.rural_crime_map',
+    source_name: 'RCMP Area Crime Map (Alberta Rural Crime Watch)',
+    source_date: new Date().toISOString().slice(0, 10),
+    source_url: 'https://www.ruralcrimewatch.ab.ca/resources/RCMP-area-crime-map',
+  });
   if (nearest_crimes?.available || nearest_crimes?.in_eps_coverage) {
     rows.push({
       field: 'proximity_context.nearest_crimes',
@@ -599,6 +1252,12 @@ function buildProvenance(
       source_url: wildlife.source_url,
     });
   }
+  rows.push({
+    field: 'sturgeon_county (parcel, land use, neighbourhood)',
+    source_name: 'Sturgeon County Property Viewer (ArcGIS FeatureServer)',
+    source_date: new Date().toISOString().slice(0, 10),
+    source_url: 'https://sturgeoncounty.maps.arcgis.com/apps/instant/media/index.html?appid=5f73684b6e8c49508b6a153a679ae008',
+  });
   rows.push({
     field: 'planting_plan',
     source_name: 'EcoCrop-style suitability · OpenSourceMed Growing Guide / farmfit catalog approach',

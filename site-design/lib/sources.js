@@ -130,20 +130,27 @@ async function fetchElevationGrid(bbox) {
 }
 
 async function checkHrdemCoverage(bbox) {
+  // LiDAR projects + national HRDEM mosaic (open.canada.ca/dataset/0fe65119-…)
   const url =
-    `https://datacube.services.geo.ca/stac/api/search?collections=hrdem-lidar` +
-    `&bbox=${bbox.west},${bbox.south},${bbox.east},${bbox.north}&limit=3`;
+    `https://datacube.services.geo.ca/stac/api/search?` +
+    `collections=hrdem-lidar,hrdem-mosaic-1m,hrdem-mosaic-2m` +
+    `&bbox=${bbox.west},${bbox.south},${bbox.east},${bbox.north}&limit=8`;
   const data = await fetchJson(url, 15_000);
   const items = data.features || [];
+  const collections = [...new Set(items.map((f) => f.collection).filter(Boolean))];
   return {
     available: items.length > 0,
     count: items.length,
     projects: items.map((f) => f.id).slice(0, 5),
+    collections,
+    dataset_url:
+      'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b',
+    wms_url: 'https://datacube.services.geo.ca/ows/elevation',
     source_url:
-      'https://datacube.services.geo.ca/stac/api/search?collections=hrdem-lidar',
+      'https://datacube.services.geo.ca/stac/api/search?collections=hrdem-lidar,hrdem-mosaic-1m,hrdem-mosaic-2m',
     note: items.length
-      ? 'HRDEM LiDAR coverage present — higher-resolution DEM available for engineering phase.'
-      : 'No HRDEM LiDAR tile in STAC for this box; using regional DEM baseline.',
+      ? `HRDEM coverage present (${collections.join(', ') || 'tiles'}) — hillshade available on maps.`
+      : 'No HRDEM mosaic/LiDAR tile in STAC for this box; using provincial contours + regional DEM baseline.',
   };
 }
 

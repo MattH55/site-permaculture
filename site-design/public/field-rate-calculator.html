@@ -345,7 +345,7 @@ function render(){
   let html = '';
   r.lineItems.forEach(l=>{ html += `<div class="legend-line"><span class="l">${l.label}</span><span class="r">${fmt(l.cost)}</span></div>`; });
   if(r.materialsPct>0){ html += `<div class="legend-line sub"><span class="l">Materials & contingency (${Math.round(r.materialsPct*100)}%)</span><span class="r">${fmt(r.materialsCost)}</span></div>`; }
-  html += `<div class="legend-line sub"><span class="l">Mob/demob + travel (${kmRange.value} km × 2)</span><span class="r">${fmt(r.travelCost)}</span></div>`;
+  html += `<div class="legend-line sub"><span class="l">Mobilization / demobilization + travel (${kmRange.value} km × 2)</span><span class="r">${fmt(r.travelCost)}</span></div>`;
   if(r.livingOutCost>0){ html += `<div class="legend-line sub"><span class="l">Living-out allowance (${r.fieldDays} day(s))</span><span class="r">${fmt(r.livingOutCost)}</span></div>`; }
   html += `<div class="legend-total"><span class="l">Estimated total</span><span class="r">${fmt(r.subtotal)}</span></div>`;
   html += `<div class="range-band">likely range ${fmt(r.rangeLow)} – ${fmt(r.rangeHigh)}</div>`;

@@ -2,13 +2,17 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f7f8f3">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Map your land — Expanding Edge Permaculture</title>
 <meta name="description" content="Draw your Alberta parcel on a topographic map. Expanding Edge pulls elevation, wetlands, soils and climate, then builds a permaculture site design report.">
   <link rel="stylesheet" href="/styles.css">
   <!-- Leaflet — free open-source map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <!-- Three.js — 3D HRDEM / DEM terrain mesh -->
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
   <!-- html2pdf.js — client-side PDF generation from HTML -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 </head>
@@ -47,15 +51,6 @@
           <input id="search-box" type="text" placeholder="Rural address, town, or place name…" autocomplete="off">
         </div>
 
-        <div class="field coord-field">
-          <label>Or enter coordinates</label>
-          <div class="coord-row">
-            <input id="coord-lat" type="text" placeholder="Lat (e.g. 53.55)" autocomplete="off">
-            <input id="coord-lng" type="text" placeholder="Lng (e.g. -113.5)" autocomplete="off">
-            <button type="button" class="btn btn-secondary" id="btn-go-coords" style="padding:0.6rem 0.8rem;font-size:0.85rem">Go</button>
-          </div>
-        </div>
-
         <div class="draw-tools" role="group" aria-label="Drawing tools">
           <button type="button" class="btn" id="btn-draw-poly" aria-pressed="false">Draw parcel</button>
           <button type="button" class="btn btn-secondary" id="btn-draw-rect" aria-pressed="false">Rectangle</button>
@@ -66,6 +61,17 @@
           Click <strong>Draw parcel</strong>, then click corners on the map. Double-click or press Finish when done.
         </p>
 
+        <details class="map-advanced">
+          <summary class="fine">Advanced: jump to coordinates</summary>
+          <div class="field coord-field" style="margin-top:0.5rem">
+            <div class="coord-row">
+              <input id="coord-lat" type="text" placeholder="Lat (e.g. 53.55)" autocomplete="off">
+              <input id="coord-lng" type="text" placeholder="Lng (e.g. -113.5)" autocomplete="off">
+              <button type="button" class="btn btn-secondary" id="btn-go-coords" style="padding:0.6rem 0.8rem;font-size:0.85rem">Go</button>
+            </div>
+          </div>
+        </details>
+
         <div class="parcel-meta mono" id="parcel-meta" hidden></div>
 
         <div class="actions">
@@ -73,7 +79,7 @@
         </div>
         <p class="err" id="map-error" hidden></p>
         <p class="fine">
-          Sources: NRCan HRDEM coverage · DEM elevation · AMWI wetlands · Wet Areas Mapping ·
+          Sources: NRCan vegetation (LAI/fCOVER) · AVI Crown · HRDEM · DEM · AMWI wetlands ·
           Alberta watersheds · Agricultural Land Resource Atlas · climate normals.
         </p>
       </div>
@@ -91,35 +97,46 @@
       <button type="button" class="report-tab is-active" role="tab" id="tab-site" aria-selected="true" aria-controls="pane-site">
         Site design
       </button>
-      <button type="button" class="report-tab" role="tab" id="tab-plant" aria-selected="false" aria-controls="pane-plant">
-        Planting plan
+      <button type="button" class="report-tab report-tab-side" role="tab" id="tab-plant" aria-selected="false" aria-controls="pane-plant">
+        Planting planner
+        <span class="badge beta" title="Separate beta offering — not part of the core site design package">Beta</span>
       </button>
       <button type="button" class="btn-quiet" id="btn-back-map-top">← Map</button>
     </div>
     <div class="wrap report-wrap report-dual">
       <aside class="rail">
         <span class="mono rail-label">Site core</span>
-        <div class="steps" id="report-core"></div>
-        <button type="button" class="btn btn-secondary" id="btn-back-map" style="margin-top:1rem;width:100%">
-          ← Back to map
-        </button>
-        <button type="button" class="btn btn-secondary" id="btn-open-plant" style="margin-top:0.5rem;width:100%">
-          Planting plan →
-        </button>
-        <button type="button" class="btn" id="btn-pdf-all" style="margin-top:0.5rem;width:100%">
-          ⬇ Download full PDF
-        </button>
+        <div class="steps" id="report-core" role="navigation" aria-label="Report sections"></div>
+
+        <div class="rail-side-offerings" id="report-side-offerings" role="navigation" aria-label="Separate offerings">
+          <span class="mono rail-label rail-label-side">Separate offering</span>
+          <button type="button" class="side-offer-card" id="btn-open-plant" data-pane="plant" aria-controls="pane-plant">
+            <span class="side-offer-head">
+              <span class="side-offer-title">Planting planner</span>
+              <span class="badge beta">Beta</span>
+            </span>
+            <span class="side-offer-desc fine">
+              Alberta-suited crops, economics, and vendor links — a separate preview tool, not included in the core site design package.
+            </span>
+            <span class="side-offer-cta mono">Open beta →</span>
+          </button>
+        </div>
+
+        <div class="rail-actions">
+          <button type="button" class="btn btn-secondary" id="btn-back-map">
+            ← Back to map
+          </button>
+          <button type="button" class="btn" id="btn-pdf-all">
+            ⬇ Download full PDF
+          </button>
+        </div>
       </aside>
       <div class="report-panes">
         <section id="pane-overview" class="report-pane is-active" role="tabpanel"><div id="report-overview" aria-live="polite"></div></section>
-        <section id="pane-topo" class="report-pane" role="tabpanel" hidden><div id="report-topo" aria-live="polite"></div></section>
-        <section id="pane-water" class="report-pane" role="tabpanel" hidden><div id="report-water" aria-live="polite"></div></section>
-        <section id="pane-wildlife" class="report-pane" role="tabpanel" hidden><div id="report-wildlife" aria-live="polite"></div></section>
-        <section id="pane-access" class="report-pane" role="tabpanel" hidden><div id="report-access" aria-live="polite"></div></section>
-        <section id="pane-fecundity" class="report-pane" role="tabpanel" hidden><div id="report-fecundity" aria-live="polite"></div></section>
-        <section id="pane-rules" class="report-pane" role="tabpanel" hidden><div id="report-rules" aria-live="polite"></div></section>
-        <section id="pane-site" class="report-pane" role="tabpanel" hidden><div id="report" aria-live="polite"></div></section>
+        <section id="pane-services" class="report-pane" role="tabpanel" hidden><div id="report-services" aria-live="polite"></div></section>
         <section id="pane-plant" class="report-pane" role="tabpanel" hidden><div id="planting-pane" aria-live="polite"></div></section>
+        <!-- Hidden linear document for PDF export only (not in nav) -->
+        <section id="pane-site" class="report-pane" role="tabpanel" hidden aria-hidden="true" style="display:none"><div id="report"></div></section>
       </div>
     </div>
   </main>
@@ -128,12 +145,12 @@
     <div class="loading-card">
       <span class="mono">Expanding Edge</span>
       <h2>Reading the land…</h2>
-      <p class="fine" style="margin:0.4rem 0 0">Usually 10–20 seconds while we query elevation and Alberta open data.</p>
+      <p class="fine" style="margin:0.4rem 0 0">About 60 seconds while we query elevation, contours, wetlands, and Alberta open data. First run after idle can take a bit longer.</p>
       <ul class="loading-steps mono" id="loading-steps">
-        <li data-step="elev">Elevation grid</li>
+        <li data-step="elev">Elevation &amp; contours</li>
         <li data-step="hrdem">HRDEM coverage</li>
         <li data-step="wet">Wetlands &amp; hydro</li>
-        <li data-step="soil">Soils atlas</li>
+        <li data-step="soil">Soils &amp; climate</li>
         <li data-step="rules">Placement rules</li>
       </ul>
       <button type="button" class="btn-quiet" id="btn-cancel-load" style="margin-top:1rem">Cancel</button>

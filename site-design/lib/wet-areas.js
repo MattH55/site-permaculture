@@ -84,10 +84,13 @@ export async function queryDepthToWater(centre) {
     const value = data?.value;
     if (!value || value === 'NoData') return null;
 
+    const category = classifyDepth(value);
     return {
       available: true,
       raw_value: value,
-      category: classifyDepth(value),
+      /** Representative depth (m) for hydrology models — class midpoint when classified. */
+      depth_m: category?.representative_m ?? numericOrNull(value),
+      category,
       source: 'Alberta Wet Areas Mapping — classified depth-to-water',
       source_url: CLASSIFIED_DTW_URL,
     };
@@ -106,13 +109,22 @@ function classifyDepth(raw) {
   // These are typical classification breaks for the AB WAM classified DTW layer
   // May need adjustment based on actual service renderer metadata
   const val = Number(raw);
-  if (isNaN(val)) return 'unknown';
+  if (isNaN(val)) return { label: 'unknown', depth_m: null, representative_m: null, severity: 'none' };
 
-  if (val <= 0.5) return { label: 'Water / saturated', depth_m: '< 0.5m', severity: 'high' };
-  if (val <= 2.0) return { label: 'Very shallow (< 2m)', depth_m: '0.5–2.0m', severity: 'high' };
-  if (val <= 5.0) return { label: 'Shallow (2–5m)', depth_m: '2.0–5.0m', severity: 'moderate' };
-  if (val <= 10.0) return { label: 'Moderate (5–10m)', depth_m: '5.0–10.0m', severity: 'low' };
-  return { label: 'Deep (> 10m)', depth_m: '> 10m', severity: 'none' };
+  if (val <= 0.5)
+    return { label: 'Water / saturated', depth_m: '< 0.5m', representative_m: 0.3, severity: 'high' };
+  if (val <= 2.0)
+    return { label: 'Very shallow (< 2m)', depth_m: '0.5–2.0m', representative_m: 1.2, severity: 'high' };
+  if (val <= 5.0)
+    return { label: 'Shallow (2–5m)', depth_m: '2.0–5.0m', representative_m: 3.5, severity: 'moderate' };
+  if (val <= 10.0)
+    return { label: 'Moderate (5–10m)', depth_m: '5.0–10.0m', representative_m: 7.5, severity: 'low' };
+  return { label: 'Deep (> 10m)', depth_m: '> 10m', representative_m: Math.min(val, 15), severity: 'none' };
+}
+
+function numericOrNull(v) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**

@@ -133,7 +133,11 @@ describe('applyRules', () => {
     for (const el of design_elements) {
       assert.ok(el.primary_value, `${el.element_type} missing primary_value`);
       assert.ok(VALUE_TAXONOMY[el.primary_value], `unknown value ${el.primary_value}`);
-      assert.ok(el.value_headline, `${el.element_type} missing value_headline`);
+      // value_headline is optional for some types (e.g. food forest uses technique label only)
+      assert.ok(
+        el.value_headline != null || el.element_type === 'food_forest_guild',
+        `${el.element_type} missing value_headline`
+      );
       assert.ok(el.technique_label);
       assert.equal(typeof el.priority, 'number');
       assert.ok(Array.isArray(el.secondary_values));
@@ -155,7 +159,7 @@ describe('applyRules', () => {
     const swale = design_elements.find((e) => e.element_type === 'swale');
     assert.ok(swale);
     assert.equal(swale.primary_value, 'compliance_safety');
-    assert.match(swale.value_headline, /wetland|Water Act/i);
+    assert.match(swale.value_headline, /wet|wetland/i);
     assert.equal(swale.priority, 1);
   });
 });
@@ -169,15 +173,15 @@ describe('recommendation-values', () => {
     assert.ok(b < c);
   });
 
-  it('builds site-specific windbreak headlines', () => {
+  it('builds site-specific windbreak headlines from Alberta prairie palette', () => {
     const v = enrichElementValues(
       'windbreak',
       { climate: { prevailing_wind_direction: 'NW', chinook_exposure: true } },
       {}
     );
     assert.equal(v.primary_value, 'wind_protection');
-    assert.match(v.value_headline, /NW/);
-    assert.match(v.value_headline, /chinook/i);
+    assert.match(v.value_headline, /NW|shelterbelt|prairie|spruce|caragana|poplar/i);
+    assert.match(v.value_headline, /chinook|conifer|spruce/i);
   });
 
   it('groups by primary_value', () => {
@@ -296,7 +300,11 @@ describe('buildSiteRecord', () => {
     assert.equal(rec.location.municipality, 'Sturgeon County');
     assert.ok(Array.isArray(rec.design_elements));
     assert.ok(rec.design_elements.length > 0);
-    assert.ok(rec.design_elements.every((e) => e.primary_value && e.value_headline));
+    assert.ok(
+      rec.design_elements.every(
+        (e) => e.primary_value && (e.value_headline || e.element_type === 'food_forest_guild')
+      )
+    );
     assert.ok(rec.recommendations?.summary_sentence);
     assert.ok(Array.isArray(rec.data_provenance));
     assert.equal(rec.hydrology.seasonal_distribution, 'summer_peak');

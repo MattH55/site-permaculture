@@ -5,6 +5,8 @@
  * (water storage, wind protection, food, etc.) and builds value headlines.
  */
 
+import { shelterbeltValueHeadline } from './shelterbelt-palette.js';
+
 /** Stable value taxonomy for schema, UI chips, and EE marketing filters. */
 export const VALUE_TAXONOMY = {
   water_storage: {
@@ -121,28 +123,28 @@ export const ELEMENT_VALUE_MAP = {
     secondary_values: ['food_production', 'microclimate'],
     effort: 'medium',
     season_hint: 'Build with woody debris before freeze-up; plant next season',
-    related_services: ['food_forest_design', 'full_site_design'],
+    related_services: ['soil_carbon_building', 'food_forest_design', 'full_site_design'],
   },
   windbreak: {
     primary_value: 'wind_protection',
     secondary_values: ['snow_management', 'microclimate', 'biodiversity'],
     effort: 'medium',
     season_hint: 'Plant dormant stock in spring; mulch against chinook heave',
-    related_services: ['shelterbelt_design', 'full_site_design'],
+    related_services: ['shelterbelt_design', 'off_grid_garage', 'full_site_design'],
   },
   shelterbelt_zone: {
     primary_value: 'wind_protection',
     secondary_values: ['snow_management', 'microclimate', 'biodiversity'],
     effort: 'medium',
     season_hint: 'Multi-row layout; leave access gaps for snow and equipment',
-    related_services: ['shelterbelt_design'],
+    related_services: ['shelterbelt_design', 'off_grid_garage'],
   },
   food_forest_guild: {
     primary_value: 'food_production',
     secondary_values: ['biodiversity', 'soil_building', 'shade'],
     effort: 'medium',
     season_hint: 'Plant after soil-building cover phase; water establishment years',
-    related_services: ['food_forest_design', 'full_site_design'],
+    related_services: ['food_forest_design', 'soil_carbon_building', 'full_site_design'],
   },
   herb_spiral: {
     primary_value: 'medicinal',
@@ -157,6 +159,13 @@ export const ELEMENT_VALUE_MAP = {
     effort: 'low',
     season_hint: 'Mulch paths; compost at keyhole centre',
     related_services: ['kitchen_garden_design'],
+  },
+  groundwater_well: {
+    primary_value: 'water_storage',
+    secondary_values: ['water_harvest', 'compliance_safety'],
+    effort: 'high',
+    season_hint: 'Drill after frost leaves the ground; budget for pump, pressure tank, and water test',
+    related_services: ['well_drilling', 'water_earthworks_consult', 'full_site_design'],
   },
 };
 
@@ -221,6 +230,7 @@ function techniqueLabel(type) {
     food_forest_guild: 'Food forest guild',
     herb_spiral: 'Herb spiral',
     keyhole_bed: 'Keyhole bed',
+    groundwater_well: 'Groundwater well',
   };
   return labels[type] || type;
 }
@@ -236,16 +246,14 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
   const slope = num(terrain.slope_percent);
   const wind = climate.prevailing_wind_direction;
   const landform = (terrain.landform_position || '').replace(/_/g, ' ');
-  const ffd = num(climate.frost_free_days);
-  const zone = climate.plant_hardiness_zone;
   const footprint = num(site.footprint_ha);
 
-  // Regulatory swale block
+  // Regulatory swale block — keep earthworks off mapped wet areas (details in placement notes)
   if (
     elementType === 'swale' &&
     (ctx.wetland_block || /wetland/i.test(ctx.condition_basis || ''))
   ) {
-    return 'Protect existing wetland function and confirm Water Act approvals before any earthworks.';
+    return 'Mapped wet areas stay in place — redesign water features around the wetland edge.';
   }
 
   switch (elementType) {
@@ -270,24 +278,24 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
         ? 'Build planting depth and organic matter where the native soil profile is thin or low-capability.'
         : 'Build planting depth and organic matter for productive Zone 1 beds.';
     case 'windbreak':
-    case 'shelterbelt_zone': {
-      const dir = wind || 'prevailing';
-      const chinook = climate.chinook_exposure
-        ? ' Buffer chinook freeze–thaw as well as everyday wind.'
-        : '';
-      return `Shelter Zones 1–2 from ${dir} winds with a multi-row belt.${chinook}`;
-    }
-    case 'food_forest_guild': {
-      const z = zone ? ` in zone ${zone}` : '';
-      const days = ffd != null ? ` (~${ffd} frost-free days)` : '';
-      return `Grow layered perennial food${z}${days} once soil-building succession is underway.`;
-    }
+    case 'shelterbelt_zone':
+      return shelterbeltValueHeadline(site);
+    case 'food_forest_guild':
+      // Headline omitted — technique label + placement notes carry the story
+      return '';
     case 'herb_spiral':
       return footprint != null
         ? `Stack herbal diversity in a compact Zone 1 spiral on your ${fmtNum(footprint)} ha parcel.`
         : 'Stack herbal diversity in a compact Zone 1 spiral near daily use.';
     case 'keyhole_bed':
       return 'Maximise food yield and easy harvest access on a tight footprint.';
+    case 'groundwater_well': {
+      const depth = num(site.predicted_well_depth?.estimated_depth_m);
+      if (depth != null) {
+        return `Groundwater option indicated by nearby well records (local completion depths vary).`;
+      }
+      return 'Assess groundwater where surface water is distant or unreliable.';
+    }
     default: {
       const label = VALUE_TAXONOMY[primaryValue]?.label || 'site benefit';
       return `Deliver ${label.toLowerCase()} suited to this parcel’s measured conditions.`;
@@ -306,6 +314,15 @@ export const EE_SERVICES = {
     blurb: 'Swales, ponds, keyline, and diversion sized for Alberta storms and Water Act reality.',
     href: 'https://www.expandingedge.ca/services-landing',
     cta: 'Talk earthworks',
+    pillar: 'water',
+  },
+  well_drilling: {
+    id: 'well_drilling',
+    label: 'Groundwater well',
+    blurb: 'Hydrology-based completion depth from nearby well records; licensed drill + pump package.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Plan a well',
+    pillar: 'water',
   },
   shelterbelt_design: {
     id: 'shelterbelt_design',
@@ -313,6 +330,7 @@ export const EE_SERVICES = {
     blurb: 'Multi-row wind and snow belts placed for your exposure and chinook risk.',
     href: 'https://www.expandingedge.ca/services-landing',
     cta: 'Design a shelterbelt',
+    pillar: 'shelter',
   },
   food_forest_design: {
     id: 'food_forest_design',
@@ -320,6 +338,15 @@ export const EE_SERVICES = {
     blurb: 'Layered perennial polyculture sequenced after soil-building phases.',
     href: 'https://www.expandingedge.ca/services-landing',
     cta: 'Plan a food forest',
+    pillar: 'food',
+  },
+  soil_carbon_building: {
+    id: 'soil_carbon_building',
+    label: 'Soil carbon building',
+    blurb: 'Hügelkultur, cover crops, compost, and N-fixers — interventions only; lab for SOC claims.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Build soil carbon',
+    pillar: 'food',
   },
   kitchen_garden_design: {
     id: 'kitchen_garden_design',
@@ -327,13 +354,31 @@ export const EE_SERVICES = {
     blurb: 'Zone 1 intensive beds, herb spirals, and daily-use layouts.',
     href: 'https://www.expandingedge.ca/services-landing',
     cta: 'Design Zone 1',
+    pillar: 'food',
+  },
+  solar_energy_package: {
+    id: 'solar_energy_package',
+    label: 'Solar + generator package',
+    blurb: 'Off-grid solar tiers sized to parcel load with optional propane generator backup.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'View energy packages',
+    pillar: 'energy',
+  },
+  off_grid_garage: {
+    id: 'off_grid_garage',
+    label: 'Off-grid garage ($250k)',
+    blurb: 'Fixed-price insulated garage / workshop shell ready for solar and well gear.',
+    href: 'https://www.expandingedge.ca/services-landing',
+    cta: 'Reserve garage package',
+    pillar: 'shelter',
   },
   full_site_design: {
     id: 'full_site_design',
     label: 'Full site design',
-    blurb: 'Whole-property permaculture plan from water and wind to zones and succession.',
+    blurb: 'Whole-property plan across Food, Water, Energy, and Shelter pillars.',
     href: 'https://www.expandingedge.ca/services-landing',
     cta: 'Book full design',
+    pillar: 'shelter',
   },
 };
 
@@ -349,6 +394,7 @@ export function recommendationPriority(element) {
   if (primary === 'compliance_safety') return 1;
   if (element.element_type === 'swale' && conf === 'needs_site_visit') return 1;
   if (primary === 'erosion_control') return 2;
+  if (element.element_type === 'groundwater_well') return 3;
   if (primary === 'water_harvest' || primary === 'water_storage') return 3;
   if (primary === 'wind_protection' || primary === 'snow_management') return 4;
   if (primary === 'soil_building' || primary === 'nitrogen_fixing') return 5;

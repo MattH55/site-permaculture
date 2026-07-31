@@ -80,13 +80,15 @@ Expanding-radius sample: 800 m → 1.5 → 3 → 5 → 10 → 15 km until n ≥ 
 
 ## 3. Well depth prediction — methodology and sources
 
-**Do not predict well depth from topography alone.** The signal that matters is nearby actual well records; topography and regional bedrock modeling are secondary covariates that help interpolate between them.
+**Do not predict well depth from topography alone, and do not report the min–max of total drilled depths as the estimate.** The signal that matters is subsurface hydrology from nearby well control.
 
-- **Primary source**: Alberta Water Well Information Database — real drilled depth + static water level for existing wells, queryable by area. This is the main input.
-- **Secondary covariate**: AGS "Bedrock Topography of Alberta, Version 2" (Map 610) — a geostatistical grid already built from well litholog data + oil/gas stratigraphic picks + outcrop locations + a coarse DEM. Use its value at the target point as one feature, not as the estimate itself.
+- **Primary source**: Alberta Water Well Information Database (AWWI) — pump-test static water level, screen intervals, water-bearing lithology, and finished/completion depth. Units in the bulk Access export are feet; convert to metres on extract/load.
+- **Near-surface covariate**: Alberta Wet Areas Mapping classified depth-to-water at the parcel centroid (feeds SWL when pump tests are sparse; does not replace aquifer completion depth).
+- **Secondary covariate**: AGS "Bedrock Topography of Alberta, Version 2" (Map 610) — drift thickness as a soft upper bound for shallow drift aquifers, not the estimate itself.
 - **Secondary covariate**: AGS provincial hydrostratigraphic mapping (hydraulic head, unit geometry by formation) where available, to name a likely target aquifer/formation.
-- **Method**: regression-kriging (or IDW if starting simple) over nearby Water Well Information Database records within a search radius, with surface elevation and the AGS bedrock-topography grid value as additional regression covariates. Output a depth range, not a point estimate.
-- **Confidence tiering**: base confidence on `nearby_well_count` within the search radius — dense well control (many nearby records) = trustworthy range; sparse control = wider range, flagged; zero nearby wells = fall back to the regional bedrock-topography grid alone and mark lowest confidence.
+- **Method**: IDW over **aquifer completion targets** per nearby well, preferred in order: screen bottom → first water-bearing lithology + completion allowance → SWL + typical productive interval → drilled depth only as weak fallback. Output a recommended completion depth plus a confidence band from local scatter — not the raw drilled min–max.
+- **Confidence tiering**: base confidence on `nearby_well_count` within the search radius — dense well control = tighter band; sparse = wider band; zero nearby wells = regional bedrock/WAM fallback, lowest confidence.
+- **Recommendation engine**: when groundwater is needed (distant surface water or flood-constrained), emit a `groundwater_well` design element with the hydrology-based completion depth in placement notes.
 - **Always pair with a disclaimer** recommending a local licensed driller for a site-specific quote — geological heterogeneity (buried channels, lens pinch-outs) means real depth can vary sharply over short distances even with dense well control nearby.
 
 ## 4. Suggested pipeline

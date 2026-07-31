@@ -74,6 +74,12 @@ const ELEMENT_META = {
     zone: 1,
     summary: 'Intensive Zone 1 bed with centre access path for efficient daily harvest.',
   },
+  groundwater_well: {
+    label: 'Groundwater well',
+    zone: 5,
+    summary:
+      'Domestic / stock water supply drilled to a hydrostratigraphic completion target from nearby well control.',
+  },
 };
 
 /**
@@ -253,10 +259,10 @@ export function applyRules(site = {}) {
   }
 
   // Rule 7 & 8 — windbreak + multi-row shelterbelt as ONE placement card
-  // (previously two near-identical cards that looked like a duplicate section)
+  // Species detail is filled later from the Alberta prairie palette (plant-interventions).
   if (climate.prevailing_wind_direction) {
     const chinookNote = climate.chinook_exposure
-      ? ' Chinook corridor: prioritise the belt and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
+      ? ' Chinook corridor: prioritise dense conifer rows and avoid early-flowering woody species — freeze–thaw cycling damages plants a hardiness lookup alone would not flag.'
       : '';
     elements.push(
       element(
@@ -265,7 +271,12 @@ export function applyRules(site = {}) {
           condition_basis: `prevailing_wind_direction = ${climate.prevailing_wind_direction}${
             climate.chinook_exposure ? ' AND chinook_exposure = true' : ''
           }`,
-          placement_notes: `Place a multi-row shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds, upwind of Zones 1–2 (often west/northwest in Alberta). Mix deciduous and coniferous rows for year-round structure; leave snow-trap gaps where winter access is needed.${chinookNote}`,
+          placement_notes:
+            `Orient a multi-row prairie shelterbelt perpendicular to ${climate.prevailing_wind_direction} winds ` +
+            `(windward conifer → deciduous backbone → shrub hedge). ` +
+            `Suitable Alberta species include caragana, lilac, saskatoon/chokecherry, hybrid or balsam poplar, ` +
+            `green ash / Manitoba maple / resistant elm, Colorado or white spruce, and lodgepole pine. ` +
+            `Leave snow-trap gaps where winter access is needed.${chinookNote}`,
           confidence: climate.chinook_exposure
             ? 'rule_based_high'
             : 'rule_based_moderate',
@@ -281,7 +292,9 @@ export function applyRules(site = {}) {
         {
           condition_basis: 'chinook_exposure = true',
           placement_notes:
-            'Chinook exposure without a listed wind direction — default multi-row west/northwest shelterbelt upwind of Zones 1–2. Avoid early-flowering woody species; hardiness zone alone understates freeze–thaw risk.',
+            'Chinook exposure without a listed wind direction — default multi-row west/northwest prairie shelterbelt ' +
+            '(conifer → deciduous → shrub). Prefer Colorado/white spruce, hybrid poplar, caragana, and lilac; ' +
+            'avoid early-flowering woody species. Hardiness zone alone understates freeze–thaw risk.',
           confidence: 'rule_based_high',
           zone: 2,
         },
@@ -363,6 +376,45 @@ export function applyRules(site = {}) {
             'Keyhole geometry maximises edge and access on tight parcels. Mulch paths; compost at the keyhole centre.',
           confidence: 'rule_based_high',
           zone: 1,
+        },
+        siteCtx
+      )
+    );
+  }
+
+  // Rule 13 — groundwater well from subsurface hydrology (not surface-water distance alone)
+  const well = site.predicted_well_depth;
+  const waterTable = num(hydro.water_table_depth_m) ?? num(well?.estimated_static_water_level_m);
+  const wellDepth = num(well?.estimated_depth_m);
+  const surfaceWaterM = num(hydro.distance_to_nearest_watercourse_m);
+  const needsGroundwater =
+    wellDepth != null &&
+    (surfaceWaterM == null || surfaceWaterM > 250 || hydro.flood_risk_zone === true);
+  if (needsGroundwater) {
+    const swlNote =
+      waterTable != null ? ` Static water level ~${waterTable} m bgs.` : '';
+    const unitNote = well?.target_hydrostratigraphic_unit
+      ? ` Target unit: ${well.target_hydrostratigraphic_unit}.`
+      : '';
+    const basis = (well?.hydrology_basis || []).slice(0, 3).join('; ');
+    const conf =
+      well?.confidence === 'well_control_dense'
+        ? 'rule_based_high'
+        : well?.confidence === 'well_control_sparse'
+          ? 'rule_based_moderate'
+          : 'needs_site_visit';
+    elements.push(
+      element(
+        'groundwater_well',
+        {
+          condition_basis: `predicted_well_depth ${wellDepth} m (hydrology)${
+            surfaceWaterM != null ? ` · nearest surface water ${surfaceWaterM} m` : ''
+          }`,
+          placement_notes: `Recommend a licensed water-well drill to ~${wellDepth} m completion (confidence band ${well?.estimated_depth_range_m?.low_m ?? '—'}–${well?.estimated_depth_range_m?.high_m ?? '—'} m), based on nearby pump tests, screen intervals, and water-bearing lithology — not the raw min–max of total drilled depths.${swlNote}${unitNote}${
+            basis ? ` Basis: ${basis}.` : ''
+          } Confirm yield and chemistry with a local driller before construction.`,
+          confidence: conf,
+          zone: 5,
         },
         siteCtx
       )
@@ -471,9 +523,27 @@ function buildSiteDrivers(site = {}) {
           : null,
       drives: 'hügelkultur / raised beds on shallow or poor CLI soils',
     },
+    {
+      field: 'predicted_well_depth / water_table',
+      value: site.predicted_well_depth
+        ? {
+            estimated_depth_m: site.predicted_well_depth.estimated_depth_m ?? null,
+            static_water_level_m:
+              site.predicted_well_depth.estimated_static_water_level_m ??
+              hydro.water_table_depth_m ??
+              null,
+            confidence: site.predicted_well_depth.confidence ?? null,
+          }
+        : hydro.water_table_depth_m != null
+          ? { water_table_depth_m: hydro.water_table_depth_m }
+          : null,
+      drives: 'groundwater well recommendation (hydrology-based completion depth)',
+    },
   ];
 
   // Which element families this parcel can activate (property-dependent gates)
+  const wellDepth = num(site.predicted_well_depth?.estimated_depth_m);
+  const surfaceWaterM = num(hydro.distance_to_nearest_watercourse_m);
   const gates = {
     earthworks_allowed: !(hydro.wetland_class != null && hydro.wetland_class !== ''),
     swale_eligible:
@@ -490,6 +560,9 @@ function buildSiteDrivers(site = {}) {
     ),
     food_forest_eligible: READY_SUCCESSION.has(veg.successional_stage),
     intensive_zone1_eligible: footprint != null && footprint < 0.1,
+    groundwater_well_eligible:
+      wellDepth != null &&
+      (surfaceWaterM == null || surfaceWaterM > 250 || hydro.flood_risk_zone === true),
   };
 
   return {

@@ -24,6 +24,21 @@ services:
         value: "20"
       - key: NODE_ENV
         value: production
-      # Paste in Render Dashboard after create (do not commit the key)
+      # Paste in Render Dashboard after create (do not commit keys)
       - key: GOOGLE_MAPS_API_KEY
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      # Delivery inbox (Gmail / forwarding address until domain verified)
+      - key: INQUIRY_TO
+        sync: false
+      - key: INQUIRY_PUBLIC_TO
+        value: info@expandingedge.ca
+      - key: RESEND_FALLBACK_TO
+        sync: false
+      # After verifying domain: Expanding Edge <noreply@expandingedge.ca>
+      - key: INQUIRY_FROM
+        sync: false
+      # NASA GPM PPS (email as username + password)
+      - key: GPM_PPS_EMAIL
         sync: false

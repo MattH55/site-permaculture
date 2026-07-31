@@ -225,18 +225,25 @@
     },
     "predicted_well_depth": {
       "type": "object",
-      "description": "Estimated drilled well depth and static water level, derived from regression-kriging interpolation over nearby well records — NOT a direct topography-based estimate. Topography/bedrock-topography act only as covariates alongside actual well control points. See design-rules-and-data-sources.md Section 4 for methodology.",
+      "description": "Estimated aquifer completion depth and static water level from subsurface hydrology (nearby pump-test SWL, screen intervals, water-bearing lithology IDW) — NOT the min–max of total drilled depths and NOT topography alone. Bedrock thickness and Wet Areas Mapping depth-to-water are covariates. See design-rules-and-data-sources.md Section 3.",
       "properties": {
-        "estimated_depth_m": { "type": ["number", "null"] },
+        "estimated_depth_m": {
+          "type": ["number", "null"],
+          "description": "Recommended aquifer completion depth (m below ground surface), IDW of screen bottoms / wet zones / SWL+interval."
+        },
         "estimated_depth_range_m": {
           "type": "object",
-          "description": "Low/high bound reflecting local well-control density and geological heterogeneity, not just interpolation variance.",
+          "description": "Confidence band around the hydrology-based completion depth (scatter of local aquifer targets), not raw drilled min–max.",
           "properties": {
             "low_m": { "type": "number" },
             "high_m": { "type": "number" }
           }
         },
         "estimated_static_water_level_m": { "type": ["number", "null"] },
+        "estimated_aquifer_top_m": {
+          "type": ["number", "null"],
+          "description": "Estimated top of productive zone (m bgs) from wet lithology or SWL."
+        },
         "target_hydrostratigraphic_unit": {
           "type": ["string", "null"],
           "description": "Named aquifer/formation the estimate assumes, where AGS hydrostratigraphic mapping resolves one for the area."
@@ -251,10 +258,15 @@
           "enum": ["well_control_dense", "well_control_sparse", "no_nearby_wells_bedrock_model_only"],
           "description": "well_control_dense/sparse = interpolated from actual nearby well logs; no_nearby_wells_bedrock_model_only = fell back to the regional AGS bedrock topography grid alone, lowest confidence."
         },
+        "hydrology_basis": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Human-readable list of hydrology signals used (SWL IDW, screens, wet lithology, WAM DTW, etc.)."
+        },
         "disclaimer_required": {
           "type": "boolean",
           "default": true,
-          "description": "UI must always present this as an estimate range with a recommendation to consult a local licensed driller, never as a guaranteed depth."
+          "description": "UI must always present this as an estimate with a recommendation to consult a local licensed driller, never as a guaranteed depth."
         }
       }
     },
