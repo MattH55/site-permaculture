@@ -361,11 +361,25 @@ export async function generateSiteReport(input = {}) {
   record._provincial_contours = provincialContours;
 
   // Fecundity assessment — infer from available pipeline data
+  // Build a lightweight soil_survey shim so inferIndicators can score soil chemistry
+  const fecunditySoilSurvey = {
+    sample_summary: {
+      mean_ph: null,
+      texture_class: soils.texture || null,
+    },
+    characteristics: {
+      ph_h2o_mean: null,
+      texture_class: soils.texture || null,
+    },
+    source_name: soils.source_name || 'Agricultural Land Resource Atlas of Alberta',
+    source_url: soils.source_url || null,
+  };
   const fecundityReport = generateFecundityReport({
     measured: {},  // no direct site measurements from remote report
     topoData: { avgSlopePercent: t.slope_percent },
     wetlandsPresent: !!wetlands.present,
     regionalSoilTexture: soils.texture || null,
+    soil_survey: fecunditySoilSurvey,
     ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
     landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
     wildlifeObservations: wildlife?.sighting_species || [],
