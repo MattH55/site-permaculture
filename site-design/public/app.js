@@ -211,21 +211,6 @@ function initLeafletMap(cfg) {
     opacity: 0.5,
   }).addTo(map);
 
-  // Wet Areas Mapping — depth-to-water WMS overlay (requires leaflet.wms plugin)
-  try {
-    if (typeof L.tileLayer.wms === 'function') {
-      const wamLayer = L.tileLayer.wms('https://geospatial.alberta.ca/umbriel/rest/services/hydrography/wet_areas_mapping_classified_depth_to_water_estimates/ImageServer/WMS', {
-        layers: '0',
-        format: 'image/png',
-        transparent: true,
-        opacity: 0.55,
-        attribution: 'Alberta — Wet Areas Mapping',
-      });
-      const overlayMaps = { 'Wet Areas (depth-to-water)': wamLayer };
-      L.control.layers(null, overlayMaps, { position: 'topright', collapsed: true }).addTo(map);
-    }
-  } catch (e) { console.warn('WMS overlay unavailable:', e.message); }
-
   state.map = map;
   state._leafletMap = map;
   // In-progress drawing (vertices, rubber-band) vs finished parcel outline
@@ -6379,46 +6364,6 @@ function normalizeWetlandFeature(f) {
   return f;
 }
 
-function wetAreasSection(wam) {
-  if (!wam) return '';
-  const dtw = wam.depth_to_water;
-  const streams = wam.predicted_streams;
-
-  let dtwHtml = '';
-  if (dtw?.available && dtw.category) {
-    const sev = dtw.category.severity || 'none';
-    const sevColor = sev === 'high' ? 'var(--danger)' : sev === 'moderate' ? 'var(--caution)' : sev === 'low' ? 'var(--ok)' : 'var(--ink-soft)';
-    dtwHtml = `
-      <div class="well-range-card" style="border-left-color:${sevColor};margin-bottom:0.75rem">
-        <span class="mono">Depth-to-water (Wet Areas Mapping)</span>
-        <div class="well-range-value" style="font-size:clamp(1.2rem, 2.5vw, 1.6rem);color:${sevColor}">
-          ${esc(dtw.category.label)}
-        </div>
-        <p class="fine">
-          Raw value: ${esc(dtw.raw_value)} · approx depth ${esc(dtw.category.depth_m)}
-          · Government of Alberta (open data)
-        </p>
-      </div>`;
-  }
-
-  return `
-    <section class="report-block">
-      <h2>Wet areas — depth to water</h2>
-      <p class="fine" style="margin-top:-0.35rem">
-        Government of Alberta Wet Areas Mapping — classified depth-to-water estimates.
-        Toggle the overlay on the satellite map via the layer control (top-right).
-      </p>
-
-      ${dtwHtml || '<p class="fine">Depth-to-water not available at this location.</p>'}
-
-      ${streams?.count != null ? `
-        <div class="summary-grid" style="margin-top:0.5rem">
-          <div class="stat"><span class="k">Predicted streams</span><strong>${esc(streams.count)}</strong></div>
-        </div>
-      ` : ''}
-    </section>`;
-}
-
 function landSalesMinimap(lv, centre) {
   const samples = lv?.municipal_sample?.samples || [];
   const points = samples.filter((s) => s.latitude != null && s.longitude != null);
@@ -7691,7 +7636,6 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
     wetlandsSection(r.wetlands || r.fecundity?.wetlands),
     smallWaterSection(r.small_water),
-    wetAreasSection(r.wet_areas_mapping),
   ]
     .filter(Boolean)
     .join('');
