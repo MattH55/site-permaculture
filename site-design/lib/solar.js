@@ -101,6 +101,22 @@ export function assessSolar(centre, opts = {}) {
       performance_ratio_assumed: PR,
       note: 'Rough household feasibility estimate only — not a bankable yield study. Site shading, snow, inverter, and azimuth not modelled.',
     },
+    // Illustrative planning scenario: 5 kWp fixed south-facing array at typical residential rate
+    planning_scenario: (() => {
+      const systemSizeKwp = 5;
+      const gridRateCadPerKwh = 0.15;
+      return {
+        system_size_kwp: systemSizeKwp,
+        annual_generation_kwh:
+          annual_kwh_per_kwp != null ? Math.round(annual_kwh_per_kwp * systemSizeKwp) : null,
+        grid_rate_cad_per_kwh: gridRateCadPerKwh,
+        annual_grid_savings_cad:
+          annual_kwh_per_kwp != null
+            ? Math.round(annual_kwh_per_kwp * systemSizeKwp * gridRateCadPerKwh)
+            : null,
+        note: 'Illustrative 5 kWp fixed south-facing array at $0.15 CAD/kWh; excludes capital cost, financing, export credits, demand charges, and site shading.',
+      };
+    })(),
     viability: {
       band: viability.band,
       score: viability.score,

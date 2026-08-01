@@ -11,6 +11,13 @@
  */
 
 import { haversineKm } from './proximity.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RICHNESS_PATH = path.join(__dirname, '..', 'data', 'biodiversity', 'species-richness.json');
+let richnessData;
 
 const ICONIC_TAXA = {
   47126: { name: 'Plantae', label: 'Plants' },
@@ -33,9 +40,14 @@ export async function assessBiodiversity(centre) {
 
   // Fetch observations in the larger zone (3km)
   const obs = await fetchINaturalistZone(centre, outerRadius);
+  const speciesRichness = lookupSpeciesRichness(centre.latitude, centre.longitude);
   
   if (!obs || !obs.length) {
-    return { available: false, error: 'No iNaturalist data available for this area.' };
+    return {
+      available: false,
+      error: 'No iNaturalist data available for this area.',
+      species_richness: speciesRichness,
+    };
   }
 
   // Split into zones
@@ -61,8 +73,93 @@ export async function assessBiodiversity(centre) {
       total_observations: obs.length,
       last_updated: new Date().toISOString().slice(0, 10),
     },
+    species_richness: speciesRichness,
     discoveries: findNearbyPotential(innerAnalysis, outerAnalysis),
   };
+}
+
+/**
+ * Look up the supplied Alberta richness surfaces at the report centre.
+ * These are regional screening values, not an observation count or a
+ * property-specific species inventory.
+ */
+ export function lookupSpeciesRichness(lat, lng) {
+  const data = loadRichnessData();
+  if (!data?.layers?.length || !Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { available: false, error: 'Species-richness layer is not available.' };
+  }
+
+  const result = { available: true, source: data.source, layers: {} };
+  for (const layer of data.layers) {
+    const feature = layer.features?.find((f) => pointInGeometry(lng, lat, f.geometry));
+    const cell = feature ? null : findRichnessCell(layer, lat, lng, data.resolution_degrees);
+    if (feature || cell) {
+      const properties = feature?.properties || cell;
+      result.layers[layer.id] = {
+        value: Number(properties?.value),
+        link_id: properties?.link_id || null,
+      };
+    }
+  }
+
+  if (!Object.keys(result.layers).length) {
+    return {
+      available: false,
+      error: 'The supplied richness surfaces do not cover this location.',
+      source: data.source,
+    };
+  }
+  return result;
+}
+
+function findRichnessCell(layer, lat, lng, resolution) {
+  if (!Array.isArray(layer.cells) || !Number.isFinite(resolution)) return null;
+  const halfDiagonal = resolution * Math.SQRT2 / 2;
+  let nearest = null;
+  let nearestDistance = Infinity;
+  for (const cell of layer.cells) {
+    const distance = Math.hypot(Number(cell.lat) - lat, Number(cell.lng) - lng);
+    if (distance < nearestDistance) {
+      nearest = cell;
+      nearestDistance = distance;
+    }
+  }
+  return nearestDistance <= halfDiagonal ? nearest : null;
+}
+
+function loadRichnessData() {
+  if (richnessData !== undefined) return richnessData;
+  try {
+    richnessData = JSON.parse(fs.readFileSync(RICHNESS_PATH, 'utf8'));
+  } catch {
+    richnessData = null;
+  }
+  return richnessData;
+}
+
+function pointInGeometry(x, y, geometry) {
+  if (!geometry) return false;
+  if (geometry.type === 'Polygon') return polygonContains(x, y, geometry.coordinates);
+  if (geometry.type === 'MultiPolygon') {
+    return geometry.coordinates.some((polygon) => polygonContains(x, y, polygon));
+  }
+  return false;
+}
+
+function polygonContains(x, y, rings) {
+  if (!rings?.[0] || !ringContains(x, y, rings[0])) return false;
+  return !rings.slice(1).some((hole) => ringContains(x, y, hole));
+}
+
+function ringContains(x, y, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
 }
 
 async function fetchINaturalistZone(centre, radius) {

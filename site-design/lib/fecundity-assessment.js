@@ -280,6 +280,20 @@ const CATEGORIES = {
           return scorePlantHealthProxy(d);
         },
       },
+      // Satellite SOC → soil biology (low confidence, screening only)
+      {
+        key: 'satelliteSOC',
+        fields: ['satelliteSOC'],
+        score(d) {
+          const soc = d.satelliteSOC;
+          if (soc == null || !Number.isFinite(soc)) return null;
+          // SOC % scale: typical parkland ~2–5%
+          if (soc >= 4) return 80;
+          if (soc >= 2.5) return 65;
+          if (soc >= 1.5) return 45;
+          return 25;
+        },
+      },
     ],
   },
 
@@ -306,6 +320,32 @@ const CATEGORIES = {
           if (pct <= 30) return 60;
           if (pct <= 60) return 30;
           return 10;
+        },
+      },
+      // Plant species richness from biodiversity assessment (regional heuristic)
+      {
+        key: 'plantSpeciesRichness',
+        fields: ['plantSpeciesCount'],
+        score(d) {
+          const n = d.plantSpeciesCount;
+          if (n == null || !Number.isFinite(n)) return null;
+          // Parkland/Alberta: 30+ diverse native flora is good, 60+ excellent
+          if (n >= 60) return 88;
+          if (n >= 40) return 72;
+          if (n >= 20) return 55;
+          return 35;
+        },
+      },
+      // Rare or indicator species presence signals ecological quality
+      {
+        key: 'rareIndicatorSpecies',
+        fields: ['rareOrIndicatorSpecies'],
+        score(d) {
+          const n = d.rareOrIndicatorSpecies;
+          if (n == null || !Number.isFinite(n)) return null;
+          if (n >= 5) return 85;
+          if (n >= 2) return 68;
+          return 50;
         },
       },
       {
@@ -434,6 +474,34 @@ const CATEGORIES = {
         score(d) {
           if (d.naturalPredatorPresence == null) return null;
           return d.naturalPredatorPresence ? 80 : 50;
+        },
+      },
+      // Fauna group diversity from biodiversity assessment (regional heuristic)
+      {
+        key: 'faunaGroupDiversity',
+        fields: ['faunaGroupDiversity'],
+        score(d) {
+          const n = d.faunaGroupDiversity;
+          if (n == null || !Number.isFinite(n)) return null;
+          if (n >= 8) return 85;
+          if (n >= 5) return 70;
+          if (n >= 3) return 55;
+          return 35;
+        },
+      },
+      // Habitat heterogeneity from biodiversity assessment (regional heuristic)
+      {
+        key: 'habitatHeterogeneity',
+        fields: ['habitatHeterogeneity'],
+        score(d) {
+          const h = d.habitatHeterogeneity;
+          if (h == null || typeof h !== 'string') return null;
+          const types = h.split(',').map((s) => s.trim()).filter(Boolean);
+          const n = types.length;
+          if (n >= 5) return 82;
+          if (n >= 3) return 68;
+          if (n >= 2) return 52;
+          return 38;
         },
       },
       {

@@ -51,6 +51,15 @@ export const ASSESSMENT_SOURCES = {
     geometry_field: 'point_location',
     refresh_note: 'City of Edmonton current-year assessment + property info (lot size)',
   },
+  leduc: {
+    key: 'leduc',
+    municipality: 'Leduc assessment viewer',
+    domain: 'maps.leduc.ca',
+    layer_url: 'https://maps.leduc.ca/arcgis/rest/services/Assessment_parcel/MapServer/0',
+    centre: { lat: 53.2594, lng: -113.5500 },
+    coverage_km: 18,
+    refresh_note: 'Leduc public assessment parcel layer · current viewer vintage is published by the municipality',
+  },
 };
 
 let cliTable = null;
@@ -149,7 +158,7 @@ export async function assessLandValue(centre, ctx = {}) {
           available: false,
           note: urban
             ? 'Municipal sample failed'
-            : 'Outside Calgary/Edmonton live assessment coverage — rural aggregate used when available.',
+             : 'Outside confirmed live municipal assessment coverage — rural aggregate used when available.',
         },
     rural_aggregate: rural,
     value_basis: {
@@ -176,6 +185,7 @@ function pickUrbanSource(lat, lng) {
 }
 
 async function sampleMunicipalAssessments(src, lat, lng) {
+  if (src.key === 'leduc') return sampleLeducAssessments(src, lat, lng);
   const cacheLayer =
     src.key === 'calgary'
       ? 'calgary_assessment'
@@ -236,6 +246,84 @@ async function sampleMunicipalAssessments(src, lat, lng) {
     source_url: `https://${src.domain}/`,
     refresh_note: src.refresh_note,
     from_cache: false,
+  };
+}
+
+async function sampleLeducAssessments(src, lat, lng) {
+  const radiiTried = [];
+  let samples = [];
+  let usedRadius = null;
+  for (const radiusM of RADII_M) {
+    radiiTried.push(radiusM);
+    const dLat = radiusM / 111320;
+    const dLng = radiusM / (111320 * Math.max(Math.cos((lat * Math.PI) / 180), 0.2));
+    const params = new URLSearchParams({
+      f: 'json',
+      where: 'ASSESSMENT > 0 AND LOT_SIZE_SF > 0',
+      geometry: `${lng - dLng},${lat - dLat},${lng + dLng},${lat + dLat}`,
+      geometryType: 'esriGeometryEnvelope',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: 'ROLL,LINC,LOT_SIZE_SF,ASSESSMENT,ADDRESS,PROPERTY_TYPE,YEAR_BUILT,PLAN_NO,LOT_NO,BLOCK_NO',
+      returnGeometry: 'true',
+      outSR: '4326',
+      resultRecordCount: '200',
+    });
+    const res = await fetch(`${src.layer_url}/query?${params}`);
+    if (!res.ok) throw new Error(`Leduc assessment query failed: ${res.status}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error.message || 'Leduc assessment query failed');
+    samples = (data.features || []).map((feature) => normalizeLeducFeature(feature, lat, lng));
+    samples = samples.filter(Boolean).sort((a, b) => (a.distance_m ?? 9e9) - (b.distance_m ?? 9e9));
+    usedRadius = radiusM;
+    if (samples.length >= N_MIN || radiusM === RADII_M[RADII_M.length - 1]) break;
+  }
+  return {
+    ok: true,
+    municipality: src.municipality,
+    search_radius_m: usedRadius,
+    sample_n: samples.length,
+    expanded: usedRadius > RADII_M[0],
+    radii_tried_m: radiiTried,
+    samples,
+    source_name: 'Leduc public assessment parcel layer',
+    source_url: src.layer_url,
+    refresh_note: src.refresh_note,
+    from_cache: false,
+  };
+}
+
+function normalizeLeducFeature(feature, lat, lng) {
+  const a = feature?.attributes || {};
+  const ring = feature?.geometry?.rings?.[0];
+  const assessment = num(a.ASSESSMENT);
+  const lotSqFt = num(a.LOT_SIZE_SF);
+  if (!ring?.length || assessment == null || assessment <= 0 || !lotSqFt || lotSqFt <= 0) return null;
+  const centre = ring.reduce((out, p) => ({ lat: out.lat + p[1], lng: out.lng + p[0] }), { lat: 0, lng: 0 });
+  centre.lat /= ring.length;
+  centre.lng /= ring.length;
+  const acres = lotSqFt / 43560;
+  return {
+    id: a.ROLL || a.LINC || feature.attributes?.OBJECTID,
+    address: a.ADDRESS || null,
+    roll: a.ROLL || null,
+    linc: a.LINC || null,
+    latitude: centre.lat,
+    longitude: centre.lng,
+    geometry: { type: 'Polygon', coordinates: [ring] },
+    distance_m: Math.round(haversineKm(lat, lng, centre.lat, centre.lng) * 1000),
+    acres: Math.round(acres * 1000) / 1000,
+    assessed_total_cad: assessment,
+    assessed_total_per_acre: roundMoney(assessment / acres),
+    land_value_cad: null,
+    land_value_per_acre: null,
+    land_separable: false,
+    assessment_class: a.PROPERTY_TYPE || null,
+    data_year: new Date().getFullYear(),
+    value_type: 'assessed_total',
+    property_type: a.PROPERTY_TYPE || null,
+    year_built: a.YEAR_BUILT || null,
+    plan_no: a.PLAN_NO || null,
   };
 }
 

@@ -413,7 +413,7 @@ export function predictWellDepth(centre, opts = {}) {
           mean: round1(meanOf(yieldList)),
           max: round1(Math.max(...yieldList)),
           min: round1(Math.min(...yieldList)),
-          unit: 'rate (varies)',
+           unit: 'gpm (reported well yield)',
         }
       : null,
     pump_test_summary: pumpWells.length
@@ -427,6 +427,7 @@ export function predictWellDepth(centre, opts = {}) {
             ? {
                 low: round1(minBy(pumpWells.filter((w) => w.pt?.rate), 'pt.rate')),
                 high: round1(maxBy(pumpWells.filter((w) => w.pt?.rate), 'pt.rate')),
+                unit: 'gpm',
               }
             : null,
         }

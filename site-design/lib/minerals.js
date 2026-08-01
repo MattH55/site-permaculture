@@ -103,12 +103,19 @@ export async function fetchMinerals(bbox, opts = {}) {
   }
 
   // Sort by distance to parcel centre
+  // AER ArcGIS features store coordinates in geometry (not attributes), so
+  // we must read from f.geometry.coordinates first.
   const withDist = unique.map((f) => {
     const a = f.properties || f;
-    const lat = a.lat_nad83 || a.Lat_NAD83 || a.latitude || 0;
-    const lng = a.long_nad83 || a.Long_NAD83 || a.longitude || 0;
+    const lat = a.lat_nad83 || a.Lat_NAD83 || a.latitude
+      || (f.geometry?.coordinates?.[1])
+      || 0;
+    const lng = a.long_nad83 || a.Long_NAD83 || a.longitude
+      || (f.geometry?.coordinates?.[0])
+      || 0;
     const distM = haversineM(centre.latitude, centre.longitude, lat, lng);
-    return { ...f, _dist_m: distM };
+    // Store resolved lat/lng so formatOccurrence can expose them
+    return { ...f, _dist_m: distM, _lat: lat, _lng: lng };
   }).sort((a, b) => a._dist_m - b._dist_m);
 
   // Extract commodity summary
@@ -263,6 +270,8 @@ function formatOccurrence(f) {
     comments: a.Comments || a.comments || null,
     reference: a.Ref_Prime || a.reference || null,
     distance_m: f._dist_m ?? null,
+    latitude: f._lat ?? null,
+    longitude: f._lng ?? null,
   };
 }
 

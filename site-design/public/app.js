@@ -114,6 +114,23 @@ const EE_SERVICE_META = {
 };
 
 const PILLAR_ORDER = ['water', 'food', 'energy', 'shelter'];
+const COUNTY_ASSESSMENT_LINKS = [
+  {
+    name: 'Sturgeon County',
+    url: 'https://data-sturgeoncounty.opendata.arcgis.com/maps/748b4f24f28345b1af0edee8c615d5b9/explore',
+    detail: 'Property Viewer / Sturgeon County Atlas: search by address or roll number for assessed value, address, and property information.',
+  },
+  {
+    name: 'Parkland County',
+    url: 'https://www.parklandcounty.com/home-property-utilities/maps/',
+    detail: 'Discover Parkland: property information, aerial imagery, and map tools. Assessment is updated annually using mass appraisal.',
+  },
+  {
+    name: 'Leduc County',
+    url: 'https://maps.leduc.ca/assessment/',
+    detail: 'Property Assessment Viewer: search a parcel by address, roll number, or legal description.',
+  },
+];
 const PILLAR_META = {
   water: { label: 'Water', client: 'Wells, swales, ponds' },
   food: { label: 'Food', client: 'Food forest & soil carbon building' },
@@ -1367,7 +1384,7 @@ function renderReport(r) {
       </p>
       ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
-        Planning guidance for Expanding Edge — not engineered drawings.
+        Planning guidance for Land Intelligence — not engineered drawings.
         (780) 236-3630 · info@expandingedge.ca
       </p>
     </div>`;
@@ -1871,6 +1888,19 @@ function terrain3dBlock(id, report) {
   const wetlandBlock = els.some(
     (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
   );
+  const semantic = report?.semantic_terrain;
+  const semanticCounts = semantic?.features?.reduce((m, f) => {
+    const key = f.layer || f.priority_group || f.feature_type;
+    m[key] = (m[key] || 0) + 1;
+    return m;
+  }, {}) || {};
+  const semanticControls = Object.keys(semanticCounts).length
+    ? Object.entries(semanticCounts).map(([type, count]) => `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-semantic-toggle="${esc(id)}" data-semantic-layer="${esc(type)}" />
+          ${esc(semantic?.layer_labels?.[type] || type.replace(/_/g, ' '))} (${count})
+        </label>`).join('')
+    : '<span class="fine">No mapped semantic features returned for this AOI.</span>';
   return `
     <div class="terrain-3d-panel" style="margin-top:1rem">
       <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
@@ -1914,6 +1944,9 @@ function terrain3dBlock(id, report) {
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
+      <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
+        <span class="mono" style="font-size:0.72rem">Mapped features</span>${semanticControls}
+      </div>
       <p class="fine" style="margin-top:0.4rem">
         <strong>Blue / teal</strong> = low catchment &amp; pond candidates ·
         <strong>Gold</strong> = mid-slope hillsides suited to contour swales ·
@@ -1921,12 +1954,10 @@ function terrain3dBlock(id, report) {
         Drag to orbit · scroll to zoom. Zones are DEM-derived planning hints
         ${hasPondRec ? ' · report recommends pond / water storage' : ''}
         ${hasSwaleRec ? ' · report recommends swale / terrace' : ''}
-        ${wetlandBlock ? ' · <strong>wetland present — earthworks need approvals</strong>' : ''}.
-        ${
-          hasHrdemGrid
-            ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b')}" target="_blank" rel="noopener">NRCan HRDEM</a>.`
-            : 'Built from design elevation samples.'
-        }
+        ${hasHrdemGrid
+          ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b') }" target="_blank" rel="noopener">NRCan HRDEM</a>.`
+          : 'Built from design elevation samples.'}
+        ${semantic?.available ? ` Mapped features: ${esc(semantic.feature_count)} · ${esc(semantic.source)}.` : ''}
       </p>
     </div>`;
 }
@@ -2292,6 +2323,12 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   );
   scene.add(wire);
 
+  const semanticTerrain = mountSemanticTerrainObjects(scene, report?.semantic_terrain, {
+    bbox: report?.geometry?.bbox || report?.semantic_terrain?.bbox,
+    meshW, meshD, rows, cols, elevations, zMean, relief,
+    exaggerate: () => exaggerate,
+  });
+
   scene.add(new THREE.AmbientLight(0xb8c4b0, 0.55));
   const sun = new THREE.DirectionalLight(0xfff2d6, 0.95);
   sun.position.set(40, 80, 20);
@@ -2383,6 +2420,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
     });
   });
+  document.querySelectorAll(`[data-semantic-toggle="${hostId}"]`).forEach((cb) => {
+    cb.addEventListener('change', () => {
+      semanticTerrain?.setVisible(cb.getAttribute('data-semantic-layer'), cb.checked);
+    });
+  });
   const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
@@ -2408,6 +2450,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
       geo.dispose();
       mat.dispose();
+      semanticTerrain?.dispose();
       renderer.dispose();
       if (renderer.domElement.parentNode === el) el.removeChild(renderer.domElement);
     },
@@ -2426,6 +2469,67 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     ` · relief ${relief.toFixed(1)} m · pond ${nPond} · catchment ${nCatch} · swale ${nSwale} cells`;
   el.style.position = 'relative';
   el.appendChild(badge);
+}
+
+function mountSemanticTerrainObjects(scene, payload, opts) {
+  const features = payload?.features || [];
+  const groups = new Map();
+  const colors = { water: 0x2a9dc9, wetland: 0x38a68b, building: 0xd88c45, road: 0x777777, railway: 0xb4b4b4, forest: 0x2f8f4e, shrubland: 0x77a84e, cropland: 0xb1a447, grassland: 0x88b858, pipeline: 0xe36b35, power: 0xf0c64b, protected_area: 0x9b75c7 };
+  const bbox = opts.bbox || (payload?.bbox
+    ? [payload.bbox.west, payload.bbox.south, payload.bbox.east, payload.bbox.north]
+    : null);
+  if (!bbox || bbox.length !== 4 || !features.length) return { setVisible() {}, dispose() {} };
+  const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
+  const point = ([lng, lat], lift = 0.6) => {
+    const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
+    const z = ((lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9) - 0.5) * opts.meshD;
+    const col = Math.max(0, Math.min(opts.cols - 1, Math.round((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) * (opts.cols - 1))));
+    const row = Math.max(0, Math.min(opts.rows - 1, Math.round((1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1))));
+    const elev = Number(opts.elevations[row * opts.cols + col]);
+    const y = Number.isFinite(elev) ? (elev - opts.zMean) * (opts.meshW * 0.08 * opts.exaggerate()) / opts.relief + lift : lift;
+    return new THREE.Vector3(x, y, z);
+  };
+  const polygonMesh = (ring, type) => {
+    const base = ring.map((c) => point(c, 0.45));
+    const height = type === 'building' ? 4 : 0.35;
+    const top = ring.map((c) => point(c, height));
+    const vertices = [];
+    const pushTri = (a, b, c) => vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+    for (let i = 1; i < base.length - 2; i++) pushTri(top[0], top[i], top[i + 1]);
+    for (let i = 0; i < base.length - 1; i++) {
+      pushTri(base[i], base[i + 1], top[i + 1]);
+      pushTri(base[i], top[i + 1], top[i]);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geometry.computeVertexNormals();
+    return new THREE.Mesh(geometry, material(type));
+  };
+  for (const feature of features) {
+    const type = feature.feature_type;
+    const layer = feature.layer || feature.priority_group || type;
+    const geom = feature.geometry;
+    let object = null;
+    if (geom.type === 'Point') {
+      object = new THREE.Mesh(new THREE.BoxGeometry(1.5, type === 'building' ? 3 : 1.2, 1.5), material(type));
+      object.position.copy(point(geom.coordinates, type === 'building' ? 1.5 : 0.8));
+    } else if (geom.type === 'LineString') {
+      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.8))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
+    } else if (geom.type === 'Polygon') {
+      const ring = geom.coordinates?.[0] || [];
+      if (ring.length < 3) continue;
+      object = polygonMesh(ring, type);
+    }
+    if (!object) continue;
+    object.userData.semanticFeature = feature;
+    if (!groups.has(layer)) groups.set(layer, new THREE.Group());
+    groups.get(layer).add(object);
+  }
+  for (const group of groups.values()) scene.add(group);
+  return {
+    setVisible(type, visible) { groups.get(type)?.traverse((o) => { o.visible = visible; }); },
+    dispose() { for (const group of groups.values()) { group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); scene.remove(group); } },
+  };
 }
 
 function topoHeatHtml(topo) {
@@ -2964,6 +3068,7 @@ function solarSection(solar) {
   }
   const m = solar.mean_daily_global_insolation_kwh_m2 || {};
   const y = solar.estimated_pv_yield || {};
+  const solarPlan = solar.planning_scenario || {};
   const v = solar.viability || {};
   const monthly = solar.monthly_latitude_tilt || [];
   const bars = monthlySolarBars(monthly);
@@ -2997,8 +3102,15 @@ function solarSection(solar) {
             ? `${esc(y.fixed_south_latitude_tilt_kwh_per_kwp_year)} kWh/kWp·yr`
             : '—'
         }</strong></div>
+        ${solarPlan.annual_generation_kwh != null ? `<div class="stat"><span class="k">Illustrative 5 kWp generation</span><strong>${esc(solarPlan.annual_generation_kwh)} kWh/yr</strong></div>` : ''}
+        ${solarPlan.annual_grid_savings_cad != null ? `<div class="stat"><span class="k">Illustrative annual grid savings</span><strong>$${esc(solarPlan.annual_grid_savings_cad)} CAD/yr</strong></div>` : ''}
       </div>
       <p class="fine" style="margin:0.75rem 0 0.5rem">${esc(v.summary || '')}</p>
+      ${
+        solarPlan.note
+          ? `<p class="fine" style="margin-top:0.5rem"><strong>Illustrative planning scenario:</strong> ${esc(solarPlan.note)}</p>`
+          : ''
+      }
       ${
         solar.aspect_guidance
           ? `<p class="fine"><strong>Site aspect:</strong> ${esc(solar.aspect_guidance)}</p>`
@@ -3569,6 +3681,27 @@ function floodFloodCardBody(flood, floodClass) {
     </p>`;
 }
 
+function countyAssessmentLinksHtml(ats = null) {
+  const legalDescription = ats?.description ? `Near ${ats.description}` : null;
+  return `
+    <div class="flag" data-severity="info" style="margin:0.65rem 0 0.85rem">
+      <strong>Find nearby assessed land</strong>
+      <p>Use the county viewer for the parcel or a nearby comparable. Where a public parcel-value layer is available, nearby properties are mapped above; these tools provide assessment context, not an appraisal or sale price.</p>
+      ${legalDescription ? `<p class="fine" style="margin:0.45rem 0 0"><strong>Generated search reference:</strong> ${esc(legalDescription)} · ${esc(ats.quarter)} quarter, Section ${esc(ats.section)}, Township ${esc(ats.township)}, Range ${esc(ats.range)}, ${esc(ats.meridian)}</p>` : ''}
+      <div class="prox-grid" style="margin-top:0.55rem">
+        ${COUNTY_ASSESSMENT_LINKS.map((item) => `
+          <article class="prox-card">
+            <span class="mono">${esc(item.name)}</span>
+            <p class="fine" style="margin:0.3rem 0 0.55rem">${esc(item.detail)}</p>
+            <a href="${esc(item.url)}" target="_blank" rel="noopener">Open ${esc(item.name)} viewer →</a>
+            ${legalDescription ? `<p class="fine" style="margin:0.4rem 0 0">Search using the generated legal description above, or pan to the parcel and select a nearby property.</p>` : ''}
+          </article>
+        `).join('')}
+      </div>
+      <p class="fine" style="margin-bottom:0">Automated parcel-value mapping is shown when the report location falls inside a published assessment layer. Sturgeon’s queried parcel layer identifies roll/legal-description records but does not expose values; Parkland’s public pages do not expose a queryable parcel-value layer, so those locations remain viewer-only.</p>
+    </div>`;
+}
+
 function landValueSection(lv) {
   if (!lv) {
     return `<section class="report-block"><h2>Land value</h2><p class="fine">Land value context unavailable.</p></section>`;
@@ -3601,6 +3734,7 @@ function landValueSection(lv) {
   const samples = (mun?.samples || []).filter(
     (s) => s.latitude != null && s.longitude != null && Number.isFinite(Number(s.latitude))
   );
+  const ats = state.report?.ats || null;
   const parcel = getParcelLatLngs();
   const centre = state.report?.location
     ? { lat: state.report.location.latitude, lng: state.report.location.longitude }
@@ -3658,19 +3792,21 @@ function landValueSection(lv) {
             )}</p>`
       }
 
+      ${countyAssessmentLinksHtml(ats)}
+
       ${
         samples.length || parcel
           ? `<div style="margin-top:0.85rem">
               <span class="mono topo-label">Nearby assessments map</span>
               <p class="fine" style="margin:0.2rem 0 0.35rem">
-                Gold outline = your parcel · Circles = nearby assessed parcels (colour = relative $/acre).
+                Gold outline = your parcel · Nearby parcel polygons/points are coloured by assessed $/acre.
               </p>
               <div id="${mapId}" class="report-map minimap-embed" style="height:300px"></div>
               <div class="minimap-legend" style="margin-top:0.4rem;display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center">
                 <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(168,128,31,0.25);border:2px solid #a8801f;vertical-align:middle;margin-right:4px"></span>Your parcel</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
-                <span class="fine"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(42,111,151,0.55);border:1px solid #2a6f97;vertical-align:middle;margin-right:4px"></span>Lower $/acre</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(233,196,106,0.65);border:1px solid #e9c46a;vertical-align:middle;margin-right:4px"></span>Mid</span>
+                <span class="fine"><span style="display:inline-block;width:14px;height:10px;background:rgba(196,92,38,0.65);border:1px solid #c45c26;vertical-align:middle;margin-right:4px"></span>Higher $/acre</span>
               </div>
             </div>`
           : ''
@@ -3781,25 +3917,40 @@ function initLandValueMap(elId, samples, parcelLatLngs, centre, refRate) {
     bounds.push(L.latLngBounds([[centre.lat, centre.lng]]));
   }
 
+  const assessmentPopup = (s, rate) =>
+    `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
+    `Assessed total: ${s.assessed_total_cad != null ? fmtCad(s.assessed_total_cad) : '—'}<br/>` +
+    `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${s.land_separable ? 'land residual' : 'total assessed'}<br/>` +
+    `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
+    `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}` +
+    `${s.property_type ? `<br/>Type: ${esc(s.property_type)}` : ''}<br/>` +
+    `<span class="fine">Public assessment value — not sale price or appraisal</span>`;
+
   samples.forEach((s) => {
     const rate = s.land_value_per_acre ?? s.assessed_total_per_acre;
-    const m = L.circleMarker([s.latitude, s.longitude], {
-      radius: 7,
-      color: '#fff',
-      weight: 1.5,
-      fillColor: colorFor(rate),
-      fillOpacity: 0.9,
-    }).addTo(map);
-    m.bindPopup(
-      `<strong>${esc(s.address || s.id || 'Assessment sample')}</strong><br/>` +
-        `${rate != null ? fmtCad(rate) + '/acre' : '—'} · ${
-          s.land_separable ? 'land residual' : 'total assessed'
-        }<br/>` +
-        `${s.acres != null ? esc(s.acres) + ' ac' : ''}` +
-        `${s.distance_m != null ? ` · ${esc(s.distance_m)} m` : ''}<br/>` +
-        `<span class="fine">Assessed value — not sale price</span>`
-    );
-    bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+    const fill = colorFor(rate);
+    const ring = s.geometry?.type === 'Polygon' ? s.geometry.coordinates?.[0] : null;
+    if (ring?.length >= 3) {
+      const latlngs = ring.map(([lng, lat]) => [lat, lng]);
+      const polygon = L.polygon(latlngs, {
+        color: fill,
+        weight: 1,
+        fillColor: fill,
+        fillOpacity: 0.48,
+      }).addTo(map);
+      polygon.bindPopup(assessmentPopup(s, rate));
+      bounds.push(polygon.getBounds());
+    } else if (s.latitude != null && s.longitude != null) {
+      const marker = L.circleMarker([s.latitude, s.longitude], {
+        radius: 7,
+        color: '#fff',
+        weight: 1.5,
+        fillColor: fill,
+        fillOpacity: 0.9,
+      }).addTo(map);
+      marker.bindPopup(assessmentPopup(s, rate));
+      bounds.push(L.latLngBounds([[s.latitude, s.longitude]]));
+    }
   });
 
   try {
@@ -4072,7 +4223,7 @@ function servicesCtaSection(services) {
   const top = services.slice(0, 4);
   return `
     <div class="ee-services-cta">
-      <span class="mono eyebrow">Expanding Edge · next steps</span>
+      <span class="mono eyebrow">Land Intelligence · next steps</span>
       <h3 class="ee-services-title">Services that match these recommendations</h3>
       <p class="fine">These CTAs follow the outcomes above — book a focused consult or a full site design.</p>
       <div class="ee-services-grid">
@@ -4127,7 +4278,9 @@ function recommendationCard(e) {
     VALUE_LABELS[e.primary_value] || e.primary_value || 'Site benefit';
   const technique =
     e.technique_label || ELEMENT_LABELS[e.element_type] || e.element_type;
-  const headline = (e.value_headline || '').trim();
+  const offering = (e.related_services || [])
+    .map((id) => EE_SERVICE_META[id])
+    .find(Boolean);
   const secondary = (e.secondary_values || [])
     .map((v) => VALUE_LABELS[v] || v)
     .filter(Boolean);
@@ -4152,10 +4305,9 @@ function recommendationCard(e) {
 
   return `
     <article class="el rec-card" data-value="${esc(e.primary_value || '')}" data-element="${esc(e.element_type || '')}">
+      ${offering ? `<h3 class="rec-offering-heading">${esc(offering.label)}</h3>` : `<h3 class="rec-offering-heading">${esc(technique || 'Site recommendation')}</h3>`}
       <div class="value-chips">${chips}</div>
-      ${headline ? `<p class="value-headline">${esc(headline)}</p>` : ''}
       <div class="el-head">
-        <h3 class="technique-label">${esc(technique)}</h3>
         <span class="badge zone">Zone ${esc(e.zone)}</span>
         ${confBadge(e.confidence)}
         ${e.effort ? `<span class="badge effort">${esc(e.effort)} effort</span>` : ''}
@@ -4175,6 +4327,23 @@ function recommendationCard(e) {
       ${e.season_hint ? `<p class="season-hint"><span class="basis-label">Season</span> ${esc(e.season_hint)}</p>` : ''}
       ${serviceLinks ? `<div class="rec-service-links">${serviceLinks}</div>` : ''}
     </article>`;
+}
+
+/** Generate a solar package card for the tier grid. */
+function solarPackageCard(systemKwp, batteryKwh, label, solar) {
+  const gen = solar?.planning_scenario?.annual_generation_kwh;
+  const rate = solar?.planning_scenario?.grid_rate_cad_per_kwh ?? 0.15;
+  const annualGen = gen != null ? Math.round(gen * systemKwp / 5) : null;
+  const annualSave = annualGen != null ? Math.round(annualGen * rate) : null;
+  const battSave = batteryKwh != null ? Math.round(batteryKwh * 0.25) : null; // ~$0.25/kWh backup value
+  return `
+    <div class="stat" style="border:1px solid var(--line);border-radius:6px;padding:0.6rem">
+      <strong>${esc(label)}</strong><br>
+      <span class="fine">${systemKwp} kWp · ${batteryKwh} kWh battery</span>
+      ${annualGen != null ? `<br><span class="mono" style="font-size:0.85rem">${esc(annualGen.toLocaleString())} kWh/yr</span>` : ''}
+      ${annualSave != null ? `<br><span class="mono" style="font-size:0.85rem">$${esc(annualSave.toLocaleString())}/yr savings</span>` : ''}
+      ${battSave != null ? `<br><span class="fine">backup ~$${esc(battSave)}/yr value</span>` : ''}
+    </div>`;
 }
 
 function fmtDistance(m) {
@@ -4909,6 +5078,23 @@ function recommendedPlantingsSection(table, intervention) {
   const goalsLabel = table?.goals_label || intervention?.goals_label || '';
   const hardiness = table?.hardiness || table?.site_filters?.plant_hardiness_zone;
   const eff = table?.effective_zone || table?.site_filters?.effective_hardiness_zone;
+  const foodRows = rows.filter((r) => /food|edible|fruit|nut|berry|food_production/i.test(
+    `${r.functions || ''} ${r.common_name || ''}`
+  ));
+  const foodYield = foodRows.reduce((acc, r) => {
+    const y = r.product_yield_kg || (r.product_yield_mid_kg != null ? { mid: r.product_yield_mid_kg } : null);
+    if (!y || (r.unit && !/kg|kilogram/i.test(r.unit))) return acc;
+    acc.low += Number(y.low ?? y.low_kg ?? y.mid ?? y.mid_kg ?? 0);
+    acc.mid += Number(y.mid ?? y.mid_kg ?? 0);
+    acc.high += Number(y.high ?? y.high_kg ?? y.mid ?? y.mid_kg ?? 0);
+    return acc;
+  }, { low: 0, mid: 0, high: 0 });
+  const foodYieldBlock = foodRows.length && foodYield.mid > 0
+    ? `<div class="well-range-card" style="border-left-color:var(--ok);margin-top:0.75rem">
+        <span class="mono">Estimated food-forest yield at maturity</span>
+        <div class="well-range-value" style="color:var(--ok)">${fmtQty(foodYield.mid)} kg/yr</div>
+        <p class="fine">Planning range ${fmtQty(foodYield.low)}–${fmtQty(foodYield.high)} kg/yr from the edible rows shown below. Establishment takes time; species, harvest, weather, and market access drive actual yield.</p>
+      </div>` : '';
 
   const body = rows
     .slice(0, 14)
@@ -5009,9 +5195,13 @@ function recommendedPlantingsSection(table, intervention) {
         <span class="badge beta" style="margin-left:0.35rem">Beta</span>
       </p>
       ${valueBlock}
+      ${foodYieldBlock}
       ${leverCards ? `<span class="mono topo-label" style="display:block;margin-top:0.75rem">Levers this plan is expected to improve</span>${leverCards}` : ''}
       <div class="econ-table-wrap" style="margin-top:0.85rem">
         <table class="econ-table plantings-table">
+          <colgroup>
+            <col><col><col><col><col><col><col><col>
+          </colgroup>
           <thead>
             <tr>
               <th>Species</th>
@@ -5408,6 +5598,14 @@ function wellDepthSection(w, centre) {
   const lithSum = w.lithology_summary;
 
   const enrichCards = [];
+  if (swl != null || aquiferTop != null || depth != null) {
+    enrichCards.push(`
+      <article class="prox-card" style="border-left-color:#2a6f97">
+        <span class="mono">Groundwater access</span>
+        <strong>${swl != null ? `Water table ~${fmt(swl, 'm bgs')}` : 'Aquifer access screened'}</strong>
+        <p class="fine">Planning completion ${fmt(depth, 'm bgs')}${aquiferTop != null ? ` · aquifer top ~${fmt(aquiferTop, 'm bgs')}` : ''}. This indicates potential access, not a guaranteed supply.</p>
+      </article>`);
+  }
   if (swl != null) {
     enrichCards.push(`
       <article class="prox-card">
@@ -5428,8 +5626,8 @@ function wellDepthSection(w, centre) {
     enrichCards.push(`
       <article class="prox-card">
         <span class="mono">Well yield (${yieldSum.count} wells)</span>
-        <strong>mean ${yieldSum.mean} · max ${yieldSum.max}</strong>
-        <p class="fine">min ${yieldSum.min} · ${esc(yieldSum.unit || 'rate')}</p>
+        <strong>mean ${esc(yieldSum.mean)} gpm · max ${esc(yieldSum.max)} gpm</strong>
+        <p class="fine">min ${esc(yieldSum.min)} gpm · reported nearby-well yield</p>
       </article>`);
   }
   if (pumpSum?.count) {
@@ -5437,7 +5635,7 @@ function wellDepthSection(w, centre) {
       <article class="prox-card">
         <span class="mono">Pump tests (${pumpSum.count} wells)</span>
         <strong>SWL ${fmt(pumpSum.swl_range_m?.low, 'm')}–${fmt(pumpSum.swl_range_m?.high, 'm')}</strong>
-        <p class="fine">${pumpSum.yield_range ? `yield ${pumpSum.yield_range.low}–${pumpSum.yield_range.high}` : ''}</p>
+        <p class="fine">${pumpSum.yield_range ? `yield ${pumpSum.yield_range.low}–${pumpSum.yield_range.high} ${esc(pumpSum.yield_range.unit || 'gpm')}` : 'No pump-test flow rate reported'}</p>
       </article>`);
   }
   if (chemSum?.count) {
@@ -5819,6 +6017,9 @@ function windSection(climate, r, windRose) {
                 : 'Use the Alberta prairie palette above; diversify deciduous rows so one pest (e.g. emerald ash borer) cannot clear the belt.'
             }
           </p>
+          <p class="fine" style="margin-top:0.5rem">
+            Expected functions: improved microclimate and wind protection; lower wind-driven soil loss and evapotranspiration; better moisture retention; seasonal shade; and added wildlife habitat. These are directional design benefits, not parcel-measured guarantees.
+          </p>
         </div>
       </div>
       ${roseHtml}
@@ -5829,9 +6030,27 @@ function windSection(climate, r, windRose) {
 }
 
 function biodiversitySection(bio) {
-  if (!bio || !bio.available) return '';
+  if (!bio) return '';
   const inner = bio.inner || {};
   const outer = bio.outer || {};
+  const richness = bio.species_richness;
+  const richnessLabels = { all_species: 'All species', birds: 'Birds', mammals: 'Mammals' };
+  const richnessRows = Object.entries(richness?.layers || {})
+    .map(([key, value]) => `
+      <div class="stat"><span class="k">${esc(richnessLabels[key] || key)}</span><strong>${esc(value.value)}</strong></div>`)
+    .join('');
+  const richnessBlock = richnessRows
+    ? `<div class="flag" data-severity="info" style="margin-top:0.85rem">
+        <strong>Regional species-richness screening</strong>
+        <p>Supplied Alberta richness surfaces intersecting this site. These are regional model values, not a property-specific species inventory or an iNaturalist observation count.</p>
+        <div class="summary-grid">${richnessRows}</div>
+        <p class="fine" style="margin-bottom:0">Source: supplied Alberta species-richness geodatabases · link ${esc(Object.values(richness.layers)[0]?.link_id || '—')}</p>
+      </div>`
+    : '';
+
+  if (!bio.available) {
+    return richnessRows ? `<section class="report-block"><h2>Biodiversity assessment</h2>${richnessBlock}</section>` : '';
+  }
   
   const speciesList = (inner.top_species || []).map(s => `
     <div class="stat">
@@ -5865,6 +6084,7 @@ function biodiversitySection(bio) {
 
       <span class="mono topo-label">Nearby potential (observed 3km, not yet local)</span>
       <div class="summary-grid" style="margin-top:0.5rem">${discoveries}</div>
+      ${richnessBlock}
     </section>`;
 }
 
@@ -6129,6 +6349,129 @@ function soilSamplesMapBlock(ss) {
  * Small water / seeps detection (S2 NDWI-MNDWI + S1 + TWI + inventory).
  * Strict confidence language — never regulatory wetlands.
  */
+/**
+ * Water Collection Budget — full water budget (roof + swale + pond).
+ */
+function waterCollectionSection(wc) {
+  if (!wc || !wc.available) return '';
+  const roofScenarios = wc.roof_scenarios || [];
+  const swaleCapture = wc.swale_capture || {};
+  const pondStorage = wc.pond_storage || {};
+  const pondHydrology = wc.pond_hydrology || {};
+  const monthlyBudget = wc.monthly_budget || {};
+  const primaryRoof = roofScenarios.find(s => s.id === 'house_barn') || roofScenarios[0];
+  const monthEntries = Object.entries(monthlyBudget);
+  const maxL = Math.max(...monthEntries.map(([, v]) => v.total_litres), 1);
+  const monthBars = monthEntries.map(([m, v]) => {
+    const pct = Math.round((v.total_litres / maxL) * 100);
+    const roofPct = Math.round((v.roof_litres / maxL) * 100);
+    const swalePct = Math.round((v.swale_litres / maxL) * 100);
+    return `<div class="precip-month" title="${m}: ${v.total_litres.toLocaleString()} L total (${v.precip_mm} mm rain)">
+      <span class="precip-bar" style="height:${Math.max(4, pct)}%;background:linear-gradient(to top, var(--ok) ${swalePct}%, #2a6f97 ${swalePct}%, #2a6f97 ${swalePct + roofPct}%)"></span>
+      <span class="precip-label mono">${m}</span>
+    </div>`;
+  }).join('');
+  const dryMonths = (wc.dry_months || []).join(', ');
+  const wetMonths = (wc.wet_months || []).join(', ');
+  const roofCards = roofScenarios.map(sc => `
+    <div class="stat">
+      <span class="k">${esc(sc.label)}</span>
+      <strong>${(sc.annual_litres / 1000).toFixed(1)} m³</strong>
+      <span class="fine">${sc.annual_litres.toLocaleString()} L · ${sc.annual_ibc_totes} IBC totes · tank ≥${(sc.recommended_tank_litres / 1000).toFixed(0)} m³</span>
+    </div>`).join('');
+  const pondPlacement = pondHydrology.placement || {};
+  const pondMapId = pondPlacement.available ? `pond-placement-${Math.random().toString(36).slice(2, 8)}` : null;
+  if (pondMapId) scheduleLeafletWhenVisible(pondMapId, () => initPondHydrologyMap(pondMapId, pondPlacement));
+  const pondTierRows = (pondHydrology.tiers || []).map((tier) => `
+    <tr>
+      <td><strong>${esc(tier.label)}</strong><br><span class="fine">${esc(tier.capacity_m3)} m³ capacity · ~${esc(tier.surface_area_m2)} m² surface</span></td>
+      <td>${esc((tier.annual_captured_litres / 1000).toFixed(1))} m³<br><span class="fine">${esc((tier.annual_gross_runoff_litres / 1000).toFixed(1))} m³ gross</span></td>
+      <td>${esc((tier.monthly?.Jun?.captured_litres / 1000 || 0).toFixed(1))} m³<br><span class="fine">June example</span></td>
+      <td>${esc((tier.per_rain_event?.Jun?.captured_litres || 0).toLocaleString())} L<br><span class="fine">per event</span></td>
+    </tr>`).join('');
+  const pondMonthlyRows = (pondHydrology.tiers?.[1]?.monthly ? Object.entries(pondHydrology.tiers[1].monthly) : []).map(([month, row]) => `
+    <tr><td>${esc(month)}</td><td>${esc(row.precipitation_mm.toFixed(1))} mm</td><td>${esc(row.rain_events)}</td><td>${esc((row.gross_runoff_litres / 1000).toFixed(1))} m³</td><td>${esc((row.captured_litres / 1000).toFixed(1))} m³</td></tr>`).join('');
+  const pondEventRows = (pondHydrology.tiers || []).map((tier) => `
+    <tr><td>${esc(tier.label)}</td>${Object.values(tier.per_rain_event || {}).slice(0, 12).map((row) => `<td>${esc(row.captured_litres.toLocaleString())}</td>`).join('')}</tr>`).join('');
+  const pondHydrologyBlock = pondHydrology.available ? `
+    <div class="well-range-card" style="border-left-color:#1a9bb5;margin-top:0.85rem">
+      <span class="mono">Pond hydrology model · optimal accumulation location</span>
+      <div class="well-range-value" style="font-size:clamp(1.1rem,2.5vw,1.5rem);color:#1a788d">
+        ${esc(pondPlacement.latitude)}, ${esc(pondPlacement.longitude)}
+      </div>
+      <p class="fine">DEM elevation ${esc(pondPlacement.elevation_m)} m · ${esc(pondPlacement.catchment_area_m2.toLocaleString())} m² screened catchment · ${esc(pondPlacement.confidence)} placement confidence</p>
+      ${pondMapId ? `<div id="${pondMapId}" class="report-map" style="height:220px;margin-top:0.55rem" role="img" aria-label="Screened optimal pond placement"></div>` : ''}
+      <p class="fine" style="margin-top:0.45rem">Placement uses the lowest/convergent interior DEM cell, not a surveyed drainage basin. Confirm the location against wetlands, soils, property setbacks, spillway grade, and flood regulations.</p>
+    </div>
+    <div style="margin-top:0.8rem">
+      <span class="mono topo-label">Pond capture scenarios</span>
+      <div class="econ-table-wrap" style="margin-top:0.4rem;overflow-x:auto">
+        <table class="econ-table"><thead><tr><th>Size</th><th>Annual captured</th><th>Monthly captured</th><th>Per rain event</th></tr></thead><tbody>${pondTierRows}</tbody></table>
+      </div>
+      <p class="fine" style="margin-top:0.35rem">The monthly column shows June; the full month-by-month table is below. Three representative rain events per month are assumed.</p>
+    </div>
+    <details class="inner-details" style="margin-top:0.65rem">
+      <summary>Monthly pond water balance · medium pond</summary>
+      <div class="econ-table-wrap" style="margin-top:0.5rem;overflow-x:auto"><table class="econ-table"><thead><tr><th>Month</th><th>Rain</th><th>Events</th><th>Gross runoff</th><th>Captured</th></tr></thead><tbody>${pondMonthlyRows}</tbody></table></div>
+    </details>
+    <details class="inner-details" style="margin-top:0.5rem">
+      <summary>Captured litres per rain event · all pond sizes</summary>
+      <div class="econ-table-wrap" style="margin-top:0.5rem;overflow-x:auto"><table class="econ-table"><thead><tr><th>Size</th><th>Jan</th><th>Feb</th><th>Mar</th><th>Apr</th><th>May</th><th>Jun</th><th>Jul</th><th>Aug</th><th>Sep</th><th>Oct</th><th>Nov</th><th>Dec</th></tr></thead><tbody>${pondEventRows}</tbody></table></div>
+    </details>
+    <p class="fine" style="margin-top:0.55rem">${(pondHydrology.assumptions || []).map(esc).join(' ')}</p>
+  ` : '';
+  return `
+    <section class="report-block water-collection-block">
+      <h2>Water collection budget</h2>
+      <p class="fine" style="margin-top:-0.3rem">
+        Full water budget combining roof catchment, swale capture, and pond storage.
+        Based on NASA POWER precipitation × parcel geometry × standard catchment coefficients.
+      </p>
+      <div class="well-range-card" style="border-left-color:#2a6f97;margin-top:0.65rem">
+        <span class="mono">Total annual collection (house+barn + earthworks)</span>
+        <div class="well-range-value" style="font-size:clamp(1.3rem,3vw,1.8rem);color:#2a6f97">
+          ${(wc.total_annual_m3).toLocaleString()} m³
+          <span style="font-size:0.8rem;color:var(--ink-soft);margin-left:0.5rem">(${wc.total_annual_litres.toLocaleString()} L · ${wc.total_annual_gallons.toLocaleString()} gal)</span>
+        </div>
+        <p class="fine">Annual precip: ${wc.annual_precipitation_mm} mm · Parcel: ${wc.parcel_area_m2.toLocaleString()} m² · Runoff coeff: ${wc.runoff_coefficient} · Tank: ${(wc.recommended_tank_litres / 1000).toFixed(0)} m³</p>
+      </div>
+      <div class="summary-grid" style="margin-top:0.65rem">
+        <div class="stat"><span class="k">Roof catchment</span><strong>${primaryRoof ? (primaryRoof.annual_litres / 1000).toFixed(1) + ' m³' : '—'}</strong><span class="fine">${primaryRoof ? primaryRoof.label : ''} · 85% eff.</span></div>
+        <div class="stat"><span class="k">Swale capture</span><strong>${swaleCapture.recommended ? (swaleCapture.annual_litres / 1000).toFixed(1) + ' m³' : 'N/A'}</strong><span class="fine">${swaleCapture.recommended ? swaleCapture.swale_meters + ' m swale' : swaleCapture.note || 'No swales'}</span></div>
+        <div class="stat"><span class="k">Pond storage</span><strong>${pondStorage.recommended ? pondStorage.estimated_volume_m3 + ' m³' : 'N/A'}</strong><span class="fine">${pondStorage.recommended ? pondStorage.note : pondStorage.note || 'No ponds'}</span></div>
+        <div class="stat"><span class="k">Driest months</span><strong>${dryMonths || '—'}</strong></div>
+        <div class="stat"><span class="k">Wettest months</span><strong>${wetMonths || '—'}</strong></div>
+      </div>
+      ${swaleCapture.recommended ? `<p class="fine" style="margin-top:0.45rem"><strong>Swale water balance:</strong> ~${(swaleCapture.annual_litres / 1000).toFixed(1)} m³ intercepted, ~${(swaleCapture.annual_infiltration_m3 || 0).toFixed(1)} m³ estimated to infiltrate, and ~${(swaleCapture.annual_overflow_m3 || 0).toFixed(1)} m³ remaining as overflow/runoff. ${esc(swaleCapture.infiltration_basis || '')}</p>` : ''}
+      <span class="mono topo-label" style="margin-top:0.85rem;display:block">Monthly collection (house+barn + swales)</span>
+      <div class="precip-chart" style="margin-top:0.45rem" aria-label="Monthly water collection">${monthBars}</div>
+      <p class="fine" style="margin-top:0.3rem"><span style="display:inline-block;width:10px;height:10px;background:var(--ok);vertical-align:middle;margin-right:3px"></span> Swale · <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;vertical-align:middle;margin-right:3px"></span> Roof</p>
+      ${pondHydrologyBlock}
+      <details class="inner-details" style="margin-top:0.85rem">
+        <summary>Roof catchment scenarios</summary>
+        <div class="summary-grid" style="margin-top:0.5rem">${roofCards}</div>
+        <p class="fine" style="margin-top:0.35rem">85% collection efficiency. Tank sized for 3-month dry-season buffer.</p>
+      </details>
+      <p class="fine" style="margin-top:0.65rem">${esc(wc.disclaimer || '')}</p>
+    </section>`;
+}
+
+function initPondHydrologyMap(id, placement) {
+  const el = document.getElementById(id);
+  const report = state.report || {};
+  if (!el || typeof L === 'undefined' || placement?.latitude == null || placement?.longitude == null) return;
+  const map = L.map(el, { zoomControl: true, attributionControl: true }).setView([placement.latitude, placement.longitude], 15);
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Esri', maxZoom: 18 }).addTo(map);
+  L.marker([placement.latitude, placement.longitude]).addTo(map).bindPopup('<strong>Screened pond location</strong><br>Lowest/convergent DEM candidate').openPopup();
+  const ring = report.geometry?.coordinates?.[0];
+  if (Array.isArray(ring) && ring.length > 3) {
+    const parcel = L.polygon(ring.map(([lng, lat]) => [lat, lng]), { color: '#e8c547', weight: 2, fill: false }).addTo(map);
+    map.fitBounds(parcel.getBounds(), { padding: [18, 18], maxZoom: 16 });
+  }
+}
+
 function mineralsSection(m) {
   if (!m || !m.available) return '';
   const occ = m.all_occurrences || [];
@@ -6137,6 +6480,15 @@ function mineralsSection(m) {
   const metallic = m.metallic || [];
   const industrial = m.industrial || [];
   const prospective = m.prospective_areas || [];
+  const centre = state.report?.location
+    ? { latitude: state.report.location.latitude, longitude: state.report.location.longitude }
+    : null;
+
+  // Map placeholder — init after DOM insert
+  const mapId = 'minerals-map-' + Math.random().toString(36).slice(2, 8);
+  if (occ.length && centre) {
+    setTimeout(() => initMineralsMap(mapId, occ, centre), 140);
+  }
 
   const occRows = occ.slice(0, 10).map((o) => `
     <tr>
@@ -6231,6 +6583,88 @@ function mineralsSection(m) {
       <p class="fine">${esc(m.disclaimer || '')}</p>
     </section>
   `;
+}
+
+function initMineralsMap(elId, occurrences, centre) {
+  const el = document.getElementById(elId);
+  if (!el || typeof L === 'undefined' || !occurrences?.length) return;
+  destroyLeafletOn(el);
+  el.innerHTML = '';
+  const map = L.map(el, { zoomControl: true, attributionControl: true });
+  el._eeLeafletMap = map;
+  el.dataset.leafletReady = '1';
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    attribution: 'Esri · AER Mineral Occurrences',
+    maxZoom: 18,
+  }).addTo(map);
+
+  L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+    opacity: 0.5, maxZoom: 18,
+  }).addTo(map);
+
+  const boundsGroup = [];
+
+  // Parcel outline
+  const parcel = getParcelLatLngs();
+  if (parcel?.length >= 3) {
+    const poly = L.polygon(parcel, {
+      color: '#a8801f', fillColor: '#a8801f', fillOpacity: 0.12, weight: 3,
+    }).addTo(map);
+    poly.bindPopup('<strong>Your parcel</strong>');
+    boundsGroup.push(poly);
+  }
+
+  // Site centre
+  L.circleMarker([centre.latitude, centre.longitude], {
+    radius: 8, color: '#fff', weight: 2, fillColor: '#5b3a73', fillOpacity: 1,
+  }).addTo(map).bindTooltip('Site centre');
+
+  // Mineral occurrences
+  const commColors = {};
+  let colorIdx = 0;
+  const palette = ['#e9c46a', '#2a6f97', '#c23e2e', '#2f6f4e', '#8c5a1d', '#5b3a73', '#c45c26', '#3d9dc9'];
+
+  occurrences.forEach((o) => {
+    if (o.latitude == null || o.longitude == null || !Number.isFinite(o.latitude) || !Number.isFinite(o.longitude)) return;
+    const comm = o.commodity || 'Unknown';
+    if (!commColors[comm]) {
+      commColors[comm] = palette[colorIdx % palette.length];
+      colorIdx++;
+    }
+    const fill = commColors[comm];
+    const distLabel = o.distance_m != null ? fmtDistance(o.distance_m) : '—';
+
+    L.circleMarker([o.latitude, o.longitude], {
+      radius: 6, color: '#fff', weight: 1.5, fillColor: fill, fillOpacity: 0.85,
+    }).addTo(map)
+      .bindPopup(
+        `<strong>${esc(o.name || 'Occurrence')}</strong><br/>` +
+        `Commodity: ${esc(o.commodity || '—')}<br/>` +
+        `Age: ${esc(o.geo_age || '—')}<br/>` +
+        `Unit: ${esc(o.geo_unit || '—')}<br/>` +
+        `Distance: ${esc(distLabel)}` +
+        (o.deposit_type ? `<br/>Type: ${esc(o.deposit_type)}` : '') +
+        (o.ore_minerals ? `<br/>Ore: ${esc(o.ore_minerals)}` : '') +
+        `<br/><span class="fine">AER DIG 2025-0009</span>`
+      );
+    boundsGroup.push(L.latLngBounds([[o.latitude, o.longitude]]));
+  });
+
+  try {
+    if (boundsGroup.length) {
+      map.fitBounds(
+        boundsGroup.reduce((acc, x) => acc.extend(x), L.latLngBounds(boundsGroup[0])),
+        { padding: [28, 28], maxZoom: 16 }
+      );
+    } else {
+      map.setView([centre.latitude, centre.longitude], 12);
+    }
+  } catch { /* ignore */ }
+
+  requestAnimationFrame(() => {
+    try { map.invalidateSize({ animate: false }); } catch { /* ignore */ }
+  });
 }
 
 function smallWaterSection(sw) {
@@ -7057,7 +7491,7 @@ function nextStepsSection(r, idSuffix = 'main') {
     { step: 1, label: 'Your site insights', description: 'Free analysis' },
     { step: 2, label: 'Choose interventions', description: 'Select what you want' },
     { step: 3, label: 'Full report', description: 'Download with email' },
-    { step: 4, label: 'Estimate & inquire', description: 'Talk to Expanding Edge' },
+    { step: 4, label: 'Estimate & inquire', description: 'Talk to Land Intelligence' },
   ])
     .map(
       (s, i) => `
@@ -7464,14 +7898,6 @@ function bindNextStepsInteractions(r) {
           status.hidden = false;
           status.textContent = data.message || 'Inquiry sent.';
         }
-        // Only open a local mail draft if Resend did not deliver
-        if (!data.emailed && data.mailto) {
-          setTimeout(() => {
-            try {
-              window.location.href = data.mailto;
-            } catch { /* ignore */ }
-          }, 200);
-        }
       } catch (e) {
         if (status) {
           status.hidden = false;
@@ -7664,24 +8090,226 @@ function pdfFilename(label) {
  */
 function pdfOpts(filename, opts = {}) {
   return {
-    margin: [10, 8, 10, 8],
+    margin: [12, 10, 12, 10],
     filename,
-    image: { type: 'jpeg', quality: 0.92 },
+    image: { type: 'jpeg', quality: 0.95 },
     html2canvas: {
       scale: 2,
       useCORS: true,
       logging: false,
       letterRendering: true,
       allowTaint: false,
+      scrollY: 0,
     },
     jsPDF: {
       unit: 'mm',
       format: 'a4',
       orientation: 'portrait',
     },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    pagebreak: { mode: ['css', 'legacy'] },
     ...opts,
   };
+}
+
+/**
+ * Build a print-ready PDF document from the report data.
+ * Creates a detached DOM tree with professional layout, TOC, branded sections,
+ * and footer with page number — then renders via html2pdf.
+ */
+function buildPdfDocument(reportEl) {
+  const r = state.report || {};
+  const doc = document.createElement('div');
+  doc.style.cssText = 'font-family:"Source Serif 4",Georgia,serif;color:#16211b;background:#fff;font-size:10pt;line-height:1.5;';
+
+  /* ── Title Page ── */
+  const titlePage = el('div', null, {
+    cssText: 'text-align:center;padding:50px 30px 30px;page-break-after:always;min-height:270mm;display:flex;flex-direction:column;justify-content:center;',
+  });
+
+  const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
+  brandBlock.appendChild(el('div', null, {
+    textContent: 'EXPANDING EDGE',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:#5b3a73;text-transform:uppercase;',
+  }));
+  brandBlock.appendChild(el('div', null, {
+    textContent: 'Land Intelligence',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:13px;color:#46584c;margin-top:2px;',
+  }));
+  titlePage.appendChild(brandBlock);
+
+  titlePage.appendChild(el('h1', null, {
+    textContent: r.site_name || 'Site Design Report',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:28px;color:#16211b;margin:0 0 12px;line-height:1.15;',
+  }));
+
+  const metaLine = el('p', null, {
+    cssText: 'font-size:13px;color:#46584c;margin:0 0 6px;',
+  });
+  const parts = [];
+  if (r.location?.nearest_town || r.location?.municipality) parts.push(r.location.nearest_town || r.location.municipality);
+  if (r.geometry?.area_ha != null) parts.push(`${r.geometry.area_ha} ha`);
+  if (r.climate?.plant_hardiness_zone) parts.push(`Zone ${r.climate.plant_hardiness_zone}`);
+  metaLine.textContent = parts.join(' · ');
+  titlePage.appendChild(metaLine);
+
+  titlePage.appendChild(el('p', null, {
+    textContent: new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }),
+    cssText: 'font-size:11px;color:#888;margin-top:40px;',
+  }));
+
+  titlePage.appendChild(el('p', null, {
+    textContent: 'expandingedge.ca · (780) 236-3630',
+    cssText: 'font-size:10px;color:#aaa;margin-top:4px;',
+  }));
+
+  titlePage.appendChild(el('p', null, {
+    textContent: 'Planning guidance for conversation with Land Intelligence — not engineered drawings or a crime risk assessment.',
+    cssText: 'font-size:8px;color:#bbb;margin-top:50px;font-style:italic;max-width:400px;margin-left:auto;margin-right:auto;',
+  }));
+
+  doc.appendChild(titlePage);
+
+  /* ── Table of Contents ── */
+  const tocData = getReportSectionList();
+  const tocPage = el('div', null, { cssText: 'padding:20px 0 30px;page-break-after:always;' });
+  tocPage.appendChild(el('h2', null, {
+    textContent: 'Contents',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:20px;color:#16211b;margin:0 0 16px;padding-bottom:8px;border-bottom:2px solid #5b3a73;',
+  }));
+
+  const tocList = el('div', null, { cssText: 'display:flex;flex-direction:column;gap:6px;' });
+  tocData.forEach((s) => {
+    const row = el('div', null, { cssText: 'display:flex;align-items:baseline;gap:8px;' });
+    row.appendChild(el('span', null, {
+      textContent: s.label,
+      cssText: 'font-size:10pt;color:#16211b;flex:1;',
+    }));
+    // Dotted leader
+    const dots = el('span', null, {
+      cssText: 'display:inline-block;flex:1;border-bottom:1px dotted #ccc;height:1px;min-width:20px;',
+    });
+    row.appendChild(dots);
+    row.appendChild(el('span', null, {
+      textContent: String(s.page),
+      cssText: 'font-family:"IBM Plex Mono",monospace;font-size:9px;color:#888;',
+    }));
+    tocList.appendChild(row);
+  });
+  tocPage.appendChild(tocList);
+  doc.appendChild(tocPage);
+
+  /* ── Report Body ── */
+  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;' });
+
+  // Clone report content but strip interactive elements that don't render well in PDF
+  const clone = reportEl.cloneNode(true);
+  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container').forEach((el) => el.remove());
+
+  // Add section breaks before each report-block
+  const blocks = clone.querySelectorAll(':scope > .report-block');
+  blocks.forEach((block, i) => {
+    if (i > 0) {
+      // Insert page break before sections after the first
+      block.style.pageBreakBefore = 'always';
+    }
+    // Add branded section header
+    const h2 = block.querySelector('h2');
+    if (h2) {
+      const sectionLabel = h2.textContent.trim();
+      const headerBar = el('div', null, {
+        cssText: 'display:flex;align-items:center;gap:8px;margin:-1.8rem -1.4rem 1.2rem;padding:6px 16px;background:#f7f8f3;border-bottom:1px solid #c8cec1;',
+      });
+      headerBar.appendChild(el('span', null, {
+        textContent: `${i + 1}.`,
+        cssText: 'font-family:"IBM Plex Mono",monospace;font-size:8px;color:#5b3a73;letter-spacing:0.5px;',
+      }));
+      headerBar.appendChild(el('span', null, {
+        textContent: sectionLabel,
+        cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:14px;color:#16211b;',
+      }));
+      h2.replaceWith(headerBar);
+    }
+    bodyWrapper.appendChild(block);
+  });
+
+  doc.appendChild(bodyWrapper);
+
+  /* ── Footer stamp on every page ── */
+  // html2pdf doesn't support native PDF footers, so we add a discreet footer note
+  // to the last section instead
+  const lastBlock = bodyWrapper.lastElementChild;
+  if (lastBlock) {
+    lastBlock.appendChild(el('div', null, {
+      cssText: 'margin-top:2rem;padding-top:12px;border-top:1px solid #c8cec1;text-align:center;',
+    })).textContent = '© Expanding Edge · expandingedge.ca · (780) 236-3630';
+  }
+
+  return doc;
+}
+
+/**
+ * Return a list of report sections with placeholder page numbers.
+ * Real page numbers require post-render measurement; these are estimates.
+ */
+function getReportSectionList() {
+  const r = state.report || {};
+  const sections = [
+    { label: 'Your parcel', skip: false },
+    { label: 'Topology', skip: false },
+    { label: 'Proximity & context', skip: false },
+    { label: 'Crime map', skip: !r.crime },
+    { label: 'Solar incidence & viability', skip: !r.solar },
+    { label: 'Temperature profile', skip: !r.temperature },
+    { label: 'Wildlife — White-tailed Deer', skip: !r.deer },
+    { label: 'Access & mobility', skip: false },
+    { label: 'Legal land description', skip: false },
+    { label: 'Regional demographics', skip: !r.demographics },
+    { label: 'Tree canopy cover', skip: !r.tree_cover },
+    { label: 'Climate hardiness · flood · zoning', skip: false },
+    { label: 'Land value', skip: !r.land_value },
+    { label: 'Recommended plantings', skip: !(r.planting_plan?.recommended?.length) },
+    { label: 'Predicted well depth', skip: !r.predicted_well_depth },
+    { label: 'Provincial elevation contours', skip: !r.provincial_contours },
+    { label: 'Wind & shelterbelt', skip: !r.wind },
+    { label: 'Biodiversity', skip: !r.biodiversity },
+    { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests) },
+    { label: 'Water collection budget', skip: !r.water_collection },
+    { label: 'Geology & minerals', skip: !r.minerals },
+    { label: 'Small water sources', skip: !r.small_water },
+    { label: 'Wetlands', skip: !r.wetlands },
+    { label: 'Placement recommendations', skip: !(r.recommendations?.length) },
+    { label: 'Distance & context', skip: false },
+    { label: 'Jurisdiction crime context', skip: !r.jurisdiction_crime },
+    { label: 'Precipitation', skip: !r.precipitation },
+    { label: 'Land fecundity assessment', skip: !r.fecundity },
+    { label: 'Matching packages', skip: !r.service_packages },
+    { label: 'Estimated investment', skip: !r.quote },
+  ].filter((s) => !s.skip);
+
+  // Assign rough page numbers based on expected content volume
+  const pageAssignments = {};
+  let currentPage = 2; // title + TOC take pages 1-2
+  sections.forEach((s) => {
+    pageAssignments[s.label] = currentPage;
+    // Estimate pages: most sections ~1 page, some take more
+    const extraPages = (s.label === 'Recommended plantings' || s.label === 'Biodiversity') ? 1 : 0;
+    currentPage += 1 + extraPages;
+  });
+  sections.forEach((s) => { s.page = pageAssignments[s.label]; });
+  return sections;
+}
+
+/**
+ * Lightweight element factory used during PDF build.
+ */
+function el(tag, children, attrs = {}) {
+  const e = document.createElement(tag);
+  if (attrs.textContent != null) e.textContent = attrs.textContent;
+  if (attrs.cssText) e.style.cssText = attrs.cssText;
+  if (attrs.className) e.className = attrs.className;
+  if (attrs.id) e.id = attrs.id;
+  if (children) children.forEach((c) => e.appendChild(c));
+  return e;
 }
 
 /**
@@ -7759,7 +8387,7 @@ async function downloadSectionPdf(sectionEl, label) {
     const hdr = document.createElement('div');
     hdr.style.cssText = 'margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #5b3a73;';
     hdr.innerHTML = `
-      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Expanding Edge Permaculture</div>
+      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Land Intelligence</div>
       <div style="font-size:14px;font-weight:700;margin-top:2px">${esc(state.report?.site_name || 'Site report')} — ${esc(label)}</div>
       <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · expandingedge.ca</div>
     `;
@@ -7778,6 +8406,7 @@ async function downloadSectionPdf(sectionEl, label) {
 
 /**
  * Download the full site design report as one PDF document.
+ * Uses buildPdfDocument() for professional layout with TOC, branded sections, footer.
  */
 async function downloadFullPdf() {
   if (typeof html2pdf === 'undefined') {
@@ -7792,47 +8421,14 @@ async function downloadFullPdf() {
     const reportEl = $('report');
     if (!reportEl) throw new Error('No report to export');
 
-    // Clone the full report content
-    const clone = reportEl.cloneNode(true);
-    // Remove PDF buttons and minimap embeds (Leaflet tiles won't render in PDF)
-    clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map').forEach((el) => el.remove());
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'font-family: system-ui, -apple-system, sans-serif; color: #16211b; padding: 0 4px; max-width: 190mm;';
-
-    // Title page
-    const titlePage = document.createElement('div');
+    const doc = buildPdfDocument(reportEl);
     const r = state.report || {};
-    titlePage.style.cssText = 'text-align: center; padding: 40px 20px 20px;';
-    titlePage.innerHTML = `
-      <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Expanding Edge Permaculture</div>
-      <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
-      <div style="font-size:14px;color:#46584c;margin-bottom:30px">
-        ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
-        ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
-        ${r.climate?.plant_hardiness_zone ? ` · Zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-      </div>
-      <div style="font-size:12px;color:#888;margin-top:40px">
-        Generated ${new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}
-        <br>expandingedge.ca · (780) 236-3630
-      </div>
-      <div style="font-size:9px;color:#aaa;margin-top:30px">
-        Planning guidance for conversation with Expanding Edge — not engineered drawings or a crime risk assessment.
-      </div>
-    `;
-    wrapper.appendChild(titlePage);
-
-    // Add report content (minus SVG maps that won't render)
-    wrapper.appendChild(clone);
-
     const site = (r.site_name || 'site-report').replace(/[^\w.-]+/g, '_').substring(0, 40);
     const fname = `${site}_full_report.pdf`;
+
     await html2pdf()
-      .set({
-        ...pdfOpts(fname),
-        pagebreak: { mode: ['css', 'legacy'] },
-      })
-      .from(wrapper)
+      .set(pdfOpts(fname))
+      .from(doc)
       .save();
   } catch (err) {
     console.error('Full PDF generation failed:', err);
@@ -8285,9 +8881,8 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     .filter(Boolean)
     .join('');
 
-  // ── Security: RCMP Rural Crime Watch map (primary) + optional EPS city list ──
+  // ── Security: EPS city list + crime stats (RCMP iframe map removed per user request) ──
   const securityBody = [
-    rcmpCrimeMapSection(centre),
     crimeSectionStandalone(crime, px),
     nearestCrimesSection(nearestCrimes, centre),
   ]
@@ -8302,9 +8897,10 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     .filter(Boolean)
     .join('');
 
-  // ── Water: precip (NASA), wells, wetlands, seeps ──
+  // ── Water: precip (NASA), wells, wetlands, seeps, water collection budget ──
   const waterBody = [
     precipitationSection(r.precipitation || r.climate),
+    waterCollectionSection(r.water_collection),
     wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
     wetlandsSection(r.wetlands || r.fecundity?.wetlands),
     smallWaterSection(r.small_water),
@@ -8612,6 +9208,9 @@ function renderSectionPanes(r, ctx) {
       <div class="summary-grid">
         <div class="stat"><span class="k">Elevation</span><strong>${fmt(topo.elevation_m ?? a.elevation?.mean_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Slope</span><strong>${fmt(r.terrain?.slope_percent, '%')}</strong></div>
+        <div class="stat"><span class="k">Soil texture</span><strong>${esc((r.soil_survey?.characteristics?.texture_class || r.soil_survey?.sample_summary?.texture_class || a.soil_survey?.characteristics?.texture_class || '—'))}</strong></div>
+        <div class="stat"><span class="k">pH</span><strong>${esc((r.soil_survey?.characteristics?.ph_h2o_mean || r.soil_survey?.sample_summary?.mean_ph || a.soil_survey?.sample_summary?.mean_ph || '—'))}</strong></div>
+        <div class="stat"><span class="k">SOC model</span><strong>${esc((r.soil_survey?.characteristics?.soc_g_kg_regional_mean || r.soil_survey?.sample_summary?.mean_soc_g_kg || a.soil_survey?.sample_summary?.mean_soc_g_kg || '—'))}${(r.soil_survey?.characteristics?.soc_g_kg_regional_mean || r.soil_survey?.sample_summary?.mean_soc_g_kg || a.soil_survey?.sample_summary?.mean_soc_g_kg) != null ? ' g/kg' : ''}</strong></div>
         <div class="stat"><span class="k">Nearest water</span><strong>${water ? fmtDistance(water.distance_m) : '—'}</strong></div>
         <div class="stat"><span class="k">Well depth</span><strong>${fmt(r.predicted_well_depth?.estimated_depth_m || a.well_depth?.estimated_depth_m, 'm')}</strong></div>
         <div class="stat"><span class="k">Solar (lat tilt)</span><strong>${solarDaily != null ? `${esc(solarDaily)} kWh/m²·d` : '—'}</strong></div>

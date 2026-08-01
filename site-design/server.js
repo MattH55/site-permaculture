@@ -92,7 +92,7 @@ app.get('/api/config', (_req, res) => {
     defaultZoom: 10,
     region: 'Alberta',
     brand: {
-      name: 'Expanding Edge Permaculture',
+      name: 'Land Intelligence',
       url: 'https://www.expandingedge.ca/',
       tagline: 'Earth · People · Future',
     },

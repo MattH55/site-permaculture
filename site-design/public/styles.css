@@ -596,6 +596,42 @@ h3 { font-size: 1.08rem; }
 .econ-table .econ-rev {
   white-space: nowrap;
 }
+.plantings-table {
+  table-layout: fixed;
+  min-width: 0;
+}
+.plantings-table colgroup col:nth-child(1) { width: 20%; }
+.plantings-table colgroup col:nth-child(2) { width: 16%; }
+.plantings-table colgroup col:nth-child(3) { width: 9%; }
+.plantings-table colgroup col:nth-child(4) { width: 12%; }
+.plantings-table colgroup col:nth-child(5) { width: 13%; }
+.plantings-table colgroup col:nth-child(6) { width: 13%; }
+.plantings-table colgroup col:nth-child(7) { width: 10%; }
+.plantings-table colgroup col:nth-child(8) { width: 7%; }
+/* Allow wrapping in all cells except the narrowest (Qty, Payback, Improves) */
+.plantings-table td,
+.plantings-table th {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+.plantings-table td:first-child,
+.plantings-table th:first-child {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.plantings-table td:last-child,
+.plantings-table th:last-child {
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: normal;
+}
+/* Yield and revenue columns — keep values readable without truncation */
+.plantings-table .econ-yield,
+.plantings-table .econ-rev {
+  white-space: normal;
+  line-height: 1.35;
+}
 
 .plant-goals-bar .goal-chips {
   display: flex;
