@@ -7881,14 +7881,6 @@ function bindNextStepsInteractions(r) {
           status.hidden = false;
           status.textContent = data.message || 'Inquiry sent.';
         }
-        // Only open a local mail draft if Resend did not deliver
-        if (!data.emailed && data.mailto) {
-          setTimeout(() => {
-            try {
-              window.location.href = data.mailto;
-            } catch { /* ignore */ }
-          }, 200);
-        }
       } catch (e) {
         if (status) {
           status.hidden = false;
