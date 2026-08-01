@@ -2356,6 +2356,150 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
 
     addContours();
     addZonePolygons();
+
+    // Add water features (wetlands + small water) as blue translucent polygons on terrain
+    const addWaterFeatures = () => {
+      const waterFc = packageWaterFromReport(report);
+      if (!waterFc || !waterFc.features || !waterFc.features.length) return;
+
+      for (const feature of waterFc.features) {
+        const geom = feature.geometry;
+        if (!geom || !geom.coordinates) continue;
+
+        let positions = null;
+
+        if (geom.type === 'Polygon') {
+          const ring = geom.coordinates[0];
+          if (ring && ring.length >= 3) {
+            positions = [];
+            for (let i = 0; i < ring.length; i++) {
+              const [lng, lat] = ring[i % ring.length];
+              const z = elevations[Math.floor(rows / 2)] ?? zMean;
+              positions.push(Cesium.Cartesian3.fromDegrees(lng, lat, Math.max(z * exaggerate * 0.5, 1)));
+            }
+          }
+        } else if (geom.type === 'LineString') {
+          const coords = geom.coordinates;
+          if (coords && coords.length >= 2) {
+            positions = [];
+            for (let i = 0; i < coords.length; i++) {
+              const [lng, lat] = coords[i];
+              const z = elevations[Math.floor(rows / 2)] ?? zMean;
+              positions.push(Cesium.Cartesian3.fromDegrees(lng, lat, Math.max(z * exaggerate * 0.5, 1)));
+            }
+          }
+        } else if (geom.type === 'Point') {
+          const [lng, lat] = geom.coordinates;
+          const z = elevations[Math.floor(rows / 2)] ?? zMean;
+          // Draw a small circular pond at point locations
+          const radius = 0.0003; // ~30m
+          const center = Cesium.Cartesian3.fromDegrees(lng, lat, Math.max(z * exaggerate * 0.5, 1));
+          const cartographic = Cesium.Cartographic.fromCartesian(center);
+          for (let a = 0; a <= 360; a += 30) {
+            const rad = Cesium.Math.toRadians(a);
+            positions = positions || [];
+            if (a === 0) positions.push(center);
+            positions.push(Cesium.Cartesian3.fromRadians(
+              cartographic.longitude + radius * Math.cos(rad),
+              cartographic.latitude + radius * Math.sin(rad),
+              cartographic.height
+            ));
+          }
+        }
+
+        if (positions && positions.length >= 3) {
+          cesiumViewer.entities.add({
+            waterFeature: {
+              polygon: {
+                hierarchy: positions,
+                material: Cesium.Color.fromCssColorString('#4da6c9').withAlpha(0.5),
+                outline: true,
+                outlineColor: Cesium.Color.fromCssColorString('#1a7a9e'),
+                outlineWidth: 1.5,
+                clampToGround: true,
+              },
+            },
+          });
+        }
+      }
+    };
+
+    // Add tree visualizations from design elements (windbreaks, shelterbelts, agroforestry, hedgerows)
+    const addTrees = () => {
+      const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
+      const treeElements = designEls.filter((el) => {
+        const type = el.element_type || '';
+        return /windbreak|shelterbelt|agroforestry|hedge|hedgerow|tree.*(strip|row|belt)|alleyway/i.test(type);
+      });
+
+      if (!treeElements.length) return;
+
+      const west = bbox.west;
+      const east = bbox.east;
+      const south = bbox.south;
+      const north = bbox.north;
+      const lngRange = east - west || 0.001;
+      const latRange = north - south || 0.001;
+
+      for (const el of treeElements) {
+        const coords = el.coordinates || el.coords || el.location?.coordinates || el.points || null;
+        if (!coords) continue;
+
+        if (Array.isArray(coords[0]) && Array.isArray(coords[0][0])) {
+          // Multi-line or multi-polygon — use first ring
+          const ring = coords[0][0] || coords[0];
+          if (ring.length < 2) continue;
+          for (let i = 0; i < ring.length; i++) {
+            const [lng, lat] = ring[i % ring.length];
+            const col = Math.max(0, Math.min(cols - 1, Math.round(((lng - west) / lngRange) * (cols - 1))));
+            const row = Math.max(0, Math.min(rows - 1, Math.round((1 - (lat - south) / latRange) * (rows - 1))));
+            const z = elevations[row * cols + col] ?? zMean;
+            const heightM = Math.max(z * exaggerate * 0.3, 2);
+            const pos = Cesium.Cartesian3.fromDegrees(lng, lat, heightM);
+            // Green cone-like tree marker
+            cesiumViewer.entities.add({
+              tree: {
+                polyline: {
+                  positions: [
+                    Cesium.Cartesian3.fromDegrees(lng, lat, Math.max(z * exaggerate * 0.5, 1)),
+                    pos,
+                  ],
+                  material: new Cesium.PolylineGlowMaterialEntry({
+                    glowPower: 0.3,
+                  }),
+                  width: 3,
+                  material: Cesium.Color.fromCssColorString('#2d8a4e'),
+                  clampToGround: false,
+                },
+              },
+            });
+          }
+        } else if (Array.isArray(coords) && typeof coords[0] === 'number' && typeof coords[1] === 'number') {
+          // Single point
+          const [lng, lat] = coords;
+          const col = Math.max(0, Math.min(cols - 1, Math.round(((lng - west) / lngRange) * (cols - 1))));
+          const row = Math.max(0, Math.min(rows - 1, Math.round((1 - (lat - south) / latRange) * (rows - 1))));
+          const z = elevations[row * cols + col] ?? zMean;
+          const heightM = Math.max(z * exaggerate * 0.3, 2);
+          cesiumViewer.entities.add({
+            tree: {
+              polyline: {
+                positions: [
+                  Cesium.Cartesian3.fromDegrees(lng, lat, Math.max(z * exaggerate * 0.5, 1)),
+                  Cesium.Cartesian3.fromDegrees(lng, lat, heightM),
+                ],
+                material: Cesium.Color.fromCssColorString('#2d8a4e'),
+                width: 3,
+                clampToGround: false,
+              },
+            },
+          });
+        }
+      }
+    };
+
+    addWaterFeatures();
+    addTrees();
     entitiesAdded = true;
 
     // Store reference for cleanup
@@ -9342,6 +9486,20 @@ let leafletMapEl = null;
  * Initialize the Cesium 3D globe viewer.
  * Shows Alberta region with terrain (Cesium World Terrain).
  */
+/**
+ * Alias for switchToCesium — switches from Leaflet 2D to Cesium 3D globe.
+ */
+function switchTo3DView() {
+  switchToCesium();
+}
+
+/**
+ * Alias for switchToLeaflet — switches from Cesium 3D back to Leaflet 2D map.
+ */
+function switchTo2DView() {
+  switchToLeaflet();
+}
+
 function initCesiumViewer() {
   // Only initialize once
   if (cesiumViewer) return;
