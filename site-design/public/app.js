@@ -191,6 +191,26 @@ async function main() {
   $('btn-clear').onclick = clearShape;
   $('btn-report').onclick = generateReport;
 
+  // 2D / 3D view toggle
+  const btn2d = $('btn-2d-view');
+  const btn3d = $('btn-3d-view');
+  if (btn2d && btn3d) {
+    btn2d.onclick = () => {
+      switchTo2DView();
+      btn2d.classList.add('is-active');
+      btn2d.setAttribute('aria-pressed', 'true');
+      btn3d.classList.remove('is-active');
+      btn3d.setAttribute('aria-pressed', 'false');
+    };
+    btn3d.onclick = () => {
+      switchTo3DView();
+      btn3d.classList.add('is-active');
+      btn3d.setAttribute('aria-pressed', 'true');
+      btn2d.classList.remove('is-active');
+      btn2d.setAttribute('aria-pressed', 'false');
+    };
+  }
+
   // Address search via Nominatim (free OSM geocoder)
   initPlaceSearch();
 
@@ -9327,6 +9347,237 @@ function severityLabel(s) {
 function fmt(v, unit) {
   if (v == null || v === '') return '—';
   return `${v}${unit ? ' ' + unit : ''}`;
+}
+
+/* ============================================================
+ * CesiumJS 3D Globe Viewer
+ * Toggle between Leaflet 2D map and Cesium 3D globe
+ * ============================================================ */
+
+let cesiumViewer = null;
+let cesiumContainer = null;
+let leafletMapEl = null;
+
+/**
+ * Initialize the Cesium 3D globe viewer.
+ * Shows Alberta region with terrain (Cesium World Terrain).
+ */
+function initCesiumViewer() {
+  // Only initialize once
+  if (cesiumViewer) return;
+
+  const mapEl = $('map');
+  if (!mapEl) return;
+
+  // Create a container for Cesium inside the #map div
+  cesiumContainer = document.createElement('div');
+  cesiumContainer.id = 'cesium-container';
+  cesiumContainer.style.width = '100%';
+  cesiumContainer.style.height = '100%';
+  cesiumContainer.style.position = 'absolute';
+  cesiumContainer.style.top = '0';
+  cesiumContainer.style.left = '0';
+  cesiumContainer.style.zIndex = '1';
+
+  // Hide the Leaflet map canvas/elements
+  leafletMapEl = mapEl.querySelector('.leaflet-container');
+  if (leafletMapEl) {
+    leafletMapEl.style.display = 'none';
+  }
+
+  mapEl.appendChild(cesiumContainer);
+
+  try {
+    // Set Cesium token from Ion (free tier)
+    // Using the default public token — for production, set CESIUM_ION_TOKEN in server env
+    Cesium.Ion.defaultAccessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwMmQ4YjFhNSfTtWQiJ9.slFv7MEAJ3QWV5QRJcnNz58BJiZXiB9WnVgBSbW15Vg';
+
+    cesiumViewer = new Cesium.Viewer(cesiumContainer, {
+      // Enable 3D terrain
+      baseLayerPicker: true,
+      geocoder: true,
+      homeButton: true,
+      sceneModePicker: true,
+      navigationHelpButton: true,
+      animation: false,
+      timeline: false,
+      fullscreenButton: true,
+      vrButton: false,
+      selectionIndicator: true,
+      // Use Cesium World Terrain for elevation
+      terrainProvider: Cesium.createWorldTerrain(),
+      // Start viewing Alberta (Sturgeon County area)
+      target: Cesium.Cartesian3.fromDegrees(-113.5, 53.55, 0),
+      orientation: {
+        heading: Cesium.Math.toRadians(0), // North
+        pitch: Cesium.Math.toRadians(-45),  // Tilted view
+        roll: 0,
+      },
+    });
+
+    // Add a box around the current parcel if one exists
+    if (state.paths && state.paths.length >= 3) {
+      addParcelToCesium(state.paths);
+    }
+
+    // Force resize after a short delay (Cesium needs rendered dimensions)
+    setTimeout(() => {
+      if (cesiumViewer) {
+        cesiumViewer.resize();
+        // Fly to Alberta
+        cesiumViewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(-113.5, 53.55, 8000),
+          orientation: {
+            heading: Cesium.Math.toRadians(0),
+            pitch: Cesium.Math.toRadians(-60),
+            roll: 0,
+          },
+          duration: 2,
+        });
+      }
+    }, 300);
+
+    // Switch to 2D mode by default for cleaner look, but keep 3D terrain
+    // Actually let's use 3D mode since that's what we want
+    cesiumViewer.scene.globe.enableLighting = true;
+
+    return cesiumViewer;
+  } catch (err) {
+    console.error('Cesium initialization failed:', err);
+    // Fallback: remove the container and stay in 2D
+    if (cesiumContainer) cesiumContainer.remove();
+    cesiumContainer = null;
+    if (leafletMapEl) leafletMapEl.style.display = '';
+    cesiumViewer = null;
+    setError('Cesium 3D globe failed to load. Check internet connection and try again.');
+    return null;
+  }
+}
+
+/**
+ * Add the drawn parcel as a polygon entity on the Cesium globe.
+ * @param {[[number, number]]} paths - Array of [lng, lat] pairs
+ */
+function addParcelToCesium(paths) {
+  if (!cesiumViewer || !paths || paths.length < 3) return;
+
+  const positions = paths.map(([lng, lat]) =>
+    Cesium.Cartesian3.fromDegrees(lng, lat)
+  );
+
+  cesiumViewer.entities.add({
+    parcel: {
+      polygon: {
+        hierarchy: positions,
+        material: Cesium.Color.PURPLE.withAlpha(0.3),
+        outline: true,
+        outlineColor: Cesium.Color.PURPLE,
+        outlineWidth: 2,
+        clampToGround: true,
+      },
+    },
+  });
+
+  // Fit camera to the parcel
+  const boundingSphere = Cesium.BoundingSphere.fromPoints(positions);
+  cesiumViewer.camera.flyToBoundingSphere(boundingSphere, {
+    offset: new Cesium.HeadingPitchRange(
+      0,
+      Cesium.Math.toRadians(-60),
+      5000
+    ),
+  });
+}
+
+/**
+ * Remove the parcel entity from Cesium.
+ */
+function removeParcelFromCesium() {
+  if (!cesiumViewer) return;
+  cesiumViewer.entities.removeById('parcel');
+}
+
+/**
+ * Switch from Cesium 3D back to Leaflet 2D map.
+ */
+function switchToLeaflet() {
+  if (!cesiumViewer) return;
+
+  // Destroy Cesium viewer
+  if (cesiumViewer) {
+    cesiumViewer.destroy();
+    cesiumViewer = null;
+  }
+
+  // Remove Cesium container
+  if (cesiumContainer) {
+    cesiumContainer.remove();
+    cesiumContainer = null;
+  }
+
+  // Show Leaflet map again
+  if (leafletMapEl) {
+    leafletMapEl.style.display = '';
+    leafletMapEl = null;
+  }
+
+  // Update button states
+  const btn2d = $('btn-view-2d');
+  const btn3d = $('btn-view-3d');
+  if (btn2d) {
+    btn2d.setAttribute('aria-pressed', 'true');
+    btn2d.classList.add('is-active');
+  }
+  if (btn3d) {
+    btn3d.setAttribute('aria-pressed', 'false');
+    btn3d.classList.remove('is-active');
+  }
+
+  // Invalidate Leaflet size after switching back
+  setTimeout(() => {
+    if (state._leafletMap) {
+      try {
+        state._leafletMap.invalidateSize({ animate: false });
+      } catch (e) { /* ignore */ }
+    }
+  }, 100);
+}
+
+/**
+ * Switch from Leaflet 2D to Cesium 3D globe.
+ */
+function switchToCesium() {
+  // Initialize Cesium if not already
+  const viewer = initCesiumViewer();
+  if (!viewer) return;
+
+  // Update button states
+  const btn2d = $('btn-view-2d');
+  const btn3d = $('btn-view-3d');
+  if (btn2d) {
+    btn2d.setAttribute('aria-pressed', 'false');
+    btn2d.classList.remove('is-active');
+  }
+  if (btn3d) {
+    btn3d.setAttribute('aria-pressed', 'true');
+    btn3d.classList.add('is-active');
+  }
+
+  // If there's a parcel drawn, add it to Cesium
+  if (state.paths && state.paths.length >= 3) {
+    addParcelToCesium(state.paths);
+  } else {
+    // Just fly to Alberta
+    viewer.camera.flyTo({
+      destination: Cesium.Cartesian3.fromDegrees(-113.5, 53.55, 8000),
+      orientation: {
+        heading: Cesium.Math.toRadians(0),
+        pitch: Cesium.Math.toRadians(-60),
+        roll: 0,
+      },
+      duration: 2,
+    });
+  }
 }
 
 main().catch((e) => {

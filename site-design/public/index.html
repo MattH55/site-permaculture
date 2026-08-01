@@ -11,8 +11,9 @@
   <!-- Leaflet — free open-source map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <!-- Three.js — 3D HRDEM / DEM terrain mesh -->
-  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+  <!-- CesiumJS — 3D globe/terrain visualization -->
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
   <!-- html2pdf.js — client-side PDF generation from HTML -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
 </head>
@@ -56,6 +57,13 @@
           <button type="button" class="btn btn-secondary" id="btn-draw-rect" aria-pressed="false">Rectangle</button>
           <button type="button" class="btn-quiet" id="btn-clear">Clear</button>
         </div>
+
+        <div class="view-toggle" style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+          <button type="button" class="btn btn-sm is-active" id="btn-2d-view" aria-pressed="true">2D Map</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="btn-3d-view" aria-pressed="false">3D Terrain</button>
+        </div>
+
+        <div id="cesium-container" class="cesium-container" hidden style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:1;"></div>
 
         <p class="help" id="draw-hint">
           Click <strong>Draw parcel</strong>, then click corners on the map. Double-click or press Finish when done.
