@@ -4329,6 +4329,23 @@ function recommendationCard(e) {
     </article>`;
 }
 
+/** Generate a solar package card for the tier grid. */
+function solarPackageCard(systemKwp, batteryKwh, label, solar) {
+  const gen = solar?.planning_scenario?.annual_generation_kwh;
+  const rate = solar?.planning_scenario?.grid_rate_cad_per_kwh ?? 0.15;
+  const annualGen = gen != null ? Math.round(gen * systemKwp / 5) : null;
+  const annualSave = annualGen != null ? Math.round(annualGen * rate) : null;
+  const battSave = batteryKwh != null ? Math.round(batteryKwh * 0.25) : null; // ~$0.25/kWh backup value
+  return `
+    <div class="stat" style="border:1px solid var(--line);border-radius:6px;padding:0.6rem">
+      <strong>${esc(label)}</strong><br>
+      <span class="fine">${systemKwp} kWp · ${batteryKwh} kWh battery</span>
+      ${annualGen != null ? `<br><span class="mono" style="font-size:0.85rem">${esc(annualGen.toLocaleString())} kWh/yr</span>` : ''}
+      ${annualSave != null ? `<br><span class="mono" style="font-size:0.85rem">$${esc(annualSave.toLocaleString())}/yr savings</span>` : ''}
+      ${battSave != null ? `<br><span class="fine">backup ~$${esc(battSave)}/yr value</span>` : ''}
+    </div>`;
+}
+
 function fmtDistance(m) {
   if (m == null || m === '') return '—';
   if (m < 1000) return `${Math.round(m)} m`;
