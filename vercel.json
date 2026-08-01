@@ -1,9 +1,42 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/", "destination": "/index.html" }],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "resilience-quiz-edmonton"
+      }
+    }
+  ],
   "headers": [
-    { "source": "/(.*).js",  "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }] },
-    { "source": "/(.*).css", "headers": [{ "key": "Cache-Control", "value": "public, max-age=3600" }] }
-  ]
+    {
+      "source": "/(.*).js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    },
+    {
+      "source": "/(.*).css",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
+        }
+      ]
+    }
+  ],
+  "services": {
+    "resilience-quiz-edmonton": {
+      "root": "."
+    }
+  }
 }
