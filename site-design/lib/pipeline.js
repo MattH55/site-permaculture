@@ -28,6 +28,8 @@ import { assessWildlife } from './wildlife.js';
 import { checkWildlifeSensitivity, queryGbig, lookupWmu } from './wildlife-enrich.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 import { assessAccess } from './access.js';
+import { recommendServicePackages } from './service-packages.js';
+import { buildActionMenu } from './action-menu.js';
 import { demographicsHeuristic } from './demographics.js';
 import { latLngToAts } from './ats.js';
 import { queryProvincialContours } from './provincial-contours.js';
@@ -418,6 +420,32 @@ export async function generateSiteReport(input = {}) {
 
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
+
+  // Service packages + action menu for "Build Your Plan" UI
+  const servicePackages = recommendServicePackages({
+    design_elements: record.design_elements,
+    predicted_well_depth: record.predicted_well_depth,
+    solar: record.solar,
+    fecundity: record.fecundity,
+    footprint_ha: siteInput.footprint_ha,
+    slope_percent: t.slope_percent,
+    hydrology: siteInput.hydrology,
+    service_quote: record.service_quote,
+    travel_km: proximity.nearest_settlement?.distance_km ?? proximity.nearest_city?.distance_km ?? 40,
+    propertyLabel: siteInput.site_name,
+  });
+  record.service_packages = servicePackages;
+
+  const actionMenu = buildActionMenu({
+    ...record,
+    service_packages: servicePackages,
+    service_quote: record.service_quote,
+    planting_plan: planting_plan,
+    wetlands: wetlands,
+    terrain: { slope_percent: t.slope_percent },
+  });
+  record.action_menu = actionMenu;
+
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
