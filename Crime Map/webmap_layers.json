@@ -1,0 +1,67 @@
+{
+  "id": "cc63ee59cd7f41f6a573360ee0784e0b",
+  "owner": "Alberta_RCMP.GRC",
+  "ownerId": "57a6dc4331f640e6bf8ff17a575b5ad3",
+  "orgId": "StepKrWd3Rx3tD1a",
+  "created": 1551882903000,
+  "modified": 1691009669000,
+  "guid": null,
+  "name": null,
+  "title": "Public Crime Map 30 Day Hotspot Map",
+  "type": "Web Map",
+  "typeKeywords": [
+    "ArcGIS Online",
+    "Explorer Web Map",
+    "Map",
+    "Online Map",
+    "Web Map"
+  ],
+  "description": "Hotspot Web Map, used on Homepage. ",
+  "tags": [
+    "Crime Mapping RCMP",
+    "crime"
+  ],
+  "snippet": "Hotspot Web Map - Homepage",
+  "thumbnail": "thumbnail/cc63ee59cd7f41f6a573360ee0784e0b.png",
+  "documentation": null,
+  "extent": [
+    [
+      -114.6992,
+      53.1794
+    ],
+    [
+      -112.1586,
+      54.076
+    ]
+  ],
+  "categories": ["/Categories/Public Crime Mapping/30 day/Apps and Maps"],
+  "spatialReference": null,
+  "accessInformation": null,
+  "classification": null,
+  "licenseInfo": null,
+  "culture": "en-ca",
+  "properties": null,
+  "advancedSettings": null,
+  "url": null,
+  "proxyFilter": null,
+  "access": "public",
+  "size": 17221,
+  "subInfo": 0,
+  "appCategories": [],
+  "industries": [],
+  "languages": [],
+  "largeThumbnail": "largethumbnail/cc63ee59cd7f41f6a573360ee0784e0b.png",
+  "banner": null,
+  "screenshots": [],
+  "listed": false,
+  "commentsEnabled": false,
+  "numComments": 0,
+  "numRatings": 0,
+  "avgRating": 0,
+  "numViews": 2439,
+  "scoreCompleteness": 55,
+  "groupDesignations": null,
+  "apiToken1ExpirationDate": -1,
+  "apiToken2ExpirationDate": -1,
+  "lastViewed": 1785510000000
+}

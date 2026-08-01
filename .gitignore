@@ -25,3 +25,10 @@ turnkey-homestead.html
 vercel-build/
 .vercel
 .env*
+
+# Large binary databases and data folders
+abwells_extracted/
+*.mdb
+*.sqlite
+*.geojson
+data/
