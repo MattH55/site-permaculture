@@ -8073,24 +8073,226 @@ function pdfFilename(label) {
  */
 function pdfOpts(filename, opts = {}) {
   return {
-    margin: [10, 8, 10, 8],
+    margin: [12, 10, 12, 10],
     filename,
-    image: { type: 'jpeg', quality: 0.92 },
+    image: { type: 'jpeg', quality: 0.95 },
     html2canvas: {
       scale: 2,
       useCORS: true,
       logging: false,
       letterRendering: true,
       allowTaint: false,
+      scrollY: 0,
     },
     jsPDF: {
       unit: 'mm',
       format: 'a4',
       orientation: 'portrait',
     },
-    pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+    pagebreak: { mode: ['css', 'legacy'] },
     ...opts,
   };
+}
+
+/**
+ * Build a print-ready PDF document from the report data.
+ * Creates a detached DOM tree with professional layout, TOC, branded sections,
+ * and footer with page number — then renders via html2pdf.
+ */
+function buildPdfDocument(reportEl) {
+  const r = state.report || {};
+  const doc = document.createElement('div');
+  doc.style.cssText = 'font-family:"Source Serif 4",Georgia,serif;color:#16211b;background:#fff;font-size:10pt;line-height:1.5;';
+
+  /* ── Title Page ── */
+  const titlePage = el('div', null, {
+    cssText: 'text-align:center;padding:50px 30px 30px;page-break-after:always;min-height:270mm;display:flex;flex-direction:column;justify-content:center;',
+  });
+
+  const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
+  brandBlock.appendChild(el('div', null, {
+    textContent: 'EXPANDING EDGE',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:#5b3a73;text-transform:uppercase;',
+  }));
+  brandBlock.appendChild(el('div', null, {
+    textContent: 'Land Intelligence',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:13px;color:#46584c;margin-top:2px;',
+  }));
+  titlePage.appendChild(brandBlock);
+
+  titlePage.appendChild(el('h1', null, {
+    textContent: r.site_name || 'Site Design Report',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:28px;color:#16211b;margin:0 0 12px;line-height:1.15;',
+  }));
+
+  const metaLine = el('p', null, {
+    cssText: 'font-size:13px;color:#46584c;margin:0 0 6px;',
+  });
+  const parts = [];
+  if (r.location?.nearest_town || r.location?.municipality) parts.push(r.location.nearest_town || r.location.municipality);
+  if (r.geometry?.area_ha != null) parts.push(`${r.geometry.area_ha} ha`);
+  if (r.climate?.plant_hardiness_zone) parts.push(`Zone ${r.climate.plant_hardiness_zone}`);
+  metaLine.textContent = parts.join(' · ');
+  titlePage.appendChild(metaLine);
+
+  titlePage.appendChild(el('p', null, {
+    textContent: new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }),
+    cssText: 'font-size:11px;color:#888;margin-top:40px;',
+  }));
+
+  titlePage.appendChild(el('p', null, {
+    textContent: 'expandingedge.ca · (780) 236-3630',
+    cssText: 'font-size:10px;color:#aaa;margin-top:4px;',
+  }));
+
+  titlePage.appendChild(el('p', null, {
+    textContent: 'Planning guidance for conversation with Land Intelligence — not engineered drawings or a crime risk assessment.',
+    cssText: 'font-size:8px;color:#bbb;margin-top:50px;font-style:italic;max-width:400px;margin-left:auto;margin-right:auto;',
+  }));
+
+  doc.appendChild(titlePage);
+
+  /* ── Table of Contents ── */
+  const tocData = getReportSectionList();
+  const tocPage = el('div', null, { cssText: 'padding:20px 0 30px;page-break-after:always;' });
+  tocPage.appendChild(el('h2', null, {
+    textContent: 'Contents',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:20px;color:#16211b;margin:0 0 16px;padding-bottom:8px;border-bottom:2px solid #5b3a73;',
+  }));
+
+  const tocList = el('div', null, { cssText: 'display:flex;flex-direction:column;gap:6px;' });
+  tocData.forEach((s) => {
+    const row = el('div', null, { cssText: 'display:flex;align-items:baseline;gap:8px;' });
+    row.appendChild(el('span', null, {
+      textContent: s.label,
+      cssText: 'font-size:10pt;color:#16211b;flex:1;',
+    }));
+    // Dotted leader
+    const dots = el('span', null, {
+      cssText: 'display:inline-block;flex:1;border-bottom:1px dotted #ccc;height:1px;min-width:20px;',
+    });
+    row.appendChild(dots);
+    row.appendChild(el('span', null, {
+      textContent: String(s.page),
+      cssText: 'font-family:"IBM Plex Mono",monospace;font-size:9px;color:#888;',
+    }));
+    tocList.appendChild(row);
+  });
+  tocPage.appendChild(tocList);
+  doc.appendChild(tocPage);
+
+  /* ── Report Body ── */
+  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;' });
+
+  // Clone report content but strip interactive elements that don't render well in PDF
+  const clone = reportEl.cloneNode(true);
+  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container').forEach((el) => el.remove());
+
+  // Add section breaks before each report-block
+  const blocks = clone.querySelectorAll(':scope > .report-block');
+  blocks.forEach((block, i) => {
+    if (i > 0) {
+      // Insert page break before sections after the first
+      block.style.pageBreakBefore = 'always';
+    }
+    // Add branded section header
+    const h2 = block.querySelector('h2');
+    if (h2) {
+      const sectionLabel = h2.textContent.trim();
+      const headerBar = el('div', null, {
+        cssText: 'display:flex;align-items:center;gap:8px;margin:-1.8rem -1.4rem 1.2rem;padding:6px 16px;background:#f7f8f3;border-bottom:1px solid #c8cec1;',
+      });
+      headerBar.appendChild(el('span', null, {
+        textContent: `${i + 1}.`,
+        cssText: 'font-family:"IBM Plex Mono",monospace;font-size:8px;color:#5b3a73;letter-spacing:0.5px;',
+      }));
+      headerBar.appendChild(el('span', null, {
+        textContent: sectionLabel,
+        cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:14px;color:#16211b;',
+      }));
+      h2.replaceWith(headerBar);
+    }
+    bodyWrapper.appendChild(block);
+  });
+
+  doc.appendChild(bodyWrapper);
+
+  /* ── Footer stamp on every page ── */
+  // html2pdf doesn't support native PDF footers, so we add a discreet footer note
+  // to the last section instead
+  const lastBlock = bodyWrapper.lastElementChild;
+  if (lastBlock) {
+    lastBlock.appendChild(el('div', null, {
+      cssText: 'margin-top:2rem;padding-top:12px;border-top:1px solid #c8cec1;text-align:center;',
+    })).textContent = '© Expanding Edge · expandingedge.ca · (780) 236-3630';
+  }
+
+  return doc;
+}
+
+/**
+ * Return a list of report sections with placeholder page numbers.
+ * Real page numbers require post-render measurement; these are estimates.
+ */
+function getReportSectionList() {
+  const r = state.report || {};
+  const sections = [
+    { label: 'Your parcel', skip: false },
+    { label: 'Topology', skip: false },
+    { label: 'Proximity & context', skip: false },
+    { label: 'Crime map', skip: !r.crime },
+    { label: 'Solar incidence & viability', skip: !r.solar },
+    { label: 'Temperature profile', skip: !r.temperature },
+    { label: 'Wildlife — White-tailed Deer', skip: !r.deer },
+    { label: 'Access & mobility', skip: false },
+    { label: 'Legal land description', skip: false },
+    { label: 'Regional demographics', skip: !r.demographics },
+    { label: 'Tree canopy cover', skip: !r.tree_cover },
+    { label: 'Climate hardiness · flood · zoning', skip: false },
+    { label: 'Land value', skip: !r.land_value },
+    { label: 'Recommended plantings', skip: !(r.planting_plan?.recommended?.length) },
+    { label: 'Predicted well depth', skip: !r.predicted_well_depth },
+    { label: 'Provincial elevation contours', skip: !r.provincial_contours },
+    { label: 'Wind & shelterbelt', skip: !r.wind },
+    { label: 'Biodiversity', skip: !r.biodiversity },
+    { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests) },
+    { label: 'Water collection budget', skip: !r.water_collection },
+    { label: 'Geology & minerals', skip: !r.minerals },
+    { label: 'Small water sources', skip: !r.small_water },
+    { label: 'Wetlands', skip: !r.wetlands },
+    { label: 'Placement recommendations', skip: !(r.recommendations?.length) },
+    { label: 'Distance & context', skip: false },
+    { label: 'Jurisdiction crime context', skip: !r.jurisdiction_crime },
+    { label: 'Precipitation', skip: !r.precipitation },
+    { label: 'Land fecundity assessment', skip: !r.fecundity },
+    { label: 'Matching packages', skip: !r.service_packages },
+    { label: 'Estimated investment', skip: !r.quote },
+  ].filter((s) => !s.skip);
+
+  // Assign rough page numbers based on expected content volume
+  const pageAssignments = {};
+  let currentPage = 2; // title + TOC take pages 1-2
+  sections.forEach((s) => {
+    pageAssignments[s.label] = currentPage;
+    // Estimate pages: most sections ~1 page, some take more
+    const extraPages = (s.label === 'Recommended plantings' || s.label === 'Biodiversity') ? 1 : 0;
+    currentPage += 1 + extraPages;
+  });
+  sections.forEach((s) => { s.page = pageAssignments[s.label]; });
+  return sections;
+}
+
+/**
+ * Lightweight element factory used during PDF build.
+ */
+function el(tag, children, attrs = {}) {
+  const e = document.createElement(tag);
+  if (attrs.textContent != null) e.textContent = attrs.textContent;
+  if (attrs.cssText) e.style.cssText = attrs.cssText;
+  if (attrs.className) e.className = attrs.className;
+  if (attrs.id) e.id = attrs.id;
+  if (children) children.forEach((c) => e.appendChild(c));
+  return e;
 }
 
 /**
@@ -8187,6 +8389,7 @@ async function downloadSectionPdf(sectionEl, label) {
 
 /**
  * Download the full site design report as one PDF document.
+ * Uses buildPdfDocument() for professional layout with TOC, branded sections, footer.
  */
 async function downloadFullPdf() {
   if (typeof html2pdf === 'undefined') {
@@ -8201,47 +8404,14 @@ async function downloadFullPdf() {
     const reportEl = $('report');
     if (!reportEl) throw new Error('No report to export');
 
-    // Clone the full report content
-    const clone = reportEl.cloneNode(true);
-    // Remove PDF buttons and minimap embeds (Leaflet tiles won't render in PDF)
-    clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map').forEach((el) => el.remove());
-
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'font-family: system-ui, -apple-system, sans-serif; color: #16211b; padding: 0 4px; max-width: 190mm;';
-
-    // Title page
-    const titlePage = document.createElement('div');
+    const doc = buildPdfDocument(reportEl);
     const r = state.report || {};
-    titlePage.style.cssText = 'text-align: center; padding: 40px 20px 20px;';
-    titlePage.innerHTML = `
-      <div style="font-size:11px;color:#5b3a73;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:20px">Land Intelligence</div>
-      <div style="font-size:28px;font-weight:800;color:#16211b;margin-bottom:8px">${esc(r.site_name || 'Site Design Report')}</div>
-      <div style="font-size:14px;color:#46584c;margin-bottom:30px">
-        ${esc(r.location?.nearest_town || r.location?.municipality || 'Alberta')}
-        ${r.geometry?.area_ha != null ? ` · ${esc(r.geometry.area_ha)} ha` : ''}
-        ${r.climate?.plant_hardiness_zone ? ` · Zone ${esc(r.climate.plant_hardiness_zone)}` : ''}
-      </div>
-      <div style="font-size:12px;color:#888;margin-top:40px">
-        Generated ${new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' })}
-        <br>expandingedge.ca · (780) 236-3630
-      </div>
-      <div style="font-size:9px;color:#aaa;margin-top:30px">
-        Planning guidance for conversation with Land Intelligence — not engineered drawings or a crime risk assessment.
-      </div>
-    `;
-    wrapper.appendChild(titlePage);
-
-    // Add report content (minus SVG maps that won't render)
-    wrapper.appendChild(clone);
-
     const site = (r.site_name || 'site-report').replace(/[^\w.-]+/g, '_').substring(0, 40);
     const fname = `${site}_full_report.pdf`;
+
     await html2pdf()
-      .set({
-        ...pdfOpts(fname),
-        pagebreak: { mode: ['css', 'legacy'] },
-      })
-      .from(wrapper)
+      .set(pdfOpts(fname))
+      .from(doc)
       .save();
   } catch (err) {
     console.error('Full PDF generation failed:', err);
