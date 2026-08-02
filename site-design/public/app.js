@@ -1845,9 +1845,22 @@ function topologySection(topo, a) {
   // Stats + interactive 3D terrain (HRDEM DTM when sampled, else design DEM grid)
   const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
   const report = state.report || {};
-  setTimeout(() => {
-        mountTerrain3dViewer(`${terrain3dId}-mesh`, report, topo, a);
-  }, 200);
+  const hostId = `${terrain3dId}-mesh`;
+  // This section is built as a string before the report HTML is inserted into
+  // the DOM, so a fixed delay can fire before the host element exists. Poll
+  // until the host is present, then mount the Three.js viewer.
+  const tryMount = (attempt) => {
+    if (document.getElementById(hostId)) {
+      try {
+        mountTerrain3dViewer(hostId, report, topo, a);
+      } catch (e) {
+        console.warn('terrain 3D mount failed', e);
+      }
+      return;
+    }
+    if (attempt < 60) setTimeout(() => tryMount(attempt + 1), 100);
+  };
+  setTimeout(() => tryMount(0), 50);
 
   return `
     <section class="report-block">
