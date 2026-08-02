@@ -11,11 +11,11 @@
   <!-- Leaflet — free open-source map -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-  <!-- CesiumJS — 3D globe/terrain visualization -->
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.114/Build/Cesium/Cesium.js"></script>
   <!-- html2pdf.js — client-side PDF generation from HTML -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js"></script>
+  <!-- Three.js + OrbitControls — 3D terrain mesh viewer -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body class="map-first">
   <header class="site-header">
@@ -56,11 +56,6 @@
           <button type="button" class="btn" id="btn-draw-poly" aria-pressed="false">Draw parcel</button>
           <button type="button" class="btn btn-secondary" id="btn-draw-rect" aria-pressed="false">Rectangle</button>
           <button type="button" class="btn-quiet" id="btn-clear">Clear</button>
-        </div>
-
-        <div class="view-toggle" style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
-          <button type="button" class="btn btn-sm is-active" id="btn-2d-view" aria-pressed="true">2D Map</button>
-          <button type="button" class="btn btn-secondary btn-sm" id="btn-3d-view" aria-pressed="false">3D Terrain</button>
         </div>
 
         <div id="cesium-container" class="cesium-container" hidden style="width:100%;height:100%;position:absolute;top:0;left:0;z-index:1;"></div>
@@ -155,10 +150,10 @@
       <h2>Reading the land…</h2>
       <p class="fine" style="margin:0.4rem 0 0">About 60 seconds while we query elevation, contours, wetlands, and Alberta open data. First run after idle can take a bit longer.</p>
       <ul class="loading-steps mono" id="loading-steps">
-        <li data-step="elev">Elevation &amp; contours</li>
+        <li data-step="elev">Elevation & contours</li>
         <li data-step="hrdem">HRDEM coverage</li>
-        <li data-step="wet">Wetlands &amp; hydro</li>
-        <li data-step="soil">Soils &amp; climate</li>
+        <li data-step="wet">Wetlands & hydro</li>
+        <li data-step="soil">Soils & climate</li>
         <li data-step="rules">Placement rules</li>
       </ul>
       <button type="button" class="btn-quiet" id="btn-cancel-load" style="margin-top:1rem">Cancel</button>
@@ -176,7 +171,7 @@
       Planning guidance only — not engineered drawings or a Water Act approval.
       <a href="/schema/site-design-schema.json">Site schema</a> ·
       <a href="/schema/crop.schema.json">Crop schema</a> ·
-      <a href="/schema/design-rules-and-data-sources.md">Rules &amp; sources</a>
+      <a href="/schema/design-rules-and-data-sources.md">Rules & sources</a>
     </p>
   </footer>
 
