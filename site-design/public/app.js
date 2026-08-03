@@ -2168,8 +2168,13 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     return;
   }
 
-  zMin = Math.min(...valid);
-  zMax = Math.max(...valid);
+  zMin = Infinity;
+  zMax = -Infinity;
+  for (let i = 0; i < valid.length; i++) {
+    const z = valid[i];
+    if (z < zMin) zMin = z;
+    if (z > zMax) zMax = z;
+  }
   zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
   relief = Math.max(zMax - zMin, 0.5);
 
