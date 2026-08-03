@@ -2158,8 +2158,8 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     }
   }
   if (!rows || !cols || !elevations?.length) {
-    host.innerHTML = '<p class="fine" style="padding:1rem">No elevation grid for terrain model.</p>';
-    return;
+    const flatZ = Number(analysis?.elevation?.mean_m) || Number(report?.location?.elevation_m) || 0;
+    rows = 2; cols = 2; elevations = [flatZ, flatZ, flatZ, flatZ];
   }
 
   const valid = elevations.filter((z) => z != null && Number.isFinite(z));
@@ -2395,7 +2395,10 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     const row = (1 - z / meshD) * (rows - 1);
     const zVal = elevAtRC(row, col);
     const normalizedT = (zVal - zMin) / relief;
-    const y = zVal * exaggerate;
+    // Normalize to relative height so the lowest point sits at Y=0. Raw
+    // elevations are absolute meters (~660 in Alberta); using them directly
+    // would place the terrain far above the camera and outside the far plane.
+    const y = (zVal - zMin) * exaggerate;
     pos.setY(i, y);
 
     const colColor = elevationColor(normalizedT, slopes[i]);
@@ -2440,7 +2443,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
         const x = (lng - west) / (east - west) * meshW;
         const z = 1 - (lat - south) / (north - south);
         const zVal = elevations[r * cols + c] ?? zMean;
-        zonePositions.push(new THREE.Vector3(x, zVal * exaggerate + 0.5, z * meshD));
+        zonePositions.push(new THREE.Vector3(x, (zVal - zMin) * exaggerate + 0.5, z * meshD));
       }
     }
     if (zonePositions.length >= 3) {
@@ -2506,8 +2509,8 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     const zB = (1 - (latB - south) / (north - south)) * meshD;
 
     const lineGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(xA, ea * exaggerate + 0.8, zA),
-      new THREE.Vector3(xB, eb * exaggerate + 0.8, zB),
+      new THREE.Vector3(xA, (ea - zMin) * exaggerate + 0.8, zA),
+      new THREE.Vector3(xB, (eb - zMin) * exaggerate + 0.8, zB),
     ]);
     const lineMat = new THREE.LineBasicMaterial({ color: 0xe8e0ff, linewidth: 1, transparent: true, opacity: 0.5 });
     const line = new THREE.Line(lineGeo, lineMat);
@@ -2540,7 +2543,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     const { x, z } = toWorld(lng, lat);
     const col = Math.max(0, Math.min(cols - 1, (x / meshW) * (cols - 1)));
     const row = Math.max(0, Math.min(rows - 1, (1 - z / meshD) * (rows - 1)));
-    return elevAtRC(row, col) * exaggerate + lift;
+    return (elevAtRC(row, col) - zMin) * exaggerate + lift;
   };
   const pointInRing = (lng, lat, ring) => {
     let inside = false;
@@ -2801,7 +2804,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
         const cc = Math.max(0, Math.min(cols - 1, col));
         const cr = Math.max(0, Math.min(rows - 1, row));
         const zv = elevations[cr * cols + cc] ?? zMean;
-        pos.setY(i, zv * exaggerate);
+        pos.setY(i, (zv - zMin) * exaggerate);
       }
       pos.needsUpdate = true;
       geo.computeVertexNormals();
@@ -2815,7 +2818,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
             const rc = Math.round((xc / meshW) * (cols - 1));
             const zr = Math.round((1 - zz / meshD) * (rows - 1));
             const zvv = elevations[Math.max(0, Math.min(rows - 1, zr)) * cols + Math.max(0, Math.min(cols - 1, rc))] ?? zMean;
-            zp.setY(i, zvv * exaggerate + 0.5);
+            zp.setY(i, (zvv - zMin) * exaggerate + 0.5);
           }
           zp.needsUpdate = true;
         }
@@ -9323,7 +9326,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
 
   // ── Water: precip (NASA), wells, wetlands, seeps, water collection budget ──
   const waterBody = [
-    precipitationSection(r.precipitation || r.climate),
+    precipitationSection(r.precipitation || r.hydrology || r.climate),
     waterCollectionSection(r.water_collection),
     wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
     wetlandsSection(r.wetlands || r.fecundity?.wetlands),
