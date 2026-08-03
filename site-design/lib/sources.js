@@ -15,6 +15,7 @@ import {
 } from './geo.js';
 import { analyzeTerrain } from './terrain.js';
 import { ALBERTA_PRESETS } from './alberta-presets.js';
+import { fetchSemanticTerrain } from './semantic-terrain.js';
 
 const AB = 'https://geospatial.alberta.ca/titan/rest/services';
 const FETCH_MS = 28_000;
@@ -33,6 +34,7 @@ export async function gatherSiteLayers({ ring, bbox, site_name }) {
     watershed,
     wetAreas,
     soils,
+    semantic_terrain,
     climate,
   ] = await Promise.all([
     fetchElevationGrid(bbox),
@@ -49,6 +51,7 @@ export async function gatherSiteLayers({ ring, bbox, site_name }) {
     alberta
       ? querySoilsAtlas(bbox).catch((e) => ({ error: e.message }))
       : Promise.resolve({ skipped: true }),
+    fetchSemanticTerrain(bbox).catch((e) => ({ available: false, error: e.message, features: [] })),
     fetchClimate(centre).catch((e) => ({ error: e.message })),
   ]);
 
@@ -70,6 +73,7 @@ export async function gatherSiteLayers({ ring, bbox, site_name }) {
     watershed,
     wetAreas,
     soils,
+    semantic_terrain,
     climate,
     preset,
     site_name: site_name || '',

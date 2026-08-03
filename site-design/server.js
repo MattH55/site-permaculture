@@ -16,6 +16,7 @@ import {
   enrichDesignElementsWithPlants,
 } from './lib/plant-interventions.js';
 import { groupRecommendationsByValue } from './lib/recommendation-values.js';
+import { fetchGeoOverlays } from './lib/geo-overlays.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -523,6 +524,42 @@ async function resendSendOnce({ resendKey, from, to, replyTo, subject, text, htm
   }
   return { ok: true, id: body.id };
 }
+
+/** Geo-feature overlay endpoint: draw parcel → 3D terrain feature layers */
+app.post('/api/geo-overlays', async (req, res) => {
+  try {
+    const body = req.body || {};
+    // Accept polygon or direct bbox
+    let bbox = body.bbox;
+    if (!bbox && body.polygon) {
+      const poly = body.polygon;
+      const paths = poly.paths || (poly.coordinates && poly.coordinates[0]);
+      if (paths) {
+        let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+        for (const [lng, lat] of paths) {
+          west = Math.min(west, lng);
+          south = Math.min(south, lat);
+          east = Math.max(east, lng);
+          north = Math.max(north, lat);
+        }
+        bbox = { west, south, east, north };
+      }
+    }
+    if (!bbox || bbox.west == null) {
+      return res.status(400).json({ error: 'bbox or polygon required — draw your parcel on the map' });
+    }
+    const result = await fetchGeoOverlays(bbox, {
+      size: body.size || 64,
+      layers: body.layers,
+      bufferM: body.bufferM,
+      limit: body.limit || 3000,
+    });
+    res.json(result);
+  } catch (e) {
+    console.error('geo-overlays failed', e);
+    res.status(400).json({ error: e.message || 'geo-overlays failed' });
+  }
+});
 
 app.get('/healthz', (_req, res) => res.send('ok'));
 

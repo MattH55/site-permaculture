@@ -1,0 +1,19 @@
+{
+  "name": "expanding-edge-marketing-site",
+  "version": "1.0.0",
+  "description": "SEO-optimized marketing site for Expanding Edge Permaculture",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "build:resources": "node scripts/build-resources.mjs",
+    "build:toolbox": "node build-toolbox-pages.js",
+    "vercel-build": "echo 'static + serverless — no build step'"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "pg": "^8.11.5"
+  }
+}

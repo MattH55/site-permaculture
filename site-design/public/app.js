@@ -191,6 +191,26 @@ async function main() {
   $('btn-clear').onclick = clearShape;
   $('btn-report').onclick = generateReport;
 
+  // 2D / 3D view toggle
+  const btn2d = $('btn-2d-view');
+  const btn3d = $('btn-3d-view');
+  if (btn2d && btn3d) {
+    btn2d.onclick = () => {
+      switchTo2DView();
+      btn2d.classList.add('is-active');
+      btn2d.setAttribute('aria-pressed', 'true');
+      btn3d.classList.remove('is-active');
+      btn3d.setAttribute('aria-pressed', 'false');
+    };
+    btn3d.onclick = () => {
+      switchTo3DView();
+      btn3d.classList.add('is-active');
+      btn3d.setAttribute('aria-pressed', 'true');
+      btn2d.classList.remove('is-active');
+      btn2d.setAttribute('aria-pressed', 'false');
+    };
+  }
+
   // Address search via Nominatim (free OSM geocoder)
   initPlaceSearch();
 
@@ -1290,6 +1310,9 @@ function isMobileLayout() {
 function showReport() {
   $('map-stage').hidden = true;
   $('report-stage').hidden = false;
+  // Reveal the 3D view toggle now that a report exists
+  const vt = $('view-toggle');
+  if (vt) vt.hidden = false;
   // Value first: land on overview (insights), not sales. Plan is at the end.
   switchReportPane('overview');
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1887,8 +1910,97 @@ function topologySection(topo, a) {
  * Overlays: contour lines, catchment, pond candidates, swale hillsides.
  */
 function terrain3dBlock(id, report) {
-  // Delegate to Three.js terrain mesh block — the mesh viewer replaces the old Cesium globe
-  return terrainMeshBlock(id, report);
+  const ht = report?.hrdem_terrain;
+  const hrdem = report?.hrdem || report?.elevation_overlays?.hrdem;
+  const hasHrdemGrid = !!(ht?.available && ht.elevations_m?.length);
+  const sourceLabel = hasHrdemGrid
+    ? `NRCan HRDEM ${ht.resolution_m || 2} m DTM`
+    : 'Design DEM grid (Open-Meteo / regional)';
+  const els = report?.design_elements || report?.recommendations?.priority_ordered || [];
+  const hasSwaleRec = els.some((e) => e.element_type === 'swale' || e.element_type === 'terrace');
+  const hasPondRec = els.some(
+    (e) => e.element_type === 'pond' || e.element_type === 'water_harvesting_earthwork'
+  );
+  const wetlandBlock = els.some(
+    (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
+  );
+  const semantic = report?.semantic_terrain;
+  const semanticCounts = semantic?.features?.reduce((m, f) => {
+    const key = f.layer || f.priority_group || f.feature_type;
+    m[key] = (m[key] || 0) + 1;
+    return m;
+  }, {}) || {};
+  const semanticControls = Object.keys(semanticCounts).length
+    ? Object.entries(semanticCounts).map(([type, count]) => `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-semantic-toggle="${esc(id)}" data-semantic-layer="${esc(type)}" />
+          ${esc(semantic?.layer_labels?.[type] || type.replace(/_/g, ' '))} (${count})
+        </label>`).join('')
+    : '<span class="fine">No mapped semantic features returned for this AOI.</span>';
+  return `
+    <div class="terrain-3d-panel" style="margin-top:1rem">
+      <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
+        <span class="mono topo-label">3D terrain · water placement</span>
+        <span class="fine">${esc(sourceLabel)}${
+          hrdem?.available && !hasHrdemGrid
+            ? ' · HRDEM coverage noted; high-res sample pending'
+            : ''
+        }</span>
+      </div>
+      <div id="${id}" class="terrain-3d-host cesium-container"
+        style="height:min(420px,58vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;position:relative"
+        role="img" aria-label="3D terrain globe with contours, catchment, pond and swale zones">
+        <p class="fine" style="padding:1rem;color:#c8cec1">Loading Cesium globe…</p>
+      </div>
+      <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.65rem 1rem;align-items:center;margin-top:0.5rem">
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="contours" />
+          <span style="display:inline-block;width:14px;height:2px;background:#e8e0ff;vertical-align:middle"></span>
+          Contours
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="catchment" />
+          <span style="display:inline-block;width:10px;height:10px;background:#2a6f97;border-radius:2px;vertical-align:middle"></span>
+          Catchment
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="pond" />
+          <span style="display:inline-block;width:10px;height:10px;background:#1a9bb5;border-radius:2px;vertical-align:middle"></span>
+          Pond sites
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="swale" />
+          <span style="display:inline-block;width:10px;height:10px;background:#c4a035;border-radius:2px;vertical-align:middle"></span>
+          Swale hills
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
+          <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
+          Trees
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
+          Exaggerate
+          <input type="range" min="1" max="12" step="0.5" value="3.5" data-terrain-exag="${esc(id)}" style="width:7rem" />
+          <span class="mono" data-terrain-exag-val="${esc(id)}">3.5×</span>
+        </label>
+        <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
+      </div>
+      <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
+        <span class="mono" style="font-size:0.72rem">Mapped features</span>${semanticControls}
+      </div>
+      <p class="fine" style="margin-top:0.4rem">
+        <strong>Blue / teal</strong> = low catchment & pond candidates ·
+        <strong>Gold</strong> = mid-slope hillsides suited to contour swales ·
+        <strong>Light lines</strong> = elevation contours.
+        Drag to orbit · scroll to zoom. Zones are DEM-derived planning hints
+        ${hasPondRec ? ' · report recommends pond / water storage' : ''}
+        ${hasSwaleRec ? ' · report recommends swale / terrace' : ''}
+        ${hasHrdemGrid
+          ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b') }" target="_blank" rel="noopener">NRCan HRDEM</a>.`
+          : 'Built from design elevation samples.'}
+        ${semantic?.available ? ` Mapped features: ${esc(semantic.feature_count)} · ${esc(semantic.source)}.` : ''}
+      </p>
+    </div>`;
 }
 
 /**
@@ -2011,142 +2123,20 @@ function extractContourPolylines(elevations, rows, cols, levels) {
 }
 
 /**
- * Mount CesiumJS terrain viewer from hrdem_terrain or topology.grid elevations.
- * Shows the parcel area on the Cesium globe with 3D terrain and overlay polylines.
- */
-/**
- * Wrapper that delegates to the Three.js mesh viewer.
- * Keeps the old Cesium-based logic at mountTerrain3dViewerCesium for reference.
+ * Mount 3D terrain viewer using Three.js — shows actual topography with
+ * visible relief, contour lines, zone colours, parcel outline, water features,
+ * and mouse orbit/zoom controls.
+ *
+ * Uses a THREE.PlaneGeometry lifted by DEM heights, not Cesium's flat ellipsoid.
  */
 function mountTerrain3dViewer(hostId, report, topo, analysis) {
-  // Use the Three.js terrain mesh viewer instead of Cesium globe
-  mountTerrainMeshViewer(hostId, report, topo, analysis);
-}
-
-/**
- * ── New: Three.js Terrain Mesh Viewer ──────────────────────────────
- * Renders the parcel DEM as a textured 3D terrain mesh with:
- *   • Elevation-coloured surface (green→gold→brown gradient)
- *   • Contour wireframe overlay
- *   • Catchment / pond / swale zone highlights as translucent patches
- *   • Orbit controls for free-form 3D navigation
- *   • Grid-mesh mode toggle
- *   • Slope-shade mode toggle
- *   • Auto-rotate toggle
- * This is a completely different visualisation from the Cesium globe view.
- */
-
-let terrainMeshViewer = null;
-let terrainMeshScene = null;
-let terrainMeshCamera = null;
-let terrainMeshRenderer = null;
-let terrainMeshControls = null;
-let terrainMeshAnimId = null;
-
-/**
- * HTML template for the terrain mesh panel.
- */
-function terrainMeshBlock(id, report) {
-  const ht = report?.hrdem_terrain;
-  const hasHrdemGrid = !!(ht?.available && ht.elevations_m?.length);
-  const els = report?.design_elements || report?.recommendations?.priority_ordered || [];
-  const hasPondRec = els.some(
-    (e) => e.element_type === 'pond' || e.element_type === 'water_harvesting_earthwork'
-  );
-  const hasSwaleRec = els.some((e) => e.element_type === 'swale' || e.element_type === 'terrace');
-  const sem = report?.semantic_terrain;
-  const semFeatures = Array.isArray(sem?.features) ? sem.features : [];
-  const semLayer = (f) => f.layer || f.priority_group || f.feature_type || '';
-  const hasTrees = semFeatures.some(
-    (f) => ['forest', 'shrubland', 'tree'].includes(semLayer(f)) || ['forest', 'shrubland', 'tree'].includes(f.feature_type)
-  );
-  const hasWetlands = semFeatures.some((f) => semLayer(f) === 'wetlands' || f.feature_type === 'wetland');
-  const hasWater = semFeatures.some(
-    (f) => semLayer(f) === 'water' || semLayer(f) === 'hydrography' || ['water', 'waterbody', 'waterway'].includes(f.feature_type)
-  );
-  const hasBuildings = semFeatures.some((f) => semLayer(f) === 'buildings' || f.feature_type === 'building');
-  const hasOther = semFeatures.some(
-    (f) =>
-      !['forest', 'shrubland', 'tree', 'wetlands', 'water', 'hydrography', 'buildings'].includes(semLayer(f)) &&
-      !['forest', 'shrubland', 'tree', 'wetland', 'water', 'waterbody', 'waterway', 'building'].includes(f.feature_type)
-  );
-  const hasObjects = hasTrees || hasWetlands || hasWater || hasBuildings || hasOther;
-  return `
-    <div class="terrain-mesh-panel" style="margin-top:1.2rem;border-top:1px solid var(--line);padding-top:0.8rem">
-      <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:0.5rem">
-        <span class="mono topo-label">🏔️ 3D terrain model</span>
-        <span class="fine">${hasHrdemGrid ? 'HRDEM DTM mesh' : 'DEM mesh grid'}</span>
-      </div>
-      <div id="${id}-mesh" class="terrain-mesh-host"
-        style="height:min(460px,62vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0a0f0a;position:relative"
-        role="img" aria-label="Three.js 3D terrain mesh model with elevation colours and layer overlays">
-        <p class="fine" style="padding:1rem;color:#c8cec1">Loading 3D terrain model…</p>
-      </div>
-      <div class="terrain-mesh-controls" style="display:flex;flex-wrap:wrap;gap:0.65rem;align-items:center;margin-top:0.5rem">
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="zones" />
-          Zones (catchment/pond/swale)
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="contours" />
-          Contour lines
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" data-mesh-toggle="${esc(id)}" data-layer="wireframe" />
-          Wireframe overlay
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" data-mesh-toggle="${esc(id)}" data-layer="grid" />
-          Grid mesh
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" data-mesh-toggle="${esc(id)}" data-layer="slope" />
-          Slope shade
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" data-mesh-toggle="${esc(id)}" data-layer="autorotate" />
-          Auto-rotate
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="parcel" />
-          Parcel boundary
-        </label>
-        ${hasTrees ? `<label class="fine" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="trees" /> Trees / forest</label>` : ''}
-        ${hasWetlands ? `<label class="fine" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="wetlands" /> Wetlands</label>` : ''}
-        ${hasWater ? `<label class="fine" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="water" /> Water</label>` : ''}
-        ${hasBuildings ? `<label class="fine" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="buildings" /> Buildings</label>` : ''}
-        ${hasOther ? `<label class="fine" style="display:flex;align-items:center;gap:0.35rem"><input type="checkbox" checked data-mesh-toggle="${esc(id)}" data-layer="other" /> Other objects</label>` : ''}
-        <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
-          Relief ×
-          <input type="range" min="1" max="15" step="0.5" value="4" data-mesh-exag="${esc(id)}" style="width:7rem" />
-          <span class="mono" data-mesh-exag-val="${esc(id)}">4</span>
-        </label>
-        <button type="button" class="btn-quiet" data-mesh-reset="${esc(id)}" style="font-size:0.8rem">Reset camera</button>
-        <button type="button" class="btn-quiet" data-mesh-screenshot="${esc(id)}" style="font-size:0.8rem">📷 Screenshot</button>
-      </div>
-      <p class="fine" style="margin-top:0.4rem">
-        <strong>Elevation colours:</strong> green (low) → gold (mid) → brown (high) ·
-        <strong>Blue/teal</strong> = catchment & pond zones ·
-        <strong>Gold</strong> = swale hillsides ·
-        Drag to orbit · scroll to zoom · right-drag to pan.
-        ${hasPondRec ? ' · pond recommended' : ''}
-        ${hasSwaleRec ? ' · swale recommended' : ''}
-        ${hasObjects ? '' : '<br><span class="fine">No mapped trees/objects in this area yet — generate a report with OSM object data to see 3D objects.</span>'}
-      </p>
-    </div>`;
-}
-
-/**
- * Initialise Three.js terrain mesh viewer inside host element.
- */
-function mountTerrainMeshViewer(hostId, report, topo, analysis) {
-  const host = document.getElementById(hostId);
-  if (!host) return;
+  const el = document.getElementById(hostId);
+  if (!el) return;
 
   // Extract elevation data
   const ht = report?.hrdem_terrain;
   let rows, cols, elevations;
-  let zMin, zMax, zMean, relief;
+  let source = 'dem';
   if (ht?.available && ht.elevations_m?.length && ht.rows && ht.cols) {
     rows = ht.rows; cols = ht.cols; elevations = ht.elevations_m;
   } else {
@@ -2161,6 +2151,12 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     const flatZ = Number(analysis?.elevation?.mean_m) || Number(report?.location?.elevation_m) || 0;
     rows = 2; cols = 2; elevations = [flatZ, flatZ, flatZ, flatZ];
   }
+
+  if (el._eeTerrain) {
+    try { el._eeTerrain.dispose(); } catch { /* ignore */ }
+    el._eeTerrain = null;
+  }
+  el.innerHTML = '';
 
   const valid = elevations.filter((z) => z != null && Number.isFinite(z));
   if (valid.length < 4) {
@@ -2178,702 +2174,514 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
   zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
   relief = Math.max(zMax - zMin, 0.5);
 
-  const rawBbox = report?.geometry?.bbox;
-  const bbox = Array.isArray(rawBbox) && rawBbox.length === 4
-    ? {
-        west: Number(rawBbox[0]),
-        south: Number(rawBbox[1]),
-        east: Number(rawBbox[2]),
-        north: Number(rawBbox[3])
-      }
-    : rawBbox && rawBbox.west != null
-      ? {
-          west: Number(rawBbox.west),
-          south: Number(rawBbox.south),
-          east: Number(rawBbox.east),
-          north: Number(rawBbox.north)
+  // Get bounding box from report geometry — supports both array [W,S,E,N] and object {west,south,east,north}
+  let rawBbox = report?.geometry?.bbox;
+  let west, east, south, north;
+
+  if (Array.isArray(rawBbox) && rawBbox.length === 4) {
+    [west, south, east, north] = rawBbox;
+  } else if (rawBbox && typeof rawBbox === 'object') {
+    west = rawBbox.west ?? rawBbox.W;
+    south = rawBbox.south ?? rawBbox.S;
+    east = rawBbox.east ?? rawBbox.E;
+    north = rawBbox.north ?? rawBbox.N;
+  }
+
+  // Fallback: compute bbox from parcel coordinates
+  if (west == null || east == null || south == null || north == null) {
+    const parcelCoords = report?.geometry?.coordinates?.[0] || report?.geometry?.coordinates;
+    if (parcelCoords && parcelCoords.length >= 3) {
+      west = Infinity; south = Infinity; east = -Infinity; north = -Infinity;
+      for (const [lng, lat] of parcelCoords) {
+        if (lng != null && lat != null) {
+          if (lng < west) west = lng;
+          if (lng > east) east = lng;
+          if (lat < south) south = lat;
+          if (lat > north) north = lat;
         }
-      : null;
-  if (!bbox || ![bbox.west, bbox.south, bbox.east, bbox.north].every(Number.isFinite) || bbox.east <= bbox.west || bbox.north <= bbox.south) {
-    host.innerHTML = '<p class="fine" style="padding:1rem">No bounding box for terrain model.</p>';
+      }
+    }
+  }
+
+  // Final fallback: use design area bounds
+  if (west == null || isNaN(west)) {
+    const da = report?.design_area || report?.area;
+    if (da?.bbox) {
+      const ab = Array.isArray(da.bbox) ? da.bbox : [da.bbox.west, da.bbox.south, da.bbox.east, da.bbox.north];
+      if (ab.length === 4) [west, south, east, north] = ab;
+    }
+  }
+
+  if (west == null || east == null || south == null || north == null || !isFinite(west)) {
+    el.innerHTML = '<p class="fine" style="padding:1rem">No bounding box available for terrain view.</p>';
+    return;
+  }
+  const lngRange = east - west || 0.001;
+  const latRange = north - south || 0.001;
+
+  // Build heightmap array
+  const heightValues = new Float32Array(rows * cols);
+  for (let i = 0; i < rows * cols; i++) {
+    const z = elevations[i];
+    heightValues[i] = (z != null && Number.isFinite(z)) ? z : zMean;
+  }
+
+  let exaggerate = 3.5;
+  const layersVisible = { contours: true, catchment: true, pond: true, swale: true };
+
+  // Initialize Three.js 3D terrain mesh
+  let scene, camera, renderer, terrainMesh, contourLines, parcelOutline;
+  let animationId = null;
+  let isDragging = false, prevMouseX = 0, prevMouseY = 0;
+  let rotTheta = 0, rotPhi = Math.PI / 4; // spherical angles
+  let cameraRadius = 0.01;
+  let targetTheta = 0, targetPhi = Math.PI / 4;
+
+  try {
+    // Calculate physical dimensions of terrain
+    const metersPerDegLng = (lngRange / cols) * 111320 * Math.cos(((south + north) / 2) * Math.PI / 180);
+    const metersPerDegLat = (latRange / rows) * 110540;
+    const widthM = cols * Math.abs(metersPerDegLng);
+    const depthM = rows * Math.abs(metersPerDegLat);
+    const centerLng = (west + east) / 2;
+    const centerLat = (south + north) / 2;
+
+    // Create scene
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // Sky blue
+
+    // Camera setup
+    camera = new THREE.PerspectiveCamera(60, el.clientWidth / el.clientHeight, 0.001, 10);
+    camera.position.set(0, 0.005, 0.008);
+
+    // Renderer
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(el.clientWidth, el.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.shadowMap.enabled = true;
+    el.appendChild(renderer.domElement);
+
+    // Lighting
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+    scene.add(ambientLight);
+
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1);
+    directionalLight.castShadow = true;
+    scene.add(directionalLight);
+
+    const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.4);
+    scene.add(hemiLight);
+
+    // Create terrain geometry
+    const geometry = new THREE.PlaneGeometry(widthM, depthM, cols - 1, rows - 1);
+    geometry.rotateX(-Math.PI / 2);
+
+    // Set vertex heights
+    const positions = geometry.attributes.position.array;
+    const colors = new Float32Array(positions.length);
+
+    for (let i = 0; i < cols * rows; i++) {
+      const row = Math.floor(i / cols);
+      const col = i % cols;
+      const z = heightValues[i] ?? zMean;
+      const exaggeratedZ = (z - zMin) / relief * relief * exaggerate;
+
+      positions[i * 3 + 1] = exaggeratedZ; // Y component (height after rotation)
+
+      // Color based on zone
+      const zone = zones[i] || 'neutral';
+      let r, g, b;
+      switch (zone) {
+        case 'pond': r = 0.1; g = 0.6; b = 0.7; break;
+        case 'catchment': r = 0.16; g = 0.44; b = 0.59; break;
+        case 'swale': r = 0.77; g = 0.63; b = 0.21; break;
+        case 'ridge': r = 0.53; g = 0.53; b = 0.53; break;
+        default:
+          // Natural terrain color based on height
+          const t = (z - zMin) / relief;
+          r = 0.3 + t * 0.3;
+          g = 0.5 + t * 0.2;
+          b = 0.2 + t * 0.1;
+          break;
+      }
+      colors[i * 3] = r;
+      colors[i * 3 + 1] = g;
+      colors[i * 3 + 2] = b;
+    }
+
+    geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    geometry.computeVertexNormals();
+
+    // Create terrain material
+    const material = new THREE.MeshLambertMaterial({
+      vertexColors: true,
+      side: THREE.DoubleSide,
+      wireframe: false,
+    });
+
+    terrainMesh = new THREE.Mesh(geometry, material);
+    terrainMesh.receiveShadow = true;
+    terrainMesh.position.set(
+      (centerLng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180),
+      0,
+      (centerLat - 90) * 110540
+    );
+    scene.add(terrainMesh);
+
+    // Add contour lines
+    const addContours = () => {
+      if (contourLines) scene.remove(contourLines);
+
+      if (!layersVisible.contours) return;
+
+      const nLevels = Math.min(14, Math.max(6, Math.round(relief / Math.max(relief / 10, 0.5))));
+      const step = relief / nLevels;
+      const levels = [];
+      for (let k = 1; k < nLevels; k++) levels.push(zMin + k * step);
+
+      const segs = extractContourPolylines(elevations, rows, cols, levels);
+      if (!segs.length) return;
+
+      const elevAtRC = (rr, cc) => {
+        const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
+        const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
+        const fr = Math.max(0, Math.min(1, rr - r0));
+        const fc = Math.max(0, Math.min(1, cc - c0));
+        const e00 = elevations[r0 * cols + c0] ?? zMean;
+        const e10 = elevations[r0 * cols + c0 + 1] ?? e00;
+        const e01 = elevations[(r0 + 1) * cols + c0] ?? e00;
+        const e11 = elevations[(r0 + 1) * cols + c0 + 1] ?? e00;
+        return e00 * (1 - fr) * (1 - fc) + e10 * (1 - fr) * fc + e01 * fr * (1 - fc) + e11 * fr * fc;
+      };
+
+      const points = [];
+      for (const s of segs) {
+        const ea = elevAtRC(s.a[0], s.a[1]);
+        const eb = elevAtRC(s.b[0], s.b[1]);
+        const xA = (west + (s.a[1] / (cols - 1)) * (east - west) - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
+        const zA = (south + (1 - s.a[0] / (rows - 1)) * (north - south) - 90) * 110540;
+        const xB = (west + (s.b[1] / (cols - 1)) * (east - west) - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
+        const zB = (south + (1 - s.b[0] / (rows - 1)) * (north - south) - 90) * 110540;
+
+        points.push(new THREE.Vector3(xA, Math.max(ea, 0) * exaggerate * 2, zA));
+        points.push(new THREE.Vector3(xB, Math.max(eb, 0) * exaggerate * 2, zB));
+      }
+
+      const contourGeom = new THREE.BufferGeometry().setFromPoints(points);
+      const contourMat = new THREE.LineBasicMaterial({ color: 0x9933FF, linewidth: 1 });
+      contourLines = new THREE.LineSegments(contourGeom, contourMat);
+      scene.add(contourLines);
+    };
+
+    // Add parcel outline
+    const parcelRing = report?.geometry?.coordinates?.[0];
+    if (parcelRing && parcelRing.length >= 3) {
+      const parcelPoints = [];
+      for (let i = 0; i <= parcelRing.length; i++) {
+        const [lng, lat] = parcelRing[i % parcelRing.length];
+        const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
+        const z = (lat - 90) * 110540;
+        parcelPoints.push(new THREE.Vector3(x, 0.05, z));
+      }
+      const parcelGeom = new THREE.BufferGeometry().setFromPoints(parcelPoints);
+      const parcelMat = new THREE.LineBasicMaterial({ color: 0xFF00FF, linewidth: 2 });
+      parcelOutline = new THREE.LineLoop(parcelGeom, parcelMat);
+      scene.add(parcelOutline);
+    }
+
+    // Add water features
+    const addWaterFeatures = () => {
+      const waterFc = packageWaterFromReport(report);
+      if (!waterFc || !waterFc.features || !waterFc.features.length) return;
+
+      for (const feature of waterFc.features) {
+        const geom = feature.geometry;
+        if (!geom || !geom.coordinates) continue;
+
+        let positions = null;
+        if (geom.type === 'Polygon') {
+          const ring = geom.coordinates[0];
+          if (ring && ring.length >= 3) {
+            for (let i = 0; i < ring.length; i++) {
+              const [lng, lat] = ring[i % ring.length];
+              const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
+              const z = (lat - 90) * 110540;
+              positions = positions || [];
+              positions.push(new THREE.Vector3(x, 0.02, z));
+            }
+          }
+        } else if (geom.type === 'LineString') {
+          const coords = geom.coordinates;
+          if (coords && coords.length >= 2) {
+            for (let i = 0; i < coords.length; i++) {
+              const [lng, lat] = coords[i];
+              const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
+              const z = (lat - 90) * 110540;
+              positions = positions || [];
+              positions.push(new THREE.Vector3(x, 0.02, z));
+            }
+          }
+        }
+
+        if (positions && positions.length >= 3) {
+          const waterGeom = new THREE.BufferGeometry().setFromPoints(positions);
+          const waterMat = new THREE.LineBasicMaterial({ color: 0x4DA6C9, linewidth: 3 });
+          const waterLine = new THREE.Line(waterGeom, waterMat);
+          scene.add(waterLine);
+        }
+      }
+    };
+
+    addContours();
+    addWaterFeatures();
+
+    // Initial camera position
+    updateCameraPosition();
+
+    // Animation loop
+    const animate = () => {
+      animationId = requestAnimationFrame(animate);
+
+      // Smooth rotation
+      rotTheta += (targetTheta - rotTheta) * 0.1;
+      rotPhi += (targetPhi - rotPhi) * 0.1;
+
+      camera.position.x = cameraRadius * Math.sin(rotPhi) * Math.sin(rotTheta);
+      camera.position.y = cameraRadius * Math.cos(rotPhi);
+      camera.position.z = cameraRadius * Math.sin(rotPhi) * Math.cos(rotTheta);
+      camera.lookAt(terrainMesh.position);
+
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    // Mouse controls for rotation
+    renderer.domElement.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      prevMouseX = e.clientX;
+      prevMouseY = e.clientY;
+    });
+
+    renderer.domElement.addEventListener('mousemove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - prevMouseX;
+      const dy = e.clientY - prevMouseY;
+      targetTheta -= dx * 0.01;
+      targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, targetPhi + dy * 0.01));
+      prevMouseX = e.clientX;
+      prevMouseY = e.clientY;
+    });
+
+    renderer.domElement.addEventListener('mouseup', () => { isDragging = false; });
+    renderer.domElement.addEventListener('mouseleave', () => { isDragging = false; });
+
+    // Zoom with mouse wheel
+    renderer.domElement.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      cameraRadius = Math.max(0.001, Math.min(0.1, cameraRadius * (1 + e.deltaY * 0.001)));
+      updateCameraPosition();
+    });
+
+    // Store reference
+    el._eeTerrain = {
+      dispose() {
+        if (animationId) cancelAnimationFrame(animationId);
+        if (renderer) renderer.dispose();
+        if (geometry) geometry.dispose();
+        if (material) material.dispose();
+        el._eeTerrain = null;
+      },
+      source,
+    };
+
+    // Handle resize
+    const onResize = () => {
+      if (renderer && camera) {
+        renderer.setSize(el.clientWidth, el.clientHeight);
+        camera.aspect = el.clientWidth / el.clientHeight;
+        camera.updateProjectionMatrix();
+      }
+    };
+    window.addEventListener('resize', onResize);
+    el._eeTerrain._onResize = onResize;
+
+  } catch (err) {
+    console.error('3D terrain viewer failed:', err);
+    el.innerHTML = `<p class="fine" style="padding:1rem">3D terrain viewer unavailable: ${esc(err.message)}. Use the 2D map for this parcel.</p>`;
     return;
   }
 
-  // Cleanup previous instance
-  if (terrainMeshViewer) {
-    try { terrainMeshViewer.dispose(); } catch(e) {}
-    terrainMeshViewer = null;
-  }
-  if (terrainMeshAnimId) {
-    cancelAnimationFrame(terrainMeshAnimId);
-    terrainMeshAnimId = null;
-  }
-  host.innerHTML = '';
-
-  const W = host.clientWidth || 600;
-  const H = host.clientHeight || 400;
-
-  // ── Scene ──
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x0a0f0a);
-  // Gradient sky fallback: use a large sphere with custom shader
-  const skyGeo = new THREE.SphereGeometry(500, 32, 32);
-  const skyMat = new THREE.ShaderMaterial({
-    side: THREE.BackSide,
-    uniforms: {
-      topColor: { value: new THREE.Color(0x0a1a2e) },
-      bottomColor: { value: new THREE.Color(0x1a2a1a) },
-    },
-    vertexShader: `
-      varying vec3 vWorldPosition;
-      void main() {
-        vec4 worldPos = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = worldPos.xyz;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-      }`,
-    fragmentShader: `
-      varying vec3 vWorldPosition;
-      uniform vec3 topColor;
-      uniform vec3 bottomColor;
-      void main() {
-        float h = normalize(vWorldPosition).y * 0.5 + 0.5;
-        gl_FragColor = vec4(mix(bottomColor, topColor, h), 1.0);
-      }`,
-  });
-  const sky = new THREE.Mesh(skyGeo, skyMat);
-  scene.add(sky);
-
-  // ── Camera ──
-  const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 2000);
-  const centerX = (bbox.west + bbox.east) / 2;
-  const centerY = (bbox.south + bbox.north) / 2;
-  const spanLng = bbox.east - bbox.west;
-  const spanLat = bbox.north - bbox.south;
-  const maxSpan = Math.max(spanLng, spanLat, 0.001);
-  // World coordinates: mesh spans 0..meshW in X and 0..meshD in Z
-  const meshScale = maxSpan * 500;
-  const meshW = maxSpan * 500;
-  const meshD = maxSpan * 500;
-  camera.position.set(meshW * 0.5, Math.max(relief * 5, meshD * 0.6), meshD * 1.2);
-  camera.lookAt(meshW * 0.5, 0, meshD * 0.4);
-
-  // ── Renderer ──
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setSize(W, H);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = false;
-  host.appendChild(renderer.domElement);
-
-  // ── Controls ──
-  let controls = null;
-  try {
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.08;
-    controls.target.set(meshW * 0.5, relief * 1.5, meshD * 0.4);
-    controls.minDistance = Math.max(5, meshW * 0.05);
-    controls.maxDistance = Math.max(meshW * 6, maxSpan * 8000);
-    controls.maxPolarAngle = Math.PI * 0.48;
-  } catch(e) {
-    console.warn('OrbitControls unavailable:', e);
-  }
-
-  // ── Lighting ──
-  const ambientLight = new THREE.AmbientLight(0xffffff, 0.55);
-  scene.add(ambientLight);
-  const dirLight = new THREE.DirectionalLight(0xfff4e0, 0.9);
-  dirLight.position.set(meshW * 0.3, relief * 8, meshD * 0.3);
-  scene.add(dirLight);
-  const hemiLight = new THREE.HemisphereLight(0x88bbdd, 0x445522, 0.35);
-  scene.add(hemiLight);
-
-  // ── State ──
-  let exaggerate = 4;
-  const layersVisible = { zones: true, contours: true, wireframe: false, grid: false, slope: false, autorotate: false, parcel: true, trees: true, wetlands: true, water: true, buildings: true, other: true };
-  const groupZones = new THREE.Group(); groupZones.name = 'zones';
-  const groupContours = new THREE.Group(); groupContours.name = 'contours';
-  const groupWireframe = new THREE.Group(); groupWireframe.name = 'wireframe';
-  const groupGrid = new THREE.Group(); groupGrid.name = 'grid';
-  const groupParcel = new THREE.Group(); groupParcel.name = 'parcel';
-  const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
-  const groupWetlands = new THREE.Group(); groupWetlands.name = 'wetlands';
-  const groupWater = new THREE.Group(); groupWater.name = 'water';
-  const groupBuildings = new THREE.Group(); groupBuildings.name = 'buildings';
-  const groupOther = new THREE.Group(); groupOther.name = 'other';
-  scene.add(groupZones, groupContours, groupWireframe, groupGrid, groupParcel, groupTrees, groupWetlands, groupWater, groupBuildings, groupOther);
-
-  // ── Height sampling ──
-  const elevAtRC = (rr, cc) => {
-    const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
-    const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
-    const fr = Math.max(0, Math.min(1, rr - r0));
-    const fc = Math.max(0, Math.min(1, cc - c0));
-    const e00 = elevations[r0 * cols + c0] ?? zMean;
-    const e10 = elevations[r0 * cols + c0 + 1] ?? e00;
-    const e01 = elevations[(r0 + 1) * cols + c0] ?? e00;
-    const e11 = elevations[(r0 + 1) * cols + c0 + 1] ?? e00;
-    return e00 * (1 - fr) * (1 - fc) + e10 * (1 - fr) * fc + e01 * fr * (1 - fc) + e11 * fr * fc;
-  };
-
-  // ── Elevation colour helper ──
-  const elevationColor = (t, slopeVal) => {
-    // t is normalized 0-1 elevation
-    let r, g, b;
-    if (t < 0.25) {
-      // Deep green (low)
-      const s = t / 0.25;
-      r = 0.1 + s * 0.05;
-      g = 0.45 + s * 0.15;
-      b = 0.15 + s * 0.05;
-    } else if (t < 0.5) {
-      // Green to gold
-      const s = (t - 0.25) / 0.25;
-      r = 0.15 + s * 0.6;
-      g = 0.6 + s * 0.1;
-      b = 0.2 - s * 0.1;
-    } else if (t < 0.75) {
-      // Gold to brown
-      const s = (t - 0.5) / 0.25;
-      r = 0.75 + s * 0.1;
-      g = 0.7 - s * 0.25;
-      b = 0.1 - s * 0.05;
-    } else {
-      // Brown to dark brown (high)
-      const s = (t - 0.75) / 0.25;
-      r = 0.85 - s * 0.15;
-      g = 0.45 - s * 0.2;
-      b = 0.05 + s * 0.05;
-    }
-    // Slope influence: darker on steeper slopes
-    if (slopeVal > 15) {
-      const dark = Math.min((slopeVal - 15) / 40, 0.3);
-      r *= (1 - dark);
-      g *= (1 - dark);
-      b *= (1 - dark);
-    }
-    return new THREE.Color(r, g, b);
-  };
-
-  // ── Build terrain mesh ──
-  const detail = Math.min(rows, cols); // Use full resolution
-  const segsX = Math.min(detail - 1, 120);
-  const segsZ = Math.min(detail - 1, 120);
-  const geo = new THREE.PlaneGeometry(meshW, meshD, segsX, segsZ);
-  geo.rotateX(-Math.PI / 2);
-  // Shift the plane so it spans 0..meshW in X and 0..meshD in Z — every
-  // coordinate mapping (toWorld, camera, contours, zones, objects) assumes
-  // this local space. Without the translate the terrain sits centered at the
-  // origin and the camera looks at empty space.
-  geo.translate(meshW / 2, 0, meshD / 2);
-
-  const pos = geo.attributes.position;
-  const colors = new Float32Array(pos.count * 3);
-
-  // Compute slopes for each vertex
-  const slopes = new Float32Array(pos.count);
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const col = Math.round((x / meshW) * (cols - 1));
-    const row = Math.round((1 - z / meshD) * (rows - 1));
-    const clampedCol = Math.max(0, Math.min(cols - 1, col));
-    const clampedRow = Math.max(0, Math.min(rows - 1, row));
-    const zVal = elevations[clampedRow * cols + clampedCol] ?? zMean;
-    const zLeft = elevations[clampedRow * cols + Math.max(0, clampedCol - 1)] ?? zVal;
-    const zRight = elevations[clampedRow * cols + Math.min(cols - 1, clampedCol + 1)] ?? zVal;
-    const zUp = elevations[Math.max(0, clampedRow - 1) * cols + clampedCol] ?? zVal;
-    const zDown = elevations[Math.min(rows - 1, clampedRow + 1) * cols + clampedCol] ?? zVal;
-    const dx = Math.abs(zRight - zLeft) / 2;
-    const dz = Math.abs(zDown - zUp) / 2;
-    slopes[i] = Math.sqrt(dx * dx + dz * dz) / relief * 100;
-  }
-
-  for (let i = 0; i < pos.count; i++) {
-    const x = pos.getX(i);
-    const z = pos.getZ(i);
-    const col = (x / meshW) * (cols - 1);
-    const row = (1 - z / meshD) * (rows - 1);
-    const zVal = elevAtRC(row, col);
-    const normalizedT = (zVal - zMin) / relief;
-    // Normalize to relative height so the lowest point sits at Y=0. Raw
-    // elevations are absolute meters (~660 in Alberta); using them directly
-    // would place the terrain far above the camera and outside the far plane.
-    const y = (zVal - zMin) * exaggerate;
-    pos.setY(i, y);
-
-    const colColor = elevationColor(normalizedT, slopes[i]);
-    colors[i * 3] = colColor.r;
-    colors[i * 3 + 1] = colColor.g;
-    colors[i * 3 + 2] = colColor.b;
-  }
-
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.computeVertexNormals();
-
-  const mat = new THREE.MeshStandardMaterial({
-    vertexColors: true,
-    roughness: 0.85,
-    metalness: 0.05,
-    flatShading: false,
-  });
-  const terrainMesh = new THREE.Mesh(geo, mat);
-  terrainMesh.receiveShadow = false;
-  scene.add(terrainMesh);
-
-  // ── Zone polygons on mesh surface ──
-  const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
-  const west = bbox.west;
-  const east = bbox.east;
-  const south = bbox.south;
-  const north = bbox.north;
-
-  const zoneOverlayColors = {
-    pond: 0x1a9bb5,
-    catchment: 0x2a6f97,
-    swale: 0xc4a035,
-  };
-
-  for (const [zoneType, zoneColor] of Object.entries(zoneOverlayColors)) {
-    const zonePositions = [];
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        if (zones[r * cols + c] !== zoneType) continue;
-        const lng = west + (c / cols) * (east - west);
-        const lat = south + ((rows - 1 - r) / rows) * (north - south);
-        const x = (lng - west) / (east - west) * meshW;
-        const z = 1 - (lat - south) / (north - south);
-        const zVal = elevations[r * cols + c] ?? zMean;
-        zonePositions.push(new THREE.Vector3(x, (zVal - zMin) * exaggerate + 0.5, z * meshD));
-      }
-    }
-    if (zonePositions.length >= 3) {
-      // Create a convex hull or simple polygon for the zone
-      const centroid = new THREE.Vector3();
-      zonePositions.forEach(p => centroid.add(p));
-      centroid.divideScalar(zonePositions.length);
-
-      // Sort by angle around centroid (approximate)
-      zonePositions.sort((a, b) => {
-        const angA = Math.atan2(a.z - centroid.z, a.x - centroid.x);
-        const angB = Math.atan2(b.z - centroid.z, b.x - centroid.x);
-        return angA - angB;
-      });
-
-      // Create a flat polygon at zone height
-      const zoneGeo = new THREE.BufferGeometry();
-      const verts = [centroid.x, centroid.y, centroid.z];
-      const norm = [0, 1, 0];
-      for (let i = 0; i < zonePositions.length; i++) {
-        verts.push(zonePositions[i].x, zonePositions[i].y, zonePositions[i].z);
-        norm.push(0, 1, 0);
-      }
-      zoneGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
-      zoneGeo.setAttribute('normal', new THREE.Float32BufferAttribute(norm, 3));
-
-      // Generate indices for fan triangulation
-      const indices = [];
-      for (let i = 1; i < zonePositions.length; i++) {
-        indices.push(0, i, (i + 1) % zonePositions.length);
-      }
-      zoneGeo.setIndex(indices);
-      zoneGeo.computeVertexNormals();
-
-      const zoneMat = new THREE.MeshBasicMaterial({
-        color: zoneColor,
-        transparent: true,
-        opacity: 0.35,
-        side: THREE.DoubleSide,
-      });
-      const zoneMesh = new THREE.Mesh(zoneGeo, zoneMat);
-      groupZones.add(zoneMesh);
-    }
-  }
-
-  // ── Contour lines on mesh ──
-  const nLevels = Math.min(14, Math.max(6, Math.round(relief / Math.max(relief / 10, 0.5))));
-  const step = relief / nLevels;
-  const levels = [];
-  for (let k = 1; k < nLevels; k++) levels.push(zMin + k * step);
-
-  const segs = extractContourPolylines(elevations, rows, cols, levels);
-  for (const s of segs) {
-    const ea = elevAtRC(s.a[0], s.a[1]);
-    const eb = elevAtRC(s.b[0], s.b[1]);
-    const lngA = west + (s.a[1] / (cols - 1)) * (east - west);
-    const latA = south + (1 - s.a[0] / (rows - 1)) * (north - south);
-    const lngB = west + (s.b[1] / (cols - 1)) * (east - west);
-    const latB = south + (1 - s.b[0] / (rows - 1)) * (north - south);
-    const xA = (lngA - west) / (east - west) * meshW;
-    const zA = (1 - (latA - south) / (north - south)) * meshD;
-    const xB = (lngB - west) / (east - west) * meshW;
-    const zB = (1 - (latB - south) / (north - south)) * meshD;
-
-    const lineGeo = new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(xA, (ea - zMin) * exaggerate + 0.8, zA),
-      new THREE.Vector3(xB, (eb - zMin) * exaggerate + 0.8, zB),
-    ]);
-    const lineMat = new THREE.LineBasicMaterial({ color: 0xe8e0ff, linewidth: 1, transparent: true, opacity: 0.5 });
-    const line = new THREE.Line(lineGeo, lineMat);
-    line.userData.drape = [
-      { lng: lngA, lat: latA, lift: 0.8 },
-      { lng: lngB, lat: latB, lift: 0.8 },
-    ];
-    groupContours.add(line);
-  }
-
-  // ── Wireframe overlay ──
-  const wireMat = new THREE.MeshBasicMaterial({ color: 0xffffff, wireframe: true, transparent: true, opacity: 0 });
-  const wireMesh = new THREE.Mesh(geo.clone(), wireMat);
-  groupWireframe.add(wireMesh);
-
-  // ── Grid mesh overlay ──
-  const gridHelper = new THREE.GridHelper(Math.max(meshW, meshD), segsX, 0x44aa44, 0x225522);
-  gridHelper.position.set(meshW / 2, 0.5, meshD / 2);
-  gridHelper.material.transparent = true;
-  gridHelper.material.opacity = 0;
-  groupGrid.add(gridHelper);
-
-  // ── Parcel + data-backed object layers ──
-  const toWorld = (lng, lat) => {
-    const x = ((lng - west) / (east - west)) * meshW;
-    const z = (1 - (lat - south) / (north - south)) * meshD;
-    return { x, z };
-  };
-  const drapeY = (lng, lat, lift = 0) => {
-    const { x, z } = toWorld(lng, lat);
-    const col = Math.max(0, Math.min(cols - 1, (x / meshW) * (cols - 1)));
-    const row = Math.max(0, Math.min(rows - 1, (1 - z / meshD) * (rows - 1)));
-    return (elevAtRC(row, col) - zMin) * exaggerate + lift;
-  };
-  const pointInRing = (lng, lat, ring) => {
-    let inside = false;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i][0], yi = ring[i][1];
-      const xj = ring[j][0], yj = ring[j][1];
-      const intersect = ((yi > lat) !== (yj > lat)) && (lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi);
-      if (intersect) inside = !inside;
-    }
-    return inside;
-  };
-  const ringCentroid = (ring) => {
-    let a = 0, cx = 0, cy = 0;
-    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-      const xi = ring[i][0], yi = ring[i][1];
-      const xj = ring[j][0], yj = ring[j][1];
-      const f = xi * yj - xj * yi;
-      a += f; cx += (xi + xj) * f; cy += (yi + yj) * f;
-    }
-    a *= 0.5;
-    if (Math.abs(a) < 1e-12) return ring[0];
-    return [cx / (6 * a), cy / (6 * a)];
-  };
-  const featureInParcel = (geom, ring) => {
-    if (!geom || !ring?.length) return false;
-    if (geom.type === 'Point') {
-      const [lng, lat] = geom.coordinates || [];
-      return Number.isFinite(lng) && Number.isFinite(lat) && pointInRing(lng, lat, ring);
-    }
-    if (geom.type === 'Polygon') {
-      const outer = geom.coordinates?.[0] || [];
-      if (outer.length < 3) return false;
-      const c = ringCentroid(outer);
-      return pointInRing(c[0], c[1], ring) || outer.some(([lng, lat]) => pointInRing(lng, lat, ring));
-    }
-    if (geom.type === 'MultiPolygon') {
-      return (geom.coordinates || []).some((poly) => featureInParcel({ type: 'Polygon', coordinates: poly }, ring));
-    }
-    if (geom.type === 'LineString' || geom.type === 'MultiLineString') {
-      const lines = geom.type === 'LineString' ? [geom.coordinates] : (geom.coordinates || []);
-      for (const line of lines) {
-        if (!line?.length) continue;
-        const mid = line[Math.floor(line.length / 2)];
-        if (pointInRing(mid[0], mid[1], ring)) return true;
-        if (line.some(([lng, lat]) => pointInRing(lng, lat, ring))) return true;
-      }
-      return false;
-    }
-    return false;
-  };
-  const classifyFeatureLayer = (f) => {
-    const layer = f.layer || f.priority_group || f.feature_type || '';
-    const type = f.feature_type || '';
-    if (layer === 'forest' || layer === 'shrubland' || type === 'forest' || type === 'shrubland' || type === 'tree') return 'trees';
-    if (layer === 'wetlands' || type === 'wetland') return 'wetlands';
-    if (layer === 'water' || layer === 'hydrography' || type === 'water' || type === 'waterbody' || type === 'waterway') return 'water';
-    if (layer === 'buildings' || type === 'building') return 'buildings';
-    return 'other';
-  };
-  const objectColors = { trees: 0x2f8f4e, wetlands: 0x38a68b, water: 0x2a9dc9, buildings: 0xd88c45, other: 0x9b75c7 };
-  const buildDrapedPolygon = (ring, opts = {}) => {
-    const lift = opts.lift ?? 0.35;
-    const topLift = opts.topLift ?? lift;
-    const base = ring.map(([lng, lat]) => ({ lng, lat, lift }));
-    const top = ring.map(([lng, lat]) => ({ lng, lat, lift: topLift }));
-    const w = (p) => { const { x, z } = toWorld(p.lng, p.lat); return { x, z, y: drapeY(p.lng, p.lat, p.lift) }; };
-    const baseW = base.map(w);
-    const topW = top.map(w);
-    const vertices = [];
-    const drape = [];
-    const pushTri = (a, b, c) => {
-      vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
-      drape.push(a, b, c);
-    };
-    for (let i = 1; i < baseW.length - 1; i++) pushTri(topW[0], topW[i], topW[i + 1]);
-    for (let i = 0; i < baseW.length - 1; i++) {
-      pushTri(baseW[i], baseW[i + 1], topW[i + 1]);
-      pushTri(baseW[i], topW[i + 1], topW[i]);
-    }
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geometry.computeVertexNormals();
-    return { geometry, drape };
-  };
-  const renderFeature = (feature, group) => {
-    const geom = feature.geometry;
-    if (!geom) return;
-    const type = feature.feature_type || '';
-    const color = objectColors[group.name] || objectColors.other;
-    if (geom.type === 'Point') {
-      const [lng, lat] = geom.coordinates || [];
-      if (!Number.isFinite(lng) || !Number.isFinite(lat)) return;
-      const isTree = type === 'tree' || type === 'forest';
-      const isBuilding = type === 'building';
-      const lift = isBuilding ? 1.5 : 0.8;
-      const geo = isTree ? new THREE.ConeGeometry(1.2, 3.2, 6) : new THREE.BoxGeometry(1.5, isBuilding ? 3 : 1.2, 1.5);
-      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 });
-      const mesh = new THREE.Mesh(geo, mat);
-      const { x, z } = toWorld(lng, lat);
-      mesh.position.set(x, drapeY(lng, lat, lift), z);
-      mesh.userData.drapePoint = { lng, lat, lift };
-      group.add(mesh);
-      return;
-    }
-    if (geom.type === 'LineString' || geom.type === 'MultiLineString') {
-      const lines = geom.type === 'LineString' ? [geom.coordinates] : (geom.coordinates || []);
-      for (const line of lines) {
-        if (!line || line.length < 2) continue;
-        const pts = [];
-        const drape = [];
-        for (const [lng, lat] of line) {
-          if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
-          const { x, z } = toWorld(lng, lat);
-          pts.push(new THREE.Vector3(x, drapeY(lng, lat, 0.8), z));
-          drape.push({ lng, lat, lift: 0.8 });
-        }
-        if (pts.length < 2) continue;
-        const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-        const lineObj = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.85 }));
-        lineObj.userData.drape = drape;
-        group.add(lineObj);
-      }
-      return;
-    }
-    if (geom.type === 'Polygon' || geom.type === 'MultiPolygon') {
-      const polys = geom.type === 'Polygon' ? [geom.coordinates] : (geom.coordinates || []);
-      for (const poly of polys) {
-        const ring = poly?.[0] || [];
-        if (ring.length < 3) continue;
-        const isBuilding = type === 'building';
-        const { geometry, drape } = buildDrapedPolygon(ring, { lift: 0.35, topLift: isBuilding ? 4 : 0.35 });
-        const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7, side: THREE.DoubleSide }));
-        mesh.userData.drape = drape;
-        group.add(mesh);
-      }
-    }
-  };
-
-  // ── Parcel boundary + fill (terrain-draped) ──
-  // getParcelLatLngsFromReport returns Leaflet [lat,lng]; convert to GeoJSON [lng,lat].
-  const parcelLatLngs = getParcelLatLngsFromReport(report);
-  const parcelRing = parcelLatLngs
-    ? parcelLatLngs
-        .map(([lat, lng]) => [Number(lng), Number(lat)])
-        .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat))
-    : null;
-  if (parcelRing && parcelRing.length >= 3) {
-    const ring = parcelRing;
-    if (ring.length >= 3) {
-      const closed = ring.length >= 4 && Math.abs(ring[0][0] - ring[ring.length - 1][0]) < 1e-9 && Math.abs(ring[0][1] - ring[ring.length - 1][1]) < 1e-9;
-      const outlineRing = closed ? ring : [...ring, ring[0]];
-      const pts = outlineRing.map(([lng, lat]) => {
-        const { x, z } = toWorld(lng, lat);
-        return new THREE.Vector3(x, drapeY(lng, lat, 1.2), z);
-      });
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(pts);
-      const line = new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: 0xff66cc, linewidth: 2 }));
-      line.userData.drape = outlineRing.map(([lng, lat]) => ({ lng, lat, lift: 1.2 }));
-      groupParcel.add(line);
-      const fillRing = closed ? ring : [...ring, ring[0]];
-      const { geometry, drape } = buildDrapedPolygon(fillRing, { lift: 0.15, topLift: 0.15 });
-      const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: 0xff66cc, transparent: true, opacity: 0.12, side: THREE.DoubleSide, depthWrite: false }));
-      fill.userData.drape = drape;
-      groupParcel.add(fill);
-    }
-  }
-
-  // ── Data-backed objects (parcel-filtered, terrain-draped) ──
-  const semFeatures = Array.isArray(report?.semantic_terrain?.features) ? report.semantic_terrain.features : [];
-  const objectGroups = { trees: groupTrees, wetlands: groupWetlands, water: groupWater, buildings: groupBuildings, other: groupOther };
-  for (const feature of semFeatures) {
-    if (!featureInParcel(feature.geometry, parcelRing)) continue;
-    const layer = classifyFeatureLayer(feature);
-    const group = objectGroups[layer];
-    if (group) renderFeature(feature, group);
-  }
-
-  // ── Animation loop ──
-  function animate() {
-    terrainMeshAnimId = requestAnimationFrame(animate);
-    if (layersVisible.autorotate && controls) {
-      controls.autoRotate = true;
-      controls.autoRotateSpeed = 1.5;
-    } else if (controls) {
-      controls.autoRotate = false;
-    }
-    controls?.update();
-    renderer.render(scene, camera);
-  }
-  animate();
-
-  // ── Resize handler ──
-  const onResize = () => {
-    const w = host.clientWidth || 600;
-    const h = host.clientHeight || 400;
-    camera.aspect = w / h;
-    camera.updateProjectionMatrix();
-    renderer.setSize(w, h);
-  };
-  window.addEventListener('resize', onResize);
-
-  // ── Store references ──
-  terrainMeshViewer = {
-    dispose() {
-      if (terrainMeshAnimId != null) cancelAnimationFrame(terrainMeshAnimId);
-      terrainMeshAnimId = null;
-      controls?.dispose();
-      renderer.dispose();
-      scene.traverse((o) => {
-        if (o.geometry) o.geometry.dispose();
-        if (o.material) {
-          if (Array.isArray(o.material)) o.material.forEach((m) => m.dispose());
-          else o.material.dispose();
-        }
-      });
-      skyGeo.dispose();
-      skyMat.dispose();
-      window.removeEventListener('resize', onResize);
-    },
-  };
-  terrainMeshScene = scene;
-  terrainMeshCamera = camera;
-  terrainMeshRenderer = renderer;
-  terrainMeshControls = controls;
-
-  // ── Layer toggles ──
-  host.querySelectorAll(`[data-mesh-toggle]`).forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const layer = cb.getAttribute('data-layer');
-      if (layer && layersVisible[layer] != null) {
-        layersVisible[layer] = !!cb.checked;
-        groupZones.visible = layersVisible.zones;
-        groupContours.visible = layersVisible.contours;
-        wireMat.opacity = layersVisible.wireframe ? 0.12 : 0;
-        gridHelper.material.opacity = layersVisible.grid ? 0.15 : 0;
-        groupParcel.visible = layersVisible.parcel;
-        groupTrees.visible = layersVisible.trees;
-        groupWetlands.visible = layersVisible.wetlands;
-        groupWater.visible = layersVisible.water;
-        groupBuildings.visible = layersVisible.buildings;
-        groupOther.visible = layersVisible.other;
-      }
-    });
-  });
-
-  // ── Exaggeration slider ──
-  const exagInput = host.querySelector(`[data-mesh-exag]`);
-  const exagVal = host.querySelector(`[data-mesh-exag-val]`);
+  // Exaggerate slider
+  const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
+  const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
   if (exagInput) {
     exagInput.addEventListener('input', () => {
-      exaggerate = Number(exagInput.value) || 4;
-      if (exagVal) exagVal.textContent = `${exaggerate}`;
-      // Re-extrude terrain Y values
-      for (let i = 0; i < pos.count; i++) {
-        const zRaw = pos.getZ(i);
-        const col = Math.round((pos.getX(i) / meshW) * (cols - 1));
-        const row = Math.round((1 - zRaw / meshD) * (rows - 1));
-        const cc = Math.max(0, Math.min(cols - 1, col));
-        const cr = Math.max(0, Math.min(rows - 1, row));
-        const zv = elevations[cr * cols + cc] ?? zMean;
-        pos.setY(i, (zv - zMin) * exaggerate);
+      exaggerate = Number(exagInput.value) || 3.5;
+      if (exagVal) exagVal.textContent = `${exaggerate}×`;
+      // Rebuild terrain with new exaggeration
+      if (terrainMesh) {
+        const positions = geometry.attributes.position.array;
+        for (let i = 0; i < cols * rows; i++) {
+          const z = heightValues[i] ?? zMean;
+          positions[i * 3 + 1] = ((z - zMin) / relief) * relief * exaggerate;
+        }
+        geometry.attributes.position.needsUpdate = true;
+        geometry.computeVertexNormals();
       }
-      pos.needsUpdate = true;
-      geo.computeVertexNormals();
-      // Update zone heights
-      groupZones.children.forEach((zm) => {
-        if (zm.geometry && zm.geometry.attributes.position) {
-          const zp = zm.geometry.attributes.position;
-          for (let i = 1; i < zp.count; i++) {
-            const zz = zp.getZ(i);
-            const xc = zp.getX(i);
-            const rc = Math.round((xc / meshW) * (cols - 1));
-            const zr = Math.round((1 - zz / meshD) * (rows - 1));
-            const zvv = elevations[Math.max(0, Math.min(rows - 1, zr)) * cols + Math.max(0, Math.min(cols - 1, rc))] ?? zMean;
-            zp.setY(i, (zvv - zMin) * exaggerate + 0.5);
+    });
+  }
+
+    // ---- Toggleable 3D Tree/Plant Models ----
+    const treeGroup = new THREE.Group();
+    treeGroup.name = 'treeModels';
+    scene.add(treeGroup);
+    let treesVisible = false;
+
+    // Simple 3D tree: brown cylinder trunk + green cone canopy
+    function createTreeModel(height, radius) {
+      const group = new THREE.Group();
+
+      // Trunk
+      const trunkGeom = new THREE.CylinderGeometry(radius * 0.3, radius, height * 0.5, 6);
+      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8B5A2B });
+      const trunk = new THREE.Mesh(trunkGeom, trunkMat);
+      trunk.position.y = height * 0.25;
+      group.add(trunk);
+
+      // Canopy (cone)
+      const canopyGeom = new THREE.ConeGeometry(radius, height * 0.6, 7);
+      const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2D7A2D, transparent: true, opacity: 0.85 });
+      const canopy = new THREE.Mesh(canopyGeom, canopyMat);
+      canopy.position.y = height * 0.65;
+      group.add(canopy);
+
+      // Second smaller canopy layer
+      const canopy2Geom = new THREE.ConeGeometry(radius * 0.7, height * 0.4, 6);
+      const canopy2 = new THREE.Mesh(canopy2Geom, canopyMat);
+      canopy2.position.y = height * 0.85;
+      group.add(canopy2);
+
+      return group;
+    }
+
+    // Place trees in zones with high catchment/swale density
+    function placeTreesInScene() {
+      // Clear existing trees
+      while (treeGroup.children.length > 0) {
+        treeGroup.remove(treeGroup.children[0]);
+      }
+
+      const step = Math.max(2, Math.floor(Math.min(rows, cols) / 20));
+      let treeCount = 0;
+
+      for (let row = 0; row < rows; row += step) {
+        for (let col = 0; col < cols; col += step) {
+          const idx = row * cols + col;
+          const zone = zones[idx];
+
+          // Place trees in catchment and swale zones, plus some random forest
+          const shouldPlace = zone === 'catchment' || zone === 'swale' ||
+            (zone === 'forest' && Math.random() > 0.3);
+
+          if (!shouldPlace) continue;
+
+          // Get world position from grid coords
+          const x = (col / (cols - 1) - 0.5) * meshW;
+          const z = (row / (rows - 1) - 0.5) * meshD;
+          const elevIdx = idx;
+          const elev = heightValues[elevIdx] ?? zMean;
+          const y = ((elev - zMin) / relief) * relief * exaggerate;
+
+          // Randomize size slightly
+          const baseHeight = 0.0004 + Math.random() * 0.0003;
+          const baseRadius = 0.0002 + Math.random() * 0.00015;
+          const tree = createTreeModel(baseHeight, baseRadius);
+          tree.position.set(x, y, z);
+
+          // Slight random rotation for natural look
+          tree.rotation.y = Math.random() * Math.PI * 2;
+
+          treeGroup.add(tree);
+          treeCount++;
+        }
+      }
+
+      // Also place trees at intervention points (ponds, swales)
+      if (analysis?.elements) {
+        for (const el of analysis.elements) {
+          if (el.type === 'pond' || el.type === 'swale' || el.type === 'keyline_pond') {
+            const lat = el.lat ?? el.latitude;
+            const lng = el.lng ?? el.longitude ?? el.lon;
+            if (lat != null && lng != null) {
+              const gx = ((lng - 180) * 111320 * Math.cos(lat * Math.PI / 180) + meshW / 2 + 180 * 111320 * Math.cos(lat * Math.PI / 180)) / meshW * (cols - 1);
+              const gz = ((lat - 90) * 110540 + meshD / 2 + 90 * 110540) / meshD * (rows - 1);
+              const gcol = Math.round(gx);
+              const grow = Math.round(gz);
+              if (gcol >= 0 && gcol < cols && grow >= 0 && grow < rows) {
+                const ti = grow * cols + gcol;
+                const te = heightValues[ti] ?? zMean;
+                const tx = (gcol / (cols - 1) - 0.5) * meshW;
+                const tz = (grow / (rows - 1) - 0.5) * meshD;
+                const ty = ((te - zMin) / relief) * relief * exaggerate;
+
+                const tree = createTreeModel(0.0005 + Math.random() * 0.0002, 0.00025);
+                tree.position.set(tx, ty + 0.0003, tz);
+                treeGroup.add(tree);
+                treeCount++;
+              }
+            }
           }
-          zp.needsUpdate = true;
+        }
+      }
+
+      return treeCount;
+    }
+
+    const nTrees = placeTreesInScene();
+
+    // Add ambient light so trees are visible
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+
+    // Directional light for depth
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(0.005, 0.008, 0.005);
+    scene.add(dirLight);
+
+    // Layer toggles
+    document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const layer = cb.getAttribute('data-layer');
+        if (layer && layersVisible[layer] != null) {
+          layersVisible[layer] = !!cb.checked;
+          if (layer === 'contours' && contourLines) {
+            contourLines.visible = layersVisible.contours;
+          }
+          if (layer === 'trees') {
+            treesVisible = !!cb.checked;
+            treeGroup.visible = treesVisible;
+          }
         }
       });
-      // Update draped semantic overlays, parcel boundary/fill, and objects
-      [groupContours, groupParcel, groupTrees, groupWetlands, groupWater, groupBuildings, groupOther].forEach((g) => {
-        g?.traverse((o) => {
-          if (o.userData?.drapePoint) {
-            o.position.y = drapeY(o.userData.drapePoint.lng, o.userData.drapePoint.lat, o.userData.drapePoint.lift);
-          } else if (o.userData?.drape && o.geometry?.attributes?.position) {
-            const p = o.geometry.attributes.position;
-            for (let i = 0; i < p.count; i++) {
-              const d = o.userData.drape[i] || o.userData.drape[0];
-              if (!d) continue;
-              p.setY(i, drapeY(d.lng, d.lat, d.lift));
-            }
-            p.needsUpdate = true;
-            if (o.geometry.computeVertexNormals) o.geometry.computeVertexNormals();
-          }
-        });
-      });
     });
-  }
 
-  // ── Reset button ──
-  const resetBtn = host.querySelector(`[data-mesh-reset]`);
+  // Reset view button
+  const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      if (controls) {
-        controls.reset();
-        camera.position.set(meshW * 0.5, Math.max(relief * 5, meshD * 0.6), meshD * 1.2);
-        controls.target.set(meshW * 0.5, relief * 1.5, meshD * 0.4);
-        controls.update();
-      }
+      targetTheta = 0;
+      targetPhi = Math.PI / 4;
+      cameraRadius = 0.01;
+      updateCameraPosition();
     });
   }
 
-  // ── Screenshot button ──
-  const ssBtn = host.querySelector(`[data-mesh-screenshot]`);
-  if (ssBtn) {
-    ssBtn.addEventListener('click', () => {
-      renderer.render(scene, camera);
-      const dataUrl = renderer.domElement.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = 'terrain-model-screenshot.png';
-      link.href = dataUrl;
-      link.click();
-    });
-  }
-
-  // ── Badge ──
+  // Badge
   const badge = document.createElement('div');
   badge.className = 'fine';
   badge.style.cssText =
-    'position:absolute;right:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.6);color:#a8d8a0;border-radius:4px;font-size:0.65rem;pointer-events:none;z-index:1000';
+    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;z-index:1000;max-width:90%';
   const nPond = zones.filter((z) => z === 'pond').length;
   const nSwale = zones.filter((z) => z === 'swale').length;
   const nCatch = zones.filter((z) => z === 'catchment').length;
@@ -2893,6 +2701,19 @@ function createLocalTerrainProvider(heights, rows, cols, bbox, zMin, zMax, zMean
   return new Cesium.EllipsoidTerrainProvider({
     // No token required — flat ellipsoid
   });
+}
+
+function updateCameraPosition() {
+  if (!camera) return;
+  camera.position.x = cameraRadius * Math.sin(rotPhi) * Math.sin(rotTheta);
+  camera.position.y = cameraRadius * Math.cos(rotPhi);
+  camera.position.z = cameraRadius * Math.sin(rotPhi) * Math.cos(rotTheta);
+  camera.lookAt(terrainMesh?.position || new THREE.Vector3());
+}
+
+function createLocalTerrainProvider(heights, rows, cols, bbox, zMin, zMax, zMean) {
+  // Deprecated: Terrain is now rendered with Three.js mesh in mountTerrain3dViewer
+  return new Cesium.EllipsoidTerrainProvider({});
 }
 
 function mountSemanticTerrainObjects(scene, payload, opts) {
@@ -9775,20 +9596,6 @@ let leafletMapEl = null;
  * Initialize the Cesium 3D globe viewer.
  * Shows Alberta region with terrain (Cesium World Terrain).
  */
-/**
- * Alias for switchToCesium — switches from Leaflet 2D to Cesium 3D globe.
- */
-function switchTo3DView() {
-  switchToCesium();
-}
-
-/**
- * Alias for switchToLeaflet — switches from Cesium 3D back to Leaflet 2D map.
- */
-function switchTo2DView() {
-  switchToLeaflet();
-}
-
 function initCesiumViewer() {
   // Only initialize once
   if (cesiumViewer) return;

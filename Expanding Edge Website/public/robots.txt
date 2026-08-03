@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /case-studies/_template.html
+
+Sitemap: https://makealbertagreatagain.live/sitemap.xml

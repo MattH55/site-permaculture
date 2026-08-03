@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Contour Map Analysis Exercise | Permaculture Design Toolbox</title>
+  <meta name="description" content="Hands-on exercise: learn to analyze a contour elevation map and translate it into actionable permaculture design decisions for an Alberta property.">
+  <meta property="og:title" content="Contour Map Analysis Exercise | Expanding Edge Permaculture">
+  <meta property="og:description" content="Hands-on exercise: analyze a contour map and translate it into actionable design decisions.">
+  <meta property="og:type" content="website">
+  <link rel="canonical" href="https://makealbertagreatagain.live/learn/exercises/contour-analysis/">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <meta name="theme-color" content="#16211b">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <a href="/" class="brand">
+        <img src="/images/logo.png" alt="Expanding Edge Permaculture logo" class="brand-logo" width="160" height="52">
+      </a>
+      <nav class="nav-main">
+        <a href="/#services">Services</a>
+        <a href="/service-areas/">Service Areas</a>
+        <a href="/learn/">Learn</a>
+        <a href="/about/">About</a>
+        <a href="/design/">Site Design</a>
+        <a href="/contact/">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <nav aria-label="Breadcrumb">
+      <ol class="breadcrumbs">
+        <li><a href="/">Home</a><span class="sep" aria-hidden="true">/</span></li>
+        <li><a href="/learn/">Learn</a><span class="sep" aria-hidden="true">/</span></li>
+        <li><a href="/learn/tools/">Tools</a><span class="sep" aria-hidden="true">/</span></li>
+        <li><a href="/learn/tools/#contour-mapping">Contour Mapping</a><span class="sep" aria-hidden="true">/</span></li>
+        <li><span class="current">Exercise</span></li>
+      </ol>
+    </nav>
+
+    <!-- Exercise Header -->
+    <section class="toolbox-hero" style="background:linear-gradient(135deg,var(--ground) 0%,rgba(126,90,150,0.12) 100%);">
+      <h1>🗺️ Contour Map Analysis — Hands-On Exercise</h1>
+      <p class="lead">You're looking at a topographic map of a 160-acre (quarter-section) property near Wetaskiwin, Alberta. Your job: analyze the contours and figure out where the water wants to go, where to put the pond, the swales, the access road, and which spots will freeze first. Work through each step, try to figure it out yourself, then reveal the answer.</p>
+      <p style="font-size:0.9rem;color:var(--ink-soft);margin-top:1rem;">⏱️ <em>Estimated time: 20–30 minutes. Grab a piece of paper and a pencil if you want to sketch along.</em></p>
+    </section>
+
+    <!-- Scenario Introduction -->
+    <div style="max-width:800px;margin:0 auto;padding:2rem var(--step);">
+      <div style="background:var(--paper);border:2px solid var(--berry);border-radius:6px;padding:2rem;margin-bottom:2rem;">
+        <h2 style="margin-top:0;">🏡 The Scenario</h2>
+        <p>You're designing a homestead for a family on a quarter-section (½ mile × ½ mile = 800 m × 800 m) of rolling parkland near Wetaskiwin. The property is mostly pasture with a few aspen bluffs. The family wants:</p>
+        <ul style="line-height:1.8;margin-bottom:0;">
+          <li>A <strong>house site</strong> with good southern exposure, sheltered from northwest winds</li>
+          <li>A <strong>pond</strong> for irrigation and wildlife (at least 1,000 m³ storage)</li>
+          <li><strong>Swales</strong> to hydrate a planned food forest on the lower slope</li>
+          <li>An <strong>access driveway</strong> from the county road on the south boundary</li>
+          <li>A <strong>market garden</strong> in a frost-protected area</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- The Map -->
+    <div style="max-width:800px;margin:0 auto;padding:0 var(--step) 2rem;">
+      <div style="background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:2rem;">
+        <h2 style="margin-top:0;">📋 Your Contour Data</h2>
+        <p>The map below shows <strong>elevation contours at 2-meter intervals</strong>. North is up. The south boundary is along a gravel county road. Each contour line connects points of equal elevation above sea level.</p>
+
+        <!-- Simplified ASCII-style contour map representation -->
+        <div style="font-family:'IBM Plex Mono',monospace;font-size:0.8rem;line-height:1.3;background:rgba(231,233,225,0.5);padding:2rem;border-radius:6px;overflow-x:auto;margin-bottom:1.5rem;white-space:pre;letter-spacing:0;">
+N ↑
+┌────────────────────────────────────────── North Boundary ──────────────────────────────────────────┐
+│                                                                                                    │
+│   · · · · · · · · ·  · · · · · · · · · ·  · · · · · · · · ·  · · · · · · · · ·  · · · · · · · ·  │
+│   ·               · ·                   · ·                   · ·                   · ·            │
+│   ·   700 m ───────────────────────────────────────────────── 700 m ────────────────────── ·      │
+│   ·               · ·                   · ·                   · ·                   · ·            │
+│   · · · · · · · · ·  · · · · · · · · · ·  · · · · · · · · ·  · · · · · · · · ·  · · · · · · · ·  │
+│                                                                                                    │
+│   698 m ──────────────────────────────────────────────────────────────────────────────────── 698 m │
+│                                                                                                    │
+│   696 m ───────────┐                                              ┌──────────────────────── 696 m │
+│                     │                                              │                                │
+│   694 m ────────────┘                    ┌─── 694 m ───┐         │                                │
+│                                           │             │         │                                │
+│   692 m ───────┐                          │             │         │                                │
+│                 │              692 m ─────┘             └──── 692 m                                │
+│   690 m ───────┘                                                                                   │
+│                                                                                                    │
+│   688 m ──────────────────────────────────────────────────────────────────────────────────── 688 m │
+│                                                                                                    │
+│   686 m ───────┐                                                                                   │
+│                 │                                                                                  │
+│   684 m ───────┘                                              ┌── 684 m ──┐                       │
+│                                                               │           │                        │
+│   682 m ─── ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ 682 m ──────┘                       │
+│                                                                                                    │
+│   · · · · · · · · ·  · · · · · · · · ·  · · · · · · · · ·  · · · · · · · · ·  · · · · · · · ·   │
+│   ·  ASPEN    · · ··                   · ··                   · ··   ASPEN   · ··                 │
+│   ·  BLUFF    · ·  · · · · · · · · · ·  ·  · · · · · · · · ·  ·  · ·  BLUFF ·  ·  · · · · · ··  │
+│   · · · · · · · · ·  · · · · · · · · ·  · · · · · · · · · ·  · · · · · · · · ·  · · · · · · ·  │
+└──────────────────────────────────── South Boundary — County Road ─────────────────────────────────┘
+</div>
+        <p style="font-size:0.85rem;color:var(--ink-soft);margin-bottom:0;"><strong>Map Key:</strong> Lines labeled with elevation in meters. Dotted areas (· · ·) are aspen bluffs (dense tree cover). The south boundary road is at approximately 680 m elevation. The grid is 800 m × 800 m (64 hectares / 160 acres).</p>
+      </div>
+    </div>
+
+    <!-- Exercise Steps -->
+    <div style="max-width:800px;margin:0 auto;padding:0 var(--step) 4rem;">
+
+      <!-- Step 1 -->
+      <div class="exercise-step" id="step-1">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">1</span>
+          <h2 style="margin:0;">Overall Slope Direction</h2>
+        </div>
+        <p><strong>Your turn:</strong> Look at the contour labels. In which direction does the land generally slope? Which way will water flow across this property?</p>
+        <p style="font-size:0.9rem;color:var(--ink-soft);">Hint: Water always flows perpendicular to contour lines, downhill — toward the lower elevation numbers.</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answer & Explanation</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Answer: The land slopes generally from north to south.</strong></p>
+            <p>The contour labels run from <strong>700 m at the north boundary</strong> down to approximately <strong>680 m at the south boundary road</strong>. That's a 20-meter drop over 800 meters — a gentle 2.5% overall slope.</p>
+            <p><strong>What this means for design:</strong> Water will flow southward across the property. Most runoff will exit at the south boundary along the county road. This tells us we need to capture water flowing south before it leaves the property — swales, ponds, and infiltration zones should be oriented east-west (roughly on contour) to intercept this southward flow.</p>
+            <p><strong>Notice also:</strong> The contours aren't perfectly straight. They bulge and indent. Those bulges (pointing downhill/south) are ridge lines. Those indents (pointing uphill/north) are valley lines. We'll map those in Step 4.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="exercise-step" id="step-2">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">2</span>
+          <h2 style="margin:0;">Find the Steep and Gentle Zones</h2>
+        </div>
+        <p><strong>Your turn:</strong> Where are the steepest parts of this property? Where is it flattest? Where would you NOT want to drive a tractor? Where could you safely put a building without worrying about erosion?</p>
+        <p style="font-size:0.9rem;color:var(--ink-soft);">Hint: Closely spaced contour lines = steep slope. Widely spaced lines = nearly flat.</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answer & Explanation</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Steepest areas:</strong> The <strong>west-central part of the property</strong> (around the 690-696 m contours) and the <strong>east side</strong> (around 684-692 m). These areas show contours bunched together — the slope here is roughly 6-8%, which is getting steep for vehicle access and buildings.</p>
+            <p><strong>Flattest areas:</strong> The <strong>north-central area</strong> (near 700 m) where contours are widely spaced — nearly flat plateau. Also the <strong>southwest corner</strong> near the road (680-684 m) is quite gentle.</p>
+            <p><strong>Design implications:</strong></p>
+            <ul>
+              <li><strong>Access road:</strong> Should avoid the steep west-central slope. The gentler gradient along the east side or a route that climbs gradually up the center would be easier (under 5% grade).</li>
+              <li><strong>House site:</strong> The flatter north-central area (700 m plateau) is building-friendly — no erosion concerns. But is it too exposed to wind? (We'll check that in the microclimate steps.)</li>
+              <li><strong>Swales:</strong> Will work well on the moderate mid-slope areas where contour spacing is moderate (not too tight, not too flat). 2-5% slope is ideal for swales.</li>
+              <li><strong>Pond:</strong> Needs enough catchment area above it. The valley areas (where contours indent northward) collect water from a larger area — better pond sites than ridge-tops.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="exercise-step" id="step-3">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">3</span>
+          <h2 style="margin:0;">Locate the Keypoint</h2>
+        </div>
+        <p><strong>Your turn:</strong> The keypoint is where the slope transitions from convex (rounded, shedding water) to concave (hollow, collecting water). Can you find it on this map? What contour line passes through it?</p>
+        <p style="font-size:0.9rem;color:var(--ink-soft);">Hint: Look for a change in contour spacing pattern — where the lines shift from being more widely spaced above to more closely spaced below, or where a bulge transitions to an indent.</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answer & Explanation</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Answer: The keypoint is approximately at the 692 m contour line, roughly in the central part of the property.</strong></p>
+            <p>Here's how to find it: Above 694 m, the contours are fairly evenly spaced (convex upper slope shedding water). Between 690-692 m, there's a bulge pattern that starts to transition — the contours begin indenting northward (concave, collecting water). This transition zone at ~692 m is your keypoint.</p>
+            <p><strong>Why this matters enormously:</strong> The <strong>keyline</strong> — the contour that passes through the keypoint — is the master reference line for water-harvesting design. Above the keyline, water naturally disperses. Below the keyline, water naturally concentrates. This tells us:</p>
+            <ul>
+              <li><strong>Swales above the keyline</strong> should be spaced farther apart (water is already spreading).</li>
+              <li><strong>Swales below the keyline</strong> should be spaced closer together (water is concentrating and could cause erosion).</li>
+              <li><strong>Keyline cultivation</strong> (if we were doing broadacre farming) would run parallel to the 692 m contour but with a slight grade toward ridge lines to redistribute water.</li>
+              <li><strong>The keyline contour (692 m) itself</strong> is usually an excellent location for a primary access track or a major tree line — it's the hinge point of the landscape.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="exercise-step" id="step-4">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">4</span>
+          <h2 style="margin:0;">Map the Ridge Lines and Valley Lines</h2>
+        </div>
+        <p><strong>Your turn:</strong> Trace the ridges (where water sheds off) and valleys (where water collects). Use the contour bulge/indent pattern: ridges bulge downhill (south), valleys indent uphill (north).</p>
+        <p style="font-size:0.9rem;color:var(--ink-soft);">Hint: There are two major ridges and two major valleys on this property.</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answer & Explanation</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Ridge 1 (West Ridge):</strong> Look at the 694-698 m contours — they bulge southward near the west edge. This ridge runs roughly north-south along the west side of the property.</p>
+            <p><strong>Ridge 2 (East-Central Ridge):</strong> The 688-694 m contours bulge southward in the east-central area. A second ridge running north-south.</p>
+            <p><strong>Valley 1 (Central Valley):</strong> Between the two ridges, the contours indent northward — the 692 m contour is pulled into a north-pointing V. <strong>This is the primary drainage of the property.</strong> Water from both ridges collects here and flows south toward the road.</p>
+            <p><strong>Valley 2 (East Valley):</strong> Near the east edge, around the aspen bluff, contours indent northward again — a secondary drainage.</p>
+            <p><strong>Design implications:</strong></p>
+            <ul>
+              <li><strong>Pond location:</strong> Valley 1 (Central Valley) is the obvious pond site — it collects water from the largest catchment area. Build the pond where the valley narrows slightly (around 688-690 m) to minimize dam length while maximizing storage.</li>
+              <li><strong>Swale placement:</strong> Swales should start on ridge lines and extend into valleys — intercepting water as it begins to concentrate.</li>
+              <li><strong>House site:</strong> A ridge-top location (Ridge 1 or Ridge 2) provides good drainage, views, and avoids the cold air pooling we'll identify in Step 6.</li>
+              <li><strong>Access road:</strong> Avoid crossing the valley bottom where water concentrates. Cross valleys at their narrowest point or use a culvert.</li>
+              <li><strong>Market garden:</strong> Valley bottoms are frost-prone (cold air pools there) — not ideal. But the gentle lower slopes of valleys have deep soil (topsoil washed down from ridges) — great for growing if protected from frost.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 5 -->
+      <div class="exercise-step" id="step-5">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">5</span>
+          <h2 style="margin:0;">Calculate Slope Percentages</h2>
+        </div>
+        <p><strong>Your turn:</strong> Let's calculate the actual slope in three key areas. The formula is: <strong>Slope % = (elevation change ÷ horizontal distance) × 100</strong></p>
+        <p>On this map, the grid is 800 m × 800 m. Each contour interval is 2 meters of elevation change. Estimate the horizontal distance between contours using the grid lines, then calculate the slope.</p>
+        <div style="background:rgba(231,233,225,0.4);padding:1.25rem;border-radius:6px;margin-bottom:1rem;">
+          <p style="margin:0 0 0.75rem;"><strong>Calculate these three:</strong></p>
+          <ol style="line-height:1.8;">
+            <li><strong>West-Central Steep Zone:</strong> From 690 m to 696 m contour — horizontal distance is roughly 100 m. What's the slope %?</li>
+            <li><strong>Gentle North Plateau:</strong> From 698 m to 700 m contour — horizontal distance is roughly 200 m. What's the slope %?</li>
+            <li><strong>Access Road Route:</strong> If you drive from the south road (680 m) to a house site at 694 m over a 350 m horizontal distance, what's the road grade?</li>
+          </ol>
+        </div>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answers</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>1. West-Central Steep Zone:</strong> (696 − 690) ÷ 100 × 100 = <strong>6% slope</strong></p>
+            <p style="margin-left:1rem;">This is steep enough to cause vehicle traction issues in wet conditions and is above the ideal range for swales. It's better suited for permanent vegetation (pasture, trees) than cultivation or buildings.</p>
+
+            <p><strong>2. Gentle North Plateau:</strong> (700 − 698) ÷ 200 × 100 = <strong>1% slope</strong></p>
+            <p style="margin-left:1rem;">Nearly flat — excellent for buildings and intensive gardens. But at 1%, drainage needs attention: water won't flow away quickly, so you might need shallow diversion drains to prevent waterlogging around foundations.</p>
+
+            <p><strong>3. Access Road:</strong> (694 − 680) ÷ 350 × 100 = <strong>4% grade</strong></p>
+            <p style="margin-left:1rem;">This is acceptable for a gravel driveway. The general rule: keep access roads under 10% grade. At 4%, a standard truck or tractor handles it easily in all conditions. If the road were steeper than 8%, you'd want to consider switchbacks or a different route.</p>
+
+            <p><strong>Practical thresholds to remember:</strong></p>
+            <ul>
+              <li>0–2%: Very gentle — watch for drainage issues</li>
+              <li>2–5%: Ideal for swales, access roads, most buildings</li>
+              <li>5–10%: Swales still work but need closer spacing; roads OK with good surface; buildings need minor cut-and-fill</li>
+              <li>10–15%: Challenging — swales need careful spacing; roads risk erosion; buildings need significant earthwork</li>
+              <li>15%+: Generally too steep for cultivation; best left in permanent vegetation or terraced</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6 -->
+      <div class="exercise-step" id="step-6">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">6</span>
+          <h2 style="margin:0;">Identify Frost Pockets & Cold Air Flow</h2>
+        </div>
+        <p><strong>Your turn:</strong> Cold air behaves like water — it flows downhill and pools in low spots with no outlet. Looking at the contour lines, where will cold air drain to on a clear spring night? Which areas are frost pockets? Which areas are thermal belts (warmer mid-slope positions)?</p>
+        <p style="font-size:0.9rem;color:var(--ink-soft);">Hint: Enclosed basins and valley bottoms with no downhill exit are frost traps. Mid-slope locations stay warmer because cold air drains past them.</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Answer & Explanation</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Frost pockets:</strong></p>
+            <ul>
+              <li><strong>Central Valley bottom (around 684-688 m):</strong> Cold air from both ridges drains into this valley and flows south. At 684 m, near the south boundary, the valley flattens out — cold air slows and pools here. <strong>This is the worst frost risk on the property.</strong></li>
+              <li><strong>East Valley bottom (around 682-684 m near the aspen bluff):</strong> A secondary cold air collection zone.</li>
+            </ul>
+            <p><strong>Thermal belts (warmer locations):</strong></p>
+            <ul>
+              <li><strong>Mid-slope on both ridges, around 690-694 m:</strong> Cold air drains past these locations downhill. On a clear spring night, these spots could be 2-4°C warmer than the valley bottoms. In Alberta, that's the difference between fruit blossoms surviving a late frost or losing the entire crop.</li>
+              <li><strong>The 700 m north plateau:</strong> High elevation means it's exposed (more wind chill), but cold air can't pool here because it drains away to the south. The tradeoff: less frost risk, more wind exposure.</li>
+            </ul>
+            <p><strong>Design decisions driven by this analysis:</strong></p>
+            <ul>
+              <li><strong>Market garden:</strong> NOT in the central valley bottom. Place it on the <strong>gentle mid-slope thermal belt at 690-694 m on Ridge 1</strong> (west ridge). It'll get better frost protection and still be accessible from the house.</li>
+              <li><strong>Orchard / fruit trees:</strong> Also needs the thermal belt. The east-facing slope of Ridge 1 (around 692 m) gets morning sun and frost drainage — ideal for early-blooming fruit.</li>
+              <li><strong>Pond:</strong> Can be in the valley bottom (684-688 m) because water has thermal mass — a pond actually <em>moderates</em> nearby temperatures and can create a warmer microclimate.</li>
+              <li><strong>House site:</strong> Ridge 1 at 694-696 m gives you the thermal belt advantage plus good solar access and drainage.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7 -->
+      <div class="exercise-step" id="step-7">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">7</span>
+          <h2 style="margin:0;">Plan Water-Harvesting Features on Contour</h2>
+        </div>
+        <p><strong>Your turn:</strong> Now put it all together. Based on everything you've analyzed, mark on the map where you would place:</p>
+        <ol style="line-height:1.8;">
+          <li><strong>Three swales</strong> on contour to hydrate a food forest on the mid-to-lower slope</li>
+          <li><strong>One pond</strong> with enough catchment</li>
+          <li><strong>A diversion drain</strong> to protect the house site from upslope runoff</li>
+        </ol>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal Suggested Design</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Swale 1 (Upper Swale):</strong> At approximately <strong>694 m contour</strong> on Ridge 1 (west ridge), running east-west. This swale intercepts water near the top of the slope, before it gains velocity. Tree line planted immediately downhill on the berm.</p>
+
+            <p><strong>Swale 2 (Mid Swale):</strong> At approximately <strong>690 m contour</strong> on the same slope, about 60-70 m downhill from Swale 1. Spacing between swales should be roughly: (elevation difference between swales ÷ slope %) × 100. At 4 m drop and ~5% slope: 4 ÷ 0.05 = 80 m spacing. The 690 m contour provides good spacing.</p>
+
+            <p><strong>Swale 3 (Lower Swale):</strong> At approximately <strong>686 m contour</strong>, above the valley bottom pond. This swale catches any water that made it past Swales 1 and 2, and overflows into the pond.</p>
+
+            <p><strong>Pond:</strong> In the <strong>Central Valley at 684-686 m</strong>, where the valley narrows slightly. The catchment area above the pond (the valley and both ridge slopes above 686 m) is roughly 25-30 hectares — more than enough to fill a 1,500-2,000 m³ pond from snowmelt alone. Build the dam across the narrowest point of the valley to minimize earthmoving. Include a spillway at the 686.5 m level to safely pass overflow during extreme rain events.</p>
+
+            <p><strong>Diversion Drain:</strong> Above the house site (house at Ridge 1, ~696 m), place a shallow diversion drain at the <strong>698 m contour</strong> that intercepts any runoff from the north plateau and channels it east, away from the house foundation, toward the swale system. The drain should have a gentle 1% grade to keep water moving without erosion.</p>
+
+            <p><strong>Gravity-fed irrigation:</strong> If the pond surface is at 686 m and the market garden is at 692 m on Ridge 1, that's only a 6 m elevation difference — not enough head pressure for drip irrigation (you typically want 10+ meters of head, or ~1 bar / 15 PSI). Consider either: (a) placing the garden lower, at 688 m, or (b) using a small solar pump to boost pressure from the pond.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 8 -->
+      <div class="exercise-step" id="step-8">
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.75rem;">
+          <span style="background:var(--berry);color:var(--paper);width:2rem;height:2rem;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;">8</span>
+          <h2 style="margin:0;">Translate to On-Site Markers</h2>
+        </div>
+        <p><strong>Your turn:</strong> The map work is done. Now you need to verify and mark everything on the actual ground. What tools do you use? What do you check? What might be different on the ground from what the map shows?</p>
+        <div class="reveal-section">
+          <button class="reveal-btn" onclick="toggleReveal(this)" aria-expanded="false">
+            <span>💡 Reveal On-Site Checklist</span>
+            <span class="reveal-arrow">▼</span>
+          </button>
+          <div class="reveal-content">
+            <p><strong>Tools you'll need:</strong></p>
+            <ul>
+              <li><strong>Laser level or A-frame level:</strong> To find and mark exact contour lines. The map gave you approximate elevations — the laser tells you exactly where the 694 m contour is on the ground.</li>
+              <li><strong>Flagging tape & stakes:</strong> Mark every 10-20 meters along the contour so you can see the line.</li>
+              <li><strong>Measuring wheel or tape:</strong> To measure horizontal distances and verify swale spacing.</li>
+              <li><strong>GPS or phone with mapping app:</strong> To confirm you're at the right location and elevation.</li>
+              <li><strong>Notebook & camera:</strong> Document everything — photos from fixed points become your baseline monitoring record.</li>
+            </ul>
+
+            <p><strong>What to verify on the ground:</strong></p>
+            <ul>
+              <li><strong>Contour accuracy:</strong> Satellite-derived contours (likely what your map is based on) can be off by 1-3 meters vertically and 5-20 meters horizontally. The ground truth always wins. If the 694 m contour on the map is actually at 693.2 m, adjust your design accordingly.</li>
+              <li><strong>Soil conditions:</strong> Are the ridge tops rocky? Is the valley bottom heavy clay? These determine infiltration rates, which affect swale spacing and pond sealing requirements.</li>
+              <li><strong>Existing vegetation:</strong> Those aspen bluffs on the map — are they still there? Are they healthy? Native vegetation tells you about soil moisture, aspect, and microclimate better than any map.</li>
+              <li><strong>Water flow evidence:</strong> Look for rills, sediment deposits, flattened grass, or debris lines that show where water actually flows. If the map says the valley drains south but on-site evidence shows water pooling in the east corner, trust the evidence.</li>
+              <li><strong>Neighbor drainage:</strong> Does water enter the property from the north or west boundaries? The map only shows your quarter-section, but water doesn't respect property lines.</li>
+            </ul>
+
+            <p><strong>Marking sequence:</strong></p>
+            <ol>
+              <li>Start with the <strong>keyline (692 m)</strong> — flag it first. This is your master reference.</li>
+              <li>Mark the <strong>pond site</strong> and estimate the full-pool level.</li>
+              <li>Flag the <strong>three swale contours</strong> at 694 m, 690 m, and 686 m.</li>
+              <li>Walk each flagged line. Does it feel right? Adjust any sections that cross obvious rock outcrops, wet seeps, or large trees.</li>
+              <li>Mark the <strong>house site and access road route</strong>.</li>
+              <li>Leave flagging in place for at least a full season if possible — watch how water moves across your lines during a rainstorm or snowmelt before you start digging.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary -->
+      <div style="background:var(--ground);border-radius:6px;padding:2rem;margin-top:2rem;border-left:4px solid var(--ok);">
+        <h2 style="margin-top:0;">✅ Exercise Complete — What You Just Did</h2>
+        <p>You analyzed a real-feeling Alberta property from raw contour data to a complete placement plan. The workflow you just practiced — slope direction → steep/gentle zones → keypoint → ridges & valleys → slope % → frost pockets → feature placement → ground verification — is the same workflow our design team uses on every project.</p>
+        <p><strong>The map gave you the big patterns. The ground verification gives you the truth.</strong> Together, they transform abstract elevation numbers into a working landscape where water is captured, plants thrive in the right microclimates, and the house sits where it belongs.</p>
+        <p style="margin-bottom:0;"><a href="/learn/tools/#contour-mapping">← Back to Contour Mapping Tool</a> &nbsp;|&nbsp; <a href="/learn/drivers/water-management/">Explore Water Management →</a></p>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-block" style="margin-top:3rem;">
+        <h2>Ready to Apply This to Your Property?</h2>
+        <p>We analyze contour maps every day for Alberta acreages, farms, and homesteads. Let us do the analysis for your land.</p>
+        <div class="cta-group">
+          <a href="/design/" class="btn btn-primary">Start Your Site Design</a>
+          <a href="/contact/" class="btn btn-secondary">Book a Consultation</a>
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="inner">
+      <div class="footer-content">
+        <div class="footer-section"><strong>Expanding Edge Permaculture</strong><p>Building Canada's largest permaculture implementation company — Alberta and Western Canada.</p></div>
+        <div class="footer-section"><strong>Quick Links</strong><ul><li><a href="/#services">Services</a></li><li><a href="/learn/">Learn</a></li><li><a href="/design/">Site Design Tool</a></li><li><a href="/contact/">Contact</a></li></ul></div>
+        <div class="footer-section"><strong>Contact</strong><p><a href="tel:7802363630">(780) 236-3630</a></p><p><a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a></p><p>Alberta, Canada · Serving Western Canada</p></div>
+      </div>
+      <div class="footer-bottom"><p>&copy; 2026 Expanding Edge Permaculture. All rights reserved.</p></div>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+  <script>
+    // Reveal toggle for exercise steps
+    function toggleReveal(btn) {
+      const expanded = btn.getAttribute('aria-expanded') === 'true';
+      btn.setAttribute('aria-expanded', !expanded);
+      const content = btn.nextElementSibling;
+      if (content) {
+        content.style.display = expanded ? 'none' : 'block';
+      }
+    }
+  </script>
+
+  <style>
+    .exercise-step {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .exercise-step:last-of-type {
+      border-bottom: none;
+    }
+    .reveal-section {
+      margin-top: 1rem;
+    }
+    .reveal-btn {
+      width: 100%;
+      text-align: left;
+      background: rgba(126, 90, 150, 0.08);
+      border: 1px solid var(--berry-lo);
+      border-radius: 6px;
+      padding: 0.75rem 1.25rem;
+      font-family: 'Bricolage Grotesque', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--berry);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: background 0.2s;
+    }
+    .reveal-btn:hover {
+      background: rgba(126, 90, 150, 0.14);
+    }
+    .reveal-btn[aria-expanded="true"] {
+      background: rgba(126, 90, 150, 0.14);
+      border-bottom-left-radius: 0;
+      border-bottom-right-radius: 0;
+    }
+    .reveal-arrow {
+      margin-left: auto;
+      transition: transform 0.3s;
+      font-size: 0.75rem;
+    }
+    .reveal-btn[aria-expanded="true"] .reveal-arrow {
+      transform: rotate(180deg);
+    }
+    .reveal-content {
+      display: none;
+      border: 1px solid var(--line);
+      border-top: none;
+      border-radius: 0 0 6px 6px;
+      padding: 1.25rem 1.5rem;
+      background: rgba(231, 233, 225, 0.3);
+      line-height: 1.8;
+      color: var(--ink-soft);
+    }
+    .reveal-content p {
+      margin-bottom: 0.75rem;
+    }
+    .reveal-content ul, .reveal-content ol {
+      margin-bottom: 0.75rem;
+      padding-left: 1.25rem;
+    }
+    .reveal-content li {
+      margin-bottom: 0.35rem;
+    }
+    .reveal-content strong {
+      color: var(--ink);
+    }
+  </style>
+</body>
+</html>

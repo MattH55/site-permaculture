@@ -1,0 +1,23 @@
+# Exclude non-app workspace files from Vercel upload
+*.docx
+*.pptx
+*.pdf
+*.xls
+*.xlsx
+*.zip
+*.jpg
+*.png
+*.ppt
+*.doc
+.claude/
+Alberta Agriculture Brand/
+Financials/
+Grants/
+Logo Kit/
+Pics/
+prepper-homestead.html
+turnkey-homestead.html
+vercel-build/
+server.express.js
+files (2).zip
+files (3).zip

@@ -1,4 +1,4 @@
-/**
+/** 
  * Box → report pipeline: geometry → live layers → site-design schema → rules.
  */
 

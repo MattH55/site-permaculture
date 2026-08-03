@@ -1,0 +1,210 @@
+/**
+ * Alberta county-level (Census Division) demographics from 2021 Census.
+ * Approximates CD from latitude bands + longitude refinements.
+ */
+
+const CD_DATA = {
+  // CD 1 — Medicine Hat / Cypress County
+  4801: {
+    name: 'Division No. 1 (Cypress County / Medicine Hat)',
+    pop: 82571, dwellings: 37072, density: 4.0,
+    medianAge: 40.8, medianIncome: 38400, hhSize: 2.3,
+    ownerPct: 72.5, bachelorPct: 17.2, lfpPct: 62.8,
+    carPct: 89.1, agPct: 12.5,
+  },
+  // CD 2 — Lethbridge / Taber
+  4802: {
+    name: 'Division No. 2 (Lethbridge / Taber / Coaldale)',
+    pop: 175098, dwellings: 70964, density: 10.2,
+    medianAge: 36.8, medianIncome: 39700, hhSize: 2.5,
+    ownerPct: 70.2, bachelorPct: 23.1, lfpPct: 65.4,
+    carPct: 87.6, agPct: 8.2,
+  },
+  // CD 3 — Cardston / Pincher Creek
+  4803: {
+    name: 'Division No. 3 (Cardston / Pincher Creek / Crowsnest)',
+    pop: 40565, dwellings: 16531, density: 2.9,
+    medianAge: 38.5, medianIncome: 35600, hhSize: 2.7,
+    ownerPct: 76.8, bachelorPct: 16.5, lfpPct: 61.3,
+    carPct: 90.4, agPct: 15.8,
+  },
+  // CD 4 — Hanna / Oyen
+  4804: {
+    name: 'Division No. 4 (Hanna / Oyen / Special Areas)',
+    pop: 9108, dwellings: 3900, density: 0.4,
+    medianAge: 45.2, medianIncome: 34200, hhSize: 2.2,
+    ownerPct: 74.1, bachelorPct: 12.8, lfpPct: 58.5,
+    carPct: 88.3, agPct: 28.4,
+  },
+  // CD 5 — Drumheller / Strathmore
+  4805: {
+    name: 'Division No. 5 (Drumheller / Strathmore / Wheatland)',
+    pop: 58756, dwellings: 23457, density: 3.5,
+    medianAge: 42.1, medianIncome: 37800, hhSize: 2.4,
+    ownerPct: 75.2, bachelorPct: 15.8, lfpPct: 63.2,
+    carPct: 89.8, agPct: 14.2,
+  },
+  // CD 6 — Calgary
+  4806: {
+    name: 'Division No. 6 (Calgary / Airdrie / Cochrane)',
+    pop: 1485344, dwellings: 573025, density: 115.8,
+    medianAge: 38.0, medianIncome: 48500, hhSize: 2.6,
+    ownerPct: 68.8, bachelorPct: 35.6, lfpPct: 71.2,
+    carPct: 79.5, agPct: 0.6,
+  },
+  // CD 7 — Stettler / Wainwright
+  4807: {
+    name: 'Division No. 7 (Stettler / Wainwright / Provost)',
+    pop: 41012, dwellings: 17065, density: 2.1,
+    medianAge: 41.8, medianIncome: 37500, hhSize: 2.3,
+    ownerPct: 76.5, bachelorPct: 13.5, lfpPct: 64.8,
+    carPct: 88.9, agPct: 18.5,
+  },
+  // CD 8 — Red Deer / Lacombe
+  4808: {
+    name: 'Division No. 8 (Red Deer / Lacombe / Sylvan Lake)',
+    pop: 217526, dwellings: 87543, density: 13.7,
+    medianAge: 37.4, medianIncome: 43200, hhSize: 2.5,
+    ownerPct: 71.5, bachelorPct: 21.8, lfpPct: 68.5,
+    carPct: 88.2, agPct: 5.8,
+  },
+  // CD 9 — Rocky Mountain House
+  4809: {
+    name: 'Division No. 9 (Rocky Mountain House / Caroline)',
+    pop: 21184, dwellings: 9175, density: 1.1,
+    medianAge: 42.5, medianIncome: 36200, hhSize: 2.3,
+    ownerPct: 77.2, bachelorPct: 13.1, lfpPct: 60.5,
+    carPct: 89.5, agPct: 12.8,
+  },
+  // CD 10 — Lloydminster / Vermilion
+  4810: {
+    name: 'Division No. 10 (Lloydminster / Vermilion / Two Hills)',
+    pop: 96527, dwellings: 38529, density: 4.8,
+    medianAge: 37.8, medianIncome: 41400, hhSize: 2.5,
+    ownerPct: 72.8, bachelorPct: 16.5, lfpPct: 65.8,
+    carPct: 90.2, agPct: 11.2,
+  },
+  // CD 11 — Edmonton / St. Albert / Sherwood Park
+  4811: {
+    name: 'Division No. 11 (Edmonton / St. Albert / Sherwood Park)',
+    pop: 1424961, dwellings: 573875, density: 90.5,
+    medianAge: 37.6, medianIncome: 50200, hhSize: 2.6,
+    ownerPct: 65.5, bachelorPct: 31.8, lfpPct: 70.5,
+    carPct: 82.1, agPct: 0.5,
+  },
+  // CD 12 — Cold Lake / Bonnyville
+  4812: {
+    name: 'Division No. 12 (Cold Lake / Bonnyville / St. Paul)',
+    pop: 69664, dwellings: 27466, density: 2.2,
+    medianAge: 36.2, medianIncome: 45600, hhSize: 2.6,
+    ownerPct: 73.5, bachelorPct: 14.8, lfpPct: 67.2,
+    carPct: 90.8, agPct: 8.5,
+  },
+  // CD 13 — Athabasca / Westlock
+  4813: {
+    name: 'Division No. 13 (Athabasca / Westlock / Barrhead)',
+    pop: 71872, dwellings: 30258, density: 2.9,
+    medianAge: 41.2, medianIncome: 38500, hhSize: 2.4,
+    ownerPct: 78.2, bachelorPct: 15.2, lfpPct: 63.5,
+    carPct: 90.5, agPct: 10.8,
+  },
+  // CD 14 — Edson / Hinton / Jasper
+  4814: {
+    name: 'Division No. 14 (Edson / Hinton / Jasper)',
+    pop: 29520, dwellings: 12261, density: 1.1,
+    medianAge: 39.5, medianIncome: 46800, hhSize: 2.4,
+    ownerPct: 73.5, bachelorPct: 15.8, lfpPct: 65.2,
+    carPct: 86.5, agPct: 3.2,
+  },
+  // CD 15 — Canmore / Banff
+  4815: {
+    name: 'Division No. 15 (Canmore / Banff / Kananaskis)',
+    pop: 38482, dwellings: 14525, density: 1.4,
+    medianAge: 40.2, medianIncome: 52200, hhSize: 2.3,
+    ownerPct: 68.5, bachelorPct: 38.2, lfpPct: 72.5,
+    carPct: 72.8, agPct: 0.8,
+  },
+  // CD 16 — Fort McMurray / Wood Buffalo
+  4816: {
+    name: 'Division No. 16 (Fort McMurray / Wood Buffalo / Lac La Biche)',
+    pop: 74405, dwellings: 30434, density: 0.8,
+    medianAge: 33.8, medianIncome: 62800, hhSize: 2.6,
+    ownerPct: 64.8, bachelorPct: 20.5, lfpPct: 72.8,
+    carPct: 85.2, agPct: 1.5,
+  },
+  // CD 17 — Slave Lake / High Prairie
+  4817: {
+    name: 'Division No. 17 (Slave Lake / High Prairie / Valleyview)',
+    pop: 62042, dwellings: 24486, density: 0.3,
+    medianAge: 35.5, medianIncome: 38800, hhSize: 2.7,
+    ownerPct: 69.2, bachelorPct: 14.2, lfpPct: 62.5,
+    carPct: 87.8, agPct: 8.8,
+  },
+  // CD 18 — Grande Cache / Fox Creek
+  4818: {
+    name: 'Division No. 18 (Grande Cache / Fox Creek / Greenview)',
+    pop: 14582, dwellings: 5822, density: 0.4,
+    medianAge: 38.5, medianIncome: 48200, hhSize: 2.5,
+    ownerPct: 75.8, bachelorPct: 12.5, lfpPct: 66.2,
+    carPct: 88.5, agPct: 4.5,
+  },
+  // CD 19 — Grande Prairie / Peace River
+  4819: {
+    name: 'Division No. 19 (Grande Prairie / Peace River / Fairview)',
+    pop: 123218, dwellings: 50412, density: 2.2,
+    medianAge: 35.2, medianIncome: 46800, hhSize: 2.6,
+    ownerPct: 69.8, bachelorPct: 18.5, lfpPct: 69.5,
+    carPct: 89.8, agPct: 7.2,
+  },
+};
+
+function cdForLatLng(lat, lng) {
+  // CD assignment by approximate bands, refined by longitude
+  if (lat < 49.3) return '4802';  // CD2 (Lethbridge south)
+  if (lat < 49.8) return lng < -111.5 ? '4801' : '4802';
+  if (lat < 50.3) return lng < -112.8 ? '4803' : lng < -111 ? '4801' : '4802';
+  if (lat < 50.8) return lng < -113.5 ? '4803' : lng < -112 ? '4805' : '4802';
+  if (lat < 51.2) return lng < -114 ? '4803' : '4805';
+  if (lat < 51.6) return lng < -114.5 ? '4815' : lng < -113.8 ? '4806' : '4805';
+  if (lat < 52.0) return lng < -115 ? '4815' : lng < -113.8 ? '4806' : lng < -112.5 ? '4805' : '4807';
+  if (lat < 52.4) return lng < -114.3 ? '4809' : lng < -113.5 ? '4808' : '4807';
+  if (lat < 52.9) return lng < -114.5 ? '4809' : lng < -113 ? '4808' : '4810';
+  if (lat < 53.4) return lng < -114.5 ? '4814' : lng < -113 ? '4811' : '4810';
+  if (lat < 53.9) return lng < -115 ? '4814' : lng < -113 ? '4811' : '4813';
+  if (lat < 54.3) return lng < -114.5 ? '4818' : lng < -113 ? '4813' : '4812';
+  if (lat < 54.8) return lng < -116 ? '4818' : lng < -113 ? '4813' : '4812';
+  if (lat < 55.3) return lng < -116 ? '4818' : '4817';
+  if (lat < 55.9) return lng < -114 ? '4817' : '4816';
+  if (lat < 56.5) return lng < -114 ? '4817' : '4816';
+  if (lat < 57.5) return lng < -116 ? '4819' : '4816';
+  if (lat < 59) return lng < -116 ? '4819' : '4816';
+  return '4819'; // far north
+}
+
+export function demographicsHeuristic(centre) {
+  const { latitude, longitude } = centre;
+  const cdCode = cdForLatLng(latitude, longitude);
+  const cd = CD_DATA[cdCode] || CD_DATA['4811']; // fallback Edmonton
+
+  return {
+    available: true,
+    geography_name: cd.name,
+    geography_level: 'Census Division (county equivalent)',
+    census_year: 2021,
+    demographics: {
+      total_population: { value: cd.pop, unit: 'persons', label: 'Population 2021' },
+      total_dwellings: { value: cd.dwellings, unit: 'dwellings', label: 'Total private dwellings' },
+      pop_density_per_km2: { value: cd.density, unit: '/km²', label: 'Population density' },
+      median_age: { value: cd.medianAge, unit: 'years', label: 'Median age' },
+      median_after_tax_income: { value: cd.medianIncome, unit: '$', label: 'Median after-tax income' },
+      avg_household_size: { value: cd.hhSize, unit: 'persons', label: 'Average household size' },
+      pct_owner_households: { value: cd.ownerPct, unit: '%', label: 'Owner households' },
+      pct_bachelor_or_higher: { value: cd.bachelorPct, unit: '%', label: 'Bachelor degree or higher' },
+      pct_labour_force_participation: { value: cd.lfpPct, unit: '%', label: 'Labour force participation rate' },
+      pct_car_truck_van_commute: { value: cd.carPct, unit: '%', label: 'Commute by car/truck/van' },
+      pct_ag_forestry_fishing_industry: { value: cd.agPct, unit: '%', label: 'Ag/forestry/fishing industry' },
+    },
+    methodology: `2021 Census Profile for ${cd.name} (approximated from parcel centroid)`,
+    source_url: 'https://www12.statcan.gc.ca/census-recensement/2021/dp-pd/prof/',
+  };
+}

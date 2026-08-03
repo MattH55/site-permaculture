@@ -1,0 +1,102 @@
+═══════════════════════════════════════════════════════════════════
+EXPANDING EDGE PERMACULTURE — QUICK DEPLOYMENT GUIDE
+═══════════════════════════════════════════════════════════════════
+
+Your site is ready. Use this for fastest deployment:
+
+STEP 1: DOWNLOAD WINSCP
+━━━━━━━━━━━━━━━━━━━━━━━━
+Go to: https://winscp.net/download/WinSCP-6.3.6-Setup.exe
+Install it (portable version available too)
+
+STEP 2: CONNECT TO YOUR SERVER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+In WinSCP, click "New Site" and enter:
+
+  Protocol:  FTP
+  Host:      ftp.prosperapolarplunge.com
+  Port:      21
+  Username:  DeLeeuw@makealbertagreatagain.live
+  Password:  VUlovelovelove69
+  
+  Encryption: TLS/SSL Explicit
+  (This is IMPORTANT — the server requires FTPS)
+
+Click "Connect"
+
+STEP 3: NAVIGATE & UPLOAD
+━━━━━━━━━━━━━━━━━━━━━━━━
+On the RIGHT side (Remote), navigate to:
+  /home/prossswh/makealbertagreatagain.live
+
+On the LEFT side (Local), open this folder:
+  C:\Users\matth\OneDrive\Documents\Sovereign Policy Institute\Permaculture\Expanding Edge\Expanding Edge Website
+
+Drag these from left to right:
+  ✓ public/  (entire folder)
+  ✓ server.js
+  ✓ package.json
+  ✓ README.md
+
+STEP 4: INSTALL & RUN
+━━━━━━━━━━━━━━━━━━━━━
+SSH into your server (or use WinSCP terminal):
+  
+  cd /home/prossswh/makealbertagreatagain.live
+  npm install
+  npm start
+
+Or use PM2 for always-on:
+  npm install -g pm2
+  pm2 start server.js --name expanding-edge
+  pm2 save
+  pm2 startup
+
+STEP 5: VERIFY
+━━━━━━━━━━━━━━━━
+Visit: https://makealbertagreatagain.live
+Should see homepage with navigation, services, form, etc.
+
+═══════════════════════════════════════════════════════════════════
+
+TROUBLESHOOTING:
+────────────────
+Q: Connection refused?
+A: Make sure "TLS/SSL Explicit" is selected in WinSCP
+
+Q: Directory not found?
+A: WinSCP will create directories automatically on drag-drop
+
+Q: Site shows blank?
+A: Verify all files in public/ uploaded (check WinSCP transfer log)
+
+Q: styles.css not loading?
+A: Clear browser cache (Ctrl+Shift+Delete)
+
+═══════════════════════════════════════════════════════════════════
+
+📁 FILE CHECKLIST
+After upload, your server should have:
+  /home/prossswh/makealbertagreatagain.live/
+  ├── public/
+  │   ├── index.html ✓
+  │   ├── about.html ✓
+  │   ├── contact.html ✓
+  │   ├── design.html ✓
+  │   ├── styles.css ✓
+  │   ├── robots.txt ✓
+  │   └── sitemap.xml ✓
+  ├── server.js ✓
+  └── package.json ✓
+
+═══════════════════════════════════════════════════════════════════
+
+FTP CREDENTIALS (save for future):
+  Host: ftp.prosperapolarplunge.com
+  User: DeLeeuw@makealbertagreatagain.live
+  Pass: VUlovelovelove69
+  Port: 21 (with FTPS/TLS Explicit)
+
+⚠️  AFTER DEPLOYMENT: Change this password!
+
+═══════════════════════════════════════════════════════════════════

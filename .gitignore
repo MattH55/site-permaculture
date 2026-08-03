@@ -27,7 +27,6 @@ vercel-build/
 .env*
 
 # Large binary databases and data folders
-abwells_extracted/
 *.mdb
 *.sqlite
 *.geojson

@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <!-- Home -->
+  <url>
+    <loc>https://makealbertagreatagain.live/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+  <!-- Service Areas (Alberta & Western Canada) -->
+  <url>
+    <loc>https://makealbertagreatagain.live/service-areas/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.95</priority>
+  </url>
+  <!-- Edmonton city page -->
+  <url>
+    <loc>https://makealbertagreatagain.live/edmonton/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.92</priority>
+  </url>
+  <!-- Calgary city page -->
+  <url>
+    <loc>https://makealbertagreatagain.live/calgary/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.92</priority>
+  </url>
+  <!-- Case studies hub -->
+  <url>
+    <loc>https://makealbertagreatagain.live/case-studies/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <!-- Case study: Alberta acreage -->
+  <url>
+    <loc>https://makealbertagreatagain.live/case-studies/alberta-acreage/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <!-- Resources hub -->
+  <url><loc>https://makealbertagreatagain.live/resources/</loc><lastmod>2026-07-30</lastmod><changefreq>weekly</changefreq><priority>0.95</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/frost-dashboard/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/plant-finder/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/swale-calculator/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/rainwater-calculator/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/food-forest-builder/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/shelterbelt-designer/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/zone-planner/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/budget-builder/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/pond-estimator/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/grazing-planner/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/tools/guild-recipes/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/dashboards/ecoregion-packs/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/dashboards/seasonal-calendar/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/dashboards/property-report-lite/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/dashboards/wet-areas/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/dashboards/implementation-metrics/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://makealbertagreatagain.live/resources/templates/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://makealbertagreatagain.live/courses/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.9</priority></url>
+  <url><loc>https://makealbertagreatagain.live/courses/cold-climate-foundations/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/courses/water-on-contour/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/labs/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://makealbertagreatagain.live/labs/sector-mapping/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://makealbertagreatagain.live/labs/microclimate-walk/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://makealbertagreatagain.live/labs/photo-monitoring/</loc><lastmod>2026-07-30</lastmod><changefreq>monthly</changefreq><priority>0.75</priority></url>
+  <!-- About -->
+  <url>
+    <loc>https://makealbertagreatagain.live/about/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <!-- Design -->
+  <url>
+    <loc>https://makealbertagreatagain.live/design/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <!-- Contact -->
+  <url>
+    <loc>https://makealbertagreatagain.live/contact/</loc>
+    <lastmod>2026-07-30</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <!-- Learn / Toolbox Landing -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <!-- Ethics -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/ethics/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Principles Grid -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Principle: Observe and Interact -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/observe-and-interact/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Catch and Store Energy -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/catch-and-store-energy/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Obtain a Yield -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/obtain-a-yield/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Apply Self-Regulation -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/apply-self-regulation-and-accept-feedback/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Use and Value Renewable -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/use-and-value-renewable-resources/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Produce No Waste -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/produce-no-waste/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Design from Patterns -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/design-from-patterns-to-details/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Integrate -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/integrate-rather-than-segregate/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Small and Slow -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/use-small-and-slow-solutions/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Use and Value Diversity -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/use-and-value-diversity/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Edges and Marginal -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/use-edges-and-value-the-marginal/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Principle: Respond to Change -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/principles/creatively-use-and-respond-to-change/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <!-- Drivers Overview -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/drivers/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <!-- Driver: Climate -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/climate-energy-flows/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Landform -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/landform-topography/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Water Management -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.8</priority></url>
+  <!-- Water: Swales -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/swales/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Check Dams -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/check-dams/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Contour Plantings -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/contour-plantings/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Induced Meandering -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/induced-meandering/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Ponds -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/ponds/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Soil Infiltration -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/soil-infiltration/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Cisterns -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/cisterns/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Net-and-Pan -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/net-and-pan/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Diversion Drains -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/diversion-drains/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Gravity Feed -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/gravity-feed/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Water: Greywater -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/water-management/greywater/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.6</priority></url>
+  <!-- Driver: Access -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/access-circulation/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Vegetation -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/vegetation-food-systems/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Structures -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/structures-shelter/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Soil -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/soil-fertility/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Microclimates -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/microclimates-zones-sectors/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Animals -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/animals-livestock/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Driver: Invisible Structures -->
+  <url><loc>https://makealbertagreatagain.live/learn/drivers/invisible-social-structures/</loc><lastmod>2026-07-29</lastmod><changefreq>monthly</changefreq><priority>0.7</priority></url>
+  <!-- Tools -->
+  <url>
+    <loc>https://makealbertagreatagain.live/learn/tools/</loc>
+    <lastmod>2026-07-29</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+</urlset>

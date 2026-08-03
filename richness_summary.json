@@ -1,0 +1,92 @@
+{
+  "all_species": {
+    "layers": [
+      {
+        "name": "richness_all_species",
+        "geom_type": "MultiPolygon",
+        "total_rows": 5,
+        "columns": [
+          "LINKID",
+          "VALUE",
+          "Shape_Length",
+          "Shape_Area"
+        ],
+        "crs": "EPSG:4326",
+        "sample": {
+          "row_0": {
+            "LINKID": "1_51",
+            "VALUE": "77.0",
+            "Shape_Length": "0.0258342059222743",
+            "Shape_Area": "4.093673731319065e-05"
+          },
+          "row_1": {
+            "LINKID": "1_52",
+            "VALUE": "77.0",
+            "Shape_Length": "0.04945991239061866",
+            "Shape_Area": "0.00012092276733365151"
+          }
+        }
+      }
+    ]
+  },
+  "birds": {
+    "layers": [
+      {
+        "name": "richness_birds",
+        "geom_type": "MultiPolygon",
+        "total_rows": 5,
+        "columns": [
+          "LINKID",
+          "VALUE",
+          "Shape_Length",
+          "Shape_Area"
+        ],
+        "crs": "EPSG:4326",
+        "sample": {
+          "row_0": {
+            "LINKID": "1_51",
+            "VALUE": "27.0",
+            "Shape_Length": "0.0258342059222743",
+            "Shape_Area": "4.093673731319065e-05"
+          },
+          "row_1": {
+            "LINKID": "1_52",
+            "VALUE": "28.0",
+            "Shape_Length": "0.04945991239061866",
+            "Shape_Area": "0.00012092276733365151"
+          }
+        }
+      }
+    ]
+  },
+  "mammals": {
+    "layers": [
+      {
+        "name": "richness_mammals",
+        "geom_type": "MultiPolygon",
+        "total_rows": 5,
+        "columns": [
+          "LINKID",
+          "VALUE",
+          "Shape_Length",
+          "Shape_Area"
+        ],
+        "crs": "EPSG:4326",
+        "sample": {
+          "row_0": {
+            "LINKID": "1_51",
+            "VALUE": "74.0",
+            "Shape_Length": "0.0258342059222743",
+            "Shape_Area": "4.093673731319065e-05"
+          },
+          "row_1": {
+            "LINKID": "1_52",
+            "VALUE": "74.0",
+            "Shape_Length": "0.04945991239061866",
+            "Shape_Area": "0.00012092276733365151"
+          }
+        }
+      }
+    ]
+  }
+}
