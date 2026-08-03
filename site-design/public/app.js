@@ -2250,18 +2250,11 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
   const spanLng = bbox.east - bbox.west;
   const spanLat = bbox.north - bbox.south;
   const maxSpan = Math.max(spanLng, spanLat, 0.001);
-  const dist = maxSpan * 5000;
-  camera.position.set(centerX, centerY, dist * 0.6);
-  camera.position.set(
-    ((centerX) + 0.5) * maxSpan * 500,
-    relief * 4,
-    ((centerY) + 0.5) * maxSpan * 500
-  );
-  // Better positioning using world coordinates
+  // World coordinates: mesh spans 0..meshW in X and 0..meshD in Z
   const meshScale = maxSpan * 500;
   const meshW = maxSpan * 500;
   const meshD = maxSpan * 500;
-  camera.position.set(meshW * 0.5, Math.max(relief * 5, 200), meshD * 1.2);
+  camera.position.set(meshW * 0.5, Math.max(relief * 5, meshD * 0.6), meshD * 1.2);
   camera.lookAt(meshW * 0.5, 0, meshD * 0.4);
 
   // ── Renderer ──
@@ -2278,8 +2271,8 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.target.set(meshW * 0.5, relief * 1.5, meshD * 0.4);
-    controls.minDistance = 50;
-    controls.maxDistance = maxSpan * 8000;
+    controls.minDistance = Math.max(5, meshW * 0.05);
+    controls.maxDistance = Math.max(meshW * 6, maxSpan * 8000);
     controls.maxPolarAngle = Math.PI * 0.48;
   } catch(e) {
     console.warn('OrbitControls unavailable:', e);
@@ -2367,6 +2360,11 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
   const segsZ = Math.min(detail - 1, 120);
   const geo = new THREE.PlaneGeometry(meshW, meshD, segsX, segsZ);
   geo.rotateX(-Math.PI / 2);
+  // Shift the plane so it spans 0..meshW in X and 0..meshD in Z — every
+  // coordinate mapping (toWorld, camera, contours, zones, objects) assumes
+  // this local space. Without the translate the terrain sits centered at the
+  // origin and the camera looks at empty space.
+  geo.translate(meshW / 2, 0, meshD / 2);
 
   const pos = geo.attributes.position;
   const colors = new Float32Array(pos.count * 3);
@@ -2527,7 +2525,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
 
   // ── Grid mesh overlay ──
   const gridHelper = new THREE.GridHelper(Math.max(meshW, meshD), segsX, 0x44aa44, 0x225522);
-  gridHelper.position.y = 0.5;
+  gridHelper.position.set(meshW / 2, 0.5, meshD / 2);
   gridHelper.material.transparent = true;
   gridHelper.material.opacity = 0;
   groupGrid.add(gridHelper);
@@ -2848,7 +2846,7 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
     resetBtn.addEventListener('click', () => {
       if (controls) {
         controls.reset();
-        camera.position.set(meshW * 0.5, Math.max(relief * 5, 200), meshD * 1.2);
+        camera.position.set(meshW * 0.5, Math.max(relief * 5, meshD * 0.6), meshD * 1.2);
         controls.target.set(meshW * 0.5, relief * 1.5, meshD * 0.4);
         controls.update();
       }
