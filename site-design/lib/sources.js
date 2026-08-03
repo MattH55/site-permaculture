@@ -358,6 +358,10 @@ async function fetchClimate(centre) {
     /* use preset */
   }
 
+  // 30-year (1991–2020) monthly precipitation normals from the Open-Meteo
+  // climate archive. Replaces the 92-day extrapolation when available.
+  const normals = await fetchPrecipitationNormals(lat, lng).catch(() => null);
+
   const preset = nearestPreset(lat, lng);
   return {
     plant_hardiness_zone: preset?.climate?.plant_hardiness_zone || '3a',
@@ -367,11 +371,74 @@ async function fetchClimate(centre) {
       windDir || preset?.climate?.prevailing_wind_direction || 'NW',
     chinook_exposure: !!preset?.climate?.chinook_exposure,
     annual_precipitation_mm:
-      precipProxy || preset?.hydrology?.annual_precipitation_mm || 450,
+      normals?.annual_mm ||
+      precipProxy ||
+      preset?.hydrology?.annual_precipitation_mm ||
+      450,
+    monthly_precipitation_mm: normals?.monthly || null,
+    precipitation_normals_years: normals?.years || null,
     seasonal_distribution: 'summer_peak',
     preset_id: preset?.id || null,
-    source_name: 'Open-Meteo + Expanding Edge Alberta climate presets',
+    source_name: 'Open-Meteo 30-year normals + Expanding Edge Alberta climate presets',
     source_url: 'https://open-meteo.com/',
+  };
+}
+
+/**
+ * Fetch 30-year (1991–2020) monthly precipitation normals from the
+ * Open-Meteo climate archive. Returns average monthly totals (mm) and the
+ * mean annual total, or null when the archive is unavailable.
+ */
+async function fetchPrecipitationNormals(lat, lng) {
+  const url =
+    `https://archive-api.open-meteo.com/v1/archive?latitude=${lat}&longitude=${lng}` +
+    `&start_date=1991-01-01&end_date=2020-12-31&daily=precipitation_sum` +
+    `&timezone=America%2FEdmonton`;
+  const data = await fetchJson(url, 18_000);
+  const times = data?.daily?.time || [];
+  const sums = data?.daily?.precipitation_sum || [];
+  if (!times.length || times.length !== sums.length) return null;
+
+  const monthSums = Array(12).fill(0);
+  const monthCounts = Array(12).fill(0);
+  let annualSum = 0;
+  let annualCount = 0;
+  for (let i = 0; i < times.length; i++) {
+    const v = sums[i];
+    if (v == null || !Number.isFinite(v)) continue;
+    const m = Number(String(times[i]).slice(5, 7));
+    if (m < 1 || m > 12) continue;
+    monthSums[m - 1] += v;
+    monthCounts[m - 1] += 1;
+    annualSum += v;
+    annualCount += 1;
+  }
+  if (!annualCount) return null;
+
+  const labels = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  const monthly = {};
+  for (let i = 0; i < 12; i++) {
+    if (monthCounts[i] > 0) {
+      monthly[labels[i]] = Math.round((monthSums[i] / monthCounts[i]) * 10) / 10;
+    }
+  }
+  return {
+    monthly,
+    annual_mm: Math.round((annualSum / annualCount) * 365 * 10) / 10,
+    years: '1991-2020',
   };
 }
 

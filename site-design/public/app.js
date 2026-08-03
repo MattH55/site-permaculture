@@ -9496,7 +9496,10 @@ function precipitationSection(precip) {
             available: true,
             mean_annual_mm: precip.annual_precipitation_mm,
             source: precip.precipitation_source || 'Site climate',
-            monthly_mm: null,
+            monthly_mm: precip.monthly_precipitation_mm || null,
+            years: precip.precipitation_normals_years
+              ? { note: String(precip.precipitation_normals_years) }
+              : null,
             gpm_pps: {
               archive_url: 'https://arthurhouhttps.pps.eosdis.nasa.gov/',
               registration_url: 'https://registration.pps.eosdis.nasa.gov/registration/',
@@ -9516,7 +9519,7 @@ function precipitationSection(precip) {
       </section>`;
   }
 
-  const months = p.monthly_mm || p.monthly || null;
+  const months = p.monthly_mm || p.monthly || p.monthly_precipitation_mm || null;
   const monthBars = months
     ? Object.entries(months)
         .map(([k, v]) => {
@@ -9555,7 +9558,7 @@ function precipitationSection(precip) {
         <div class="stat"><span class="k">Series</span><strong style="font-size:0.9rem">${esc(
           p.years?.start && p.years?.end
             ? `${p.years.start}–${p.years.end}`
-            : p.years?.note || '—'
+            : p.years?.note || (typeof p.years === 'string' ? p.years : '—')
         )}</strong></div>
         <div class="stat"><span class="k">Source</span><strong style="font-size:0.85rem">${esc(
           p.source || 'NASA'

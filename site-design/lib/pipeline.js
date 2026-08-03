@@ -244,6 +244,8 @@ export async function generateSiteReport(input = {}) {
       growing_degree_days_base5: climate.growing_degree_days_base5,
       prevailing_wind_direction: climate.prevailing_wind_direction,
       chinook_exposure: climate.chinook_exposure,
+      monthly_precipitation_mm: climate.monthly_precipitation_mm || null,
+      precipitation_normals_years: climate.precipitation_normals_years || null,
     },
     existing_vegetation: {
       cover_type: wetlands.present ? 'wetland_vegetation' : 'tame_pasture',
