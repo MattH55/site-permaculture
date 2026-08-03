@@ -2682,11 +2682,15 @@ function mountTerrainMeshViewer(hostId, report, topo, analysis) {
   };
 
   // ── Parcel boundary + fill (terrain-draped) ──
-  const parcelRing = getParcelLatLngsFromReport(report);
+  // getParcelLatLngsFromReport returns Leaflet [lat,lng]; convert to GeoJSON [lng,lat].
+  const parcelLatLngs = getParcelLatLngsFromReport(report);
+  const parcelRing = parcelLatLngs
+    ? parcelLatLngs
+        .map(([lat, lng]) => [Number(lng), Number(lat)])
+        .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat))
+    : null;
   if (parcelRing && parcelRing.length >= 3) {
-    const ring = parcelRing
-      .map(([lng, lat]) => [Number(lng), Number(lat)])
-      .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+    const ring = parcelRing;
     if (ring.length >= 3) {
       const closed = ring.length >= 4 && Math.abs(ring[0][0] - ring[ring.length - 1][0]) < 1e-9 && Math.abs(ring[0][1] - ring[ring.length - 1][1]) < 1e-9;
       const outlineRing = closed ? ring : [...ring, ring[0]];
