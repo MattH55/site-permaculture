@@ -6784,7 +6784,10 @@ function waterCollectionSection(wc) {
   const monthlyBudget = wc.monthly_budget || {};
   const primaryRoof = roofScenarios.find(s => s.id === 'house_barn') || roofScenarios[0];
   const monthEntries = Object.entries(monthlyBudget);
-  const maxL = Math.max(...monthEntries.map(([, v]) => v.total_litres), 1);
+  const maxL = monthEntries.reduce((m, [, v]) => {
+    const n = Number(v?.total_litres);
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 1);
   const monthBars = monthEntries.map(([m, v]) => {
     const pct = Math.round((v.total_litres / maxL) * 100);
     const roofPct = Math.round((v.roof_litres / maxL) * 100);
@@ -9516,7 +9519,10 @@ function precipitationSection(precip) {
   const monthBars = months
     ? Object.entries(months)
         .map(([k, v]) => {
-          const max = Math.max(...Object.values(months).map(Number), 1);
+          const max = Object.values(months).reduce((m, x) => {
+            const n = Number(x);
+            return Number.isFinite(n) && n > m ? n : m;
+          }, 1);
           const pct = Math.round((Number(v) / max) * 100);
           return `<div class="precip-month" title="${esc(k)}: ${esc(v)} mm">
             <span class="precip-bar" style="height:${Math.max(8, pct)}%"></span>
