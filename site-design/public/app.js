@@ -2380,7 +2380,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       const z = heightValues[i] ?? zMean;
       positions[i * 3 + 1] = elevToLocalY(z, exaggerate);
 
-      // Simple height-based green gradient coloring
+      // Height-based coloring (used as fallback or when satellite disabled)
       const t = (z - zMin) / relief; // 0 to 1
       const r = 0.2 + t * 0.15;
       const g = 0.45 + t * 0.25;
@@ -2393,8 +2393,129 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
 
-    const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
-    terrainMesh = new THREE.Mesh(geometry, material);
+    // Satellite imagery texture from Esri World Imagery tiles
+    let satelliteTexture = null;
+    const materialWithSat = new THREE.MeshLambertMaterial({ 
+      vertexColors: true, 
+      side: THREE.DoubleSide,
+      color: 0xffffff
+    });
+    const materialNoSat = new THREE.MeshLambertMaterial({ 
+      vertexColors: true, 
+      side: THREE.DoubleSide 
+    });
+    
+    // Load satellite imagery for the parcel bbox
+    const loadSatelliteTexture = () => {
+      try {
+        // Calculate tile coordinates for the bbox center at appropriate zoom
+        const latCenter = (south + north) / 2;
+        const lngCenter = (west + east) / 2;
+        const latRange = north - south;
+        const lngRange = east - west;
+        
+        // Choose zoom level based on parcel size (smaller parcels need higher zoom)
+        const maxDim = Math.max(latRange, lngRange);
+        let zoom = 14;
+        if (maxDim < 0.005) zoom = 16;
+        else if (maxDim < 0.01) zoom = 15;
+        else if (maxDim < 0.03) zoom = 14;
+        else if (maxDim < 0.08) zoom = 13;
+        else zoom = 12;
+        
+        // Convert lat/lng to tile coordinates
+        const lat2tile = (lat, z) => Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z));
+        const lng2tile = (lng, z) => Math.floor((lng + 180) / 360 * Math.pow(2, z));
+        
+        const tileX = lng2tile(lngCenter, zoom);
+        const tileY = lat2tile(latCenter, zoom);
+        
+        // Create a canvas to stitch tiles together (3x3 grid for coverage)
+        const tileSize = 256;
+        const gridTiles = 3;
+        const canvas = document.createElement('canvas');
+        canvas.width = tileSize * gridTiles;
+        canvas.height = tileSize * gridTiles;
+        const ctx = canvas.getContext('2d');
+        
+        let loadedCount = 0;
+        const totalTiles = gridTiles * gridTiles;
+        
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            const tx = tileX + dx;
+            const ty = tileY + dy;
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const cx = (dx + 1) * tileSize;
+              const cy = (dy + 1) * tileSize;
+              ctx.drawImage(img, cx, cy, tileSize, tileSize);
+              loadedCount++;
+              if (loadedCount === totalTiles) {
+                // Create texture from stitched canvas
+                satelliteTexture = new THREE.CanvasTexture(canvas);
+                satelliteTexture.colorSpace = THREE.SRGBColorSpace;
+                
+                // Calculate UV offset to crop to exact bbox
+                // Tile bounds in lat/lng
+                const tile2lng = (x, z) => x / Math.pow(2, z) * 360 - 180;
+                const tile2lat = (y, z) => {
+                  const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
+                  return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+                };
+                
+                const tileWest = tile2lng(tileX - 1, zoom);
+                const tileEast = tile2lng(tileX + 2, zoom);
+                const tileNorth = tile2lat(tileY - 1, zoom);
+                const tileSouth = tile2lat(tileY + 2, zoom);
+                
+                const tileLngRange = tileEast - tileWest;
+                const tileLatRange = tileNorth - tileSouth;
+                
+                // UV coordinates (Three.js UV: 0,0 is bottom-left; textures: 0,0 is top-left)
+                const uMin = (west - tileWest) / tileLngRange;
+                const uMax = (east - tileWest) / tileLngRange;
+                const vMin = 1 - (north - tileSouth) / tileLatRange; // flip for texture coords
+                const vMax = 1 - (south - tileSouth) / tileLatRange;
+                
+                // Update UVs on geometry
+                const uvs = geometry.attributes.uv;
+                if (uvs) {
+                  const uvArray = uvs.array;
+                  for (let i = 0; i < cols * rows; i++) {
+                    // PlaneGeometry UVs go 0-1 across the plane; remap to satellite crop
+                    const origU = uvArray[i * 2];
+                    const origV = uvArray[i * 2 + 1];
+                    uvArray[i * 2] = uMin + origU * (uMax - uMin);
+                    uvArray[i * 2 + 1] = vMin + origV * (vMax - vMin);
+                  }
+                  uvs.needsUpdate = true;
+                }
+                
+                materialWithSat.map = satelliteTexture;
+                materialWithSat.vertexColors = false; // Use texture instead of vertex colors
+                materialWithSat.needsUpdate = true;
+                terrainMesh.material = materialWithSat;
+              }
+            };
+            img.onerror = () => {
+              loadedCount++;
+              // Continue even if some tiles fail
+              if (loadedCount === totalTiles && !satelliteTexture) {
+                console.warn('Some satellite tiles failed to load');
+              }
+            };
+            img.src = `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${ty}/${tx}`;
+          }
+        }
+      } catch (e) {
+        console.warn('Satellite texture load failed:', e);
+      }
+    };
+    loadSatelliteTexture();
+    
+    terrainMesh = new THREE.Mesh(geometry, materialNoSat);
     scene.add(terrainMesh);
 
     // --- Zone overlay groups (catchment, pond, swale) ---
