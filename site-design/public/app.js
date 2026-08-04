@@ -2221,7 +2221,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
 
   // Grid-to-local converters
   const gridToLocalX = (c) => (c / (cols - 1) - 0.5) * meshW;
-  const gridToLocalZ = (r) => (0.5 - r / (rows - 1)) * meshD;
+  const gridToLocalZ = (r) => (r / (rows - 1) - 0.5) * meshD;
 
   // Bilinear elevation sampler
   const elevAtRC = (rr, cc) => {
@@ -2322,16 +2322,17 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
 
       const pts = [];
       for (const s of segs) {
-        const ea = elevAtRC(s.a[0], s.a[1]);
-        const eb = elevAtRC(s.b[0], s.b[1]);
+        // Use the contour level itself as the elevation — this ensures contours
+        // sit exactly on the terrain surface at their designated height
+        const yContour = elevToLocalY(s.level, exaggerate);
         const xA = gridToLocalX(s.a[1]);
         const zA = gridToLocalZ(s.a[0]);
         const xB = gridToLocalX(s.b[1]);
         const zB = gridToLocalZ(s.b[0]);
-        // Offset slightly above terrain surface
-        const offset = 0.01;
-        pts.push(new THREE.Vector3(xA, elevToLocalY(ea, exaggerate) + offset, zA));
-        pts.push(new THREE.Vector3(xB, elevToLocalY(eb, exaggerate) + offset, zB));
+        // Small offset to prevent z-fighting with terrain mesh
+        const offset = 0.002 * exaggerate;
+        pts.push(new THREE.Vector3(xA, yContour + offset, zA));
+        pts.push(new THREE.Vector3(xB, yContour + offset, zB));
       }
 
       const cGeom = new THREE.BufferGeometry().setFromPoints(pts);
