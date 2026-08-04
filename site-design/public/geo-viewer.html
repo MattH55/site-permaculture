@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a2e">
+<title>Geo Feature Overlay Viewer — Expanding Edge Permaculture</title>
+<meta name="description" content="3D terrain viewer with geo feature overlays: water, wetlands, buildings, roads, land cover.">
+<style>
+  :root {
+    --bg: #1a1a2e;
+    --panel-bg: rgba(20, 20, 40, 0.95);
+    --text: #e0e0e0;
+    --accent: #4a9eff;
+    --border: rgba(255,255,255,0.1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    overflow: hidden;
+    height: 100vh;
+    width: 100vw;
+  }
+  #canvas-container {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 1;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Control panel */
+  .panel {
+    position: absolute;
+    top: 1rem; left: 1rem;
+    width: 280px;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    z-index: 10;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+  }
+  .panel h1 {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+    color: var(--accent);
+  }
+  .panel p {
+    font-size: 0.75rem;
+    opacity: 0.7;
+    margin-bottom: 1rem;
+  }
+
+  /* Layer toggles */
+  .layer-group {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .layer-group:last-child { border-bottom: none; }
+  .layer-group-title {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    opacity: 0.6;
+    margin-bottom: 0.5rem;
+  }
+  .layer-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0;
+    cursor: pointer;
+    font-size: 0.85rem;
+  }
+  .layer-toggle input { cursor: pointer; }
+  .layer-swatch {
+    width: 12px; height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .layer-count {
+    margin-left: auto;
+    font-size: 0.7rem;
+    opacity: 0.5;
+  }
+
+  /* Sliders */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.5rem 0;
+    font-size: 0.8rem;
+  }
+  .slider-row label { flex: 0 0 60px; }
+  .slider-row input[type=range] { flex: 1; }
+  .slider-row .val { flex: 0 0 30px; text-align: right; font-size: 0.75rem; opacity: 0.7; }
+
+  /* Buttons */
+  .btn-row { display: flex; gap: 0.5rem; margin-top: 1rem; }
+  .btn {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: background 0.2s;
+  }
+  .btn:hover { background: rgba(255,255,255,0.1); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: #3a8eef; }
+
+  /* Status bar */
+  .status-bar {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: var(--panel-bg);
+    border-top: 1px solid var(--border);
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    z-index: 10;
+    display: flex;
+    gap: 2rem;
+  }
+  .status-item span { opacity: 0.6; }
+
+  /* Loading overlay */
+  .loading-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--bg);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    transition: opacity 0.3s;
+  }
+  .loading-overlay.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-text { margin-top: 1rem; font-size: 0.9rem; }
+  .loading-detail { margin-top: 0.5rem; font-size: 0.75rem; opacity: 0.6; }
+
+  /* Error state */
+  .error-msg {
+    color: #ff6b6b;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+    display: none;
+  }
+  .error-msg.visible { display: block; }
+</style>
+<!-- Three.js + OrbitControls -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div class="panel">
+    <h1>Geo Feature Overlays</h1>
+    <p>HRDEM terrain with semantic feature layers from Alberta open data.</p>
+
+    <div class="layer-group">
+      <div class="layer-group-title">Terrain</div>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="terrain">
+        <span class="layer-swatch" style="background:#6b8c42"></span>
+        Terrain mesh
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="contours">
+        <span class="layer-swatch" style="background:rgba(0,0,0,0.3)"></span>
+        Contour lines
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" data-layer="wireframe">
+        <span class="layer-swatch" style="background:rgba(255,255,255,0.2)"></span>
+        Wireframe
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-group-title">Hydrology</div>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="water">
+        <span class="layer-swatch" style="background:#2060a0"></span>
+        Water bodies
+        <span class="layer-count" id="count-water">—</span>
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="wetlands">
+        <span class="layer-swatch" style="background:#40a080"></span>
+        Wetlands
+        <span class="layer-count" id="count-wetlands">—</span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-group-title">Infrastructure</div>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="buildings">
+        <span class="layer-swatch" style="background:#888"></span>
+        Buildings
+        <span class="layer-count" id="count-buildings">—</span>
+      </label>
+      <label class="layer-toggle">
+        <input type="checkbox" checked data-layer="roads">
+        <span class="layer-swatch" style="background:#c8a040"></span>
+        Roads
+        <span class="layer-count" id="count-roads">—</span>
+      </label>
+    </div>
+
+    <div class="layer-group">
+      <div class="layer-group-title">Display</div>
+      <div class="slider-row">
+        <label>Relief</label>
+        <input type="range" min="1" max="15" step="0.5" value="4" id="relief-slider">
+        <span class="val" id="relief-val">4×</span>
+      </div>
+      <div class="slider-row">
+        <label>Opacity</label>
+        <input type="range" min="0" max="1" step="0.05" value="0.85" id="opacity-slider">
+        <span class="val" id="opacity-val">85%</span>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="btn-reset">Reset View</button>
+      <button class="btn" id="btn-screenshot">Screenshot</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btn-fetch">Fetch Features</button>
+    </div>
+    <div class="error-msg" id="error-msg"></div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-item"><span>Bbox:</span> <span id="status-bbox">—</span></div>
+    <div class="status-item"><span>Features:</span> <span id="status-features">0</span></div>
+    <div class="status-item"><span>FPS:</span> <span id="status-fps">—</span></div>
+  </div>
+
+  <div class="loading-overlay" id="loading">
+    <div class="spinner"></div>
+    <div class="loading-text">Loading terrain…</div>
+    <div class="loading-detail" id="loading-detail">Initializing 3D viewer</div>
+  </div>
+
+  <script type="module" src="/geo-viewer.js"></script>
+</body>
+</html>
