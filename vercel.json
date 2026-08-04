@@ -36,7 +36,8 @@
   ],
   "services": {
     "resilience-quiz-edmonton": {
-      "root": "."
+      "root": ".",
+      "entrypoint": "server.js"
     }
   }
 }

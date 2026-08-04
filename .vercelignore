@@ -9,15 +9,45 @@
 *.png
 *.ppt
 *.doc
+*.odt
+*.mdb
+*.jsonl
+*.sqlite
+*.db
 .claude/
 Alberta Agriculture Brand/
 Financials/
 Grants/
 Logo Kit/
 Pics/
+Geology/
+Prices/
+PMC/
+Crime Map/
+Expanding Edge/
+Expanding Edge Website/
+extracted_images/
+fecundity_extracted/
+files_extracted/
+files_update_extracted/
+files1_extracted/
+files2_extracted/
+files3_extracted/
+abwells_extracted/
+scripts/
+tmp_*.py
+tmp_*.mjs
+tmp_*.js
+tmp_*.txt
+tmp_*.html
+tmp_*.json
+cookies.txt
 prepper-homestead.html
 turnkey-homestead.html
 vercel-build/
 server.express.js
 files (2).zip
 files (3).zip
+x[1])
+Exp/
+s/
