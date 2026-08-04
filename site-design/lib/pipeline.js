@@ -223,6 +223,8 @@ export async function generateSiteReport(input = {}) {
     hydrology: {
       annual_precipitation_mm: climate.annual_precipitation_mm,
       seasonal_distribution: climate.seasonal_distribution || 'summer_peak',
+      monthly_precipitation_mm: climate.monthly_precipitation_mm || null,
+      precipitation_normals_years: climate.precipitation_normals_years || null,
       distance_to_nearest_watercourse_m: waterDist,
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
