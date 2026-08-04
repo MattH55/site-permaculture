@@ -2133,12 +2133,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const el = document.getElementById(hostId);
   if (!el) return;
 
-  // Extract elevation data
+  // --- Extract elevation data ---
   const ht = report?.hrdem_terrain;
   let rows, cols, elevations;
   let source = 'dem';
   if (ht?.available && ht.elevations_m?.length && ht.rows && ht.cols) {
     rows = ht.rows; cols = ht.cols; elevations = ht.elevations_m;
+    source = 'hrdem';
   } else {
     const g = topo?.grid || {};
     rows = g.rows; cols = g.cols; elevations = g.elevations_m || null;
@@ -2152,6 +2153,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     rows = 2; cols = 2; elevations = [flatZ, flatZ, flatZ, flatZ];
   }
 
+  // Cleanup previous viewer
   if (el._eeTerrain) {
     try { el._eeTerrain.dispose(); } catch { /* ignore */ }
     el._eeTerrain = null;
@@ -2160,66 +2162,65 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
 
   const valid = elevations.filter((z) => z != null && Number.isFinite(z));
   if (valid.length < 4) {
-    host.innerHTML = '<p class="fine" style="padding:1rem">Not enough elevation samples.</p>';
+    el.innerHTML = '<p class="fine" style="padding:1rem">Not enough elevation samples.</p>';
     return;
   }
 
-  zMin = Infinity;
-  zMax = -Infinity;
+  let zMin = Infinity, zMax = -Infinity;
   for (let i = 0; i < valid.length; i++) {
     const z = valid[i];
     if (z < zMin) zMin = z;
     if (z > zMax) zMax = z;
   }
-  zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
-  relief = Math.max(zMax - zMin, 0.5);
+  const zMean = valid.reduce((a, b) => a + b, 0) / valid.length;
+  const relief = Math.max(zMax - zMin, 0.5);
 
-  // Get bounding box from report geometry — supports both array [W,S,E,N] and object {west,south,east,north}
+  // --- Bounding box ---
   let rawBbox = report?.geometry?.bbox;
   let west, east, south, north;
-
   if (Array.isArray(rawBbox) && rawBbox.length === 4) {
-    [west, south, east, north] = rawBbox;
+    [west, south, east, north] = rawBbox.map(Number);
   } else if (rawBbox && typeof rawBbox === 'object') {
-    west = rawBbox.west ?? rawBbox.W;
-    south = rawBbox.south ?? rawBbox.S;
-    east = rawBbox.east ?? rawBbox.E;
-    north = rawBbox.north ?? rawBbox.N;
+    west = Number(rawBbox.west ?? rawBbox.W);
+    south = Number(rawBbox.south ?? rawBbox.S);
+    east = Number(rawBbox.east ?? rawBbox.E);
+    north = Number(rawBbox.north ?? rawBbox.N);
   }
-
-  // Fallback: compute bbox from parcel coordinates
-  if (west == null || east == null || south == null || north == null) {
+  if (west == null || east == null || south == null || north == null || !isFinite(west)) {
     const parcelCoords = report?.geometry?.coordinates?.[0] || report?.geometry?.coordinates;
     if (parcelCoords && parcelCoords.length >= 3) {
       west = Infinity; south = Infinity; east = -Infinity; north = -Infinity;
       for (const [lng, lat] of parcelCoords) {
-        if (lng != null && lat != null) {
-          if (lng < west) west = lng;
-          if (lng > east) east = lng;
-          if (lat < south) south = lat;
-          if (lat > north) north = lat;
-        }
+        if (lng < west) west = lng;
+        if (lng > east) east = lng;
+        if (lat < south) south = lat;
+        if (lat > north) north = lat;
       }
     }
   }
-
-  // Final fallback: use design area bounds
-  if (west == null || isNaN(west)) {
-    const da = report?.design_area || report?.area;
-    if (da?.bbox) {
-      const ab = Array.isArray(da.bbox) ? da.bbox : [da.bbox.west, da.bbox.south, da.bbox.east, da.bbox.north];
-      if (ab.length === 4) [west, south, east, north] = ab;
-    }
-  }
-
   if (west == null || east == null || south == null || north == null || !isFinite(west)) {
     el.innerHTML = '<p class="fine" style="padding:1rem">No bounding box available for terrain view.</p>';
     return;
   }
+
+  // --- Classify zones for coloring ---
+  const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
+
+  // --- Normalized local coordinate system ---
+  // Map the parcel bbox to a local scene centered at origin, size ~10 units
+  const meshSize = 10;
   const lngRange = east - west || 0.001;
   const latRange = north - south || 0.001;
+  const aspect = lngRange / latRange;
+  const meshW = meshSize * Math.min(aspect, 1);
+  const meshD = meshSize / Math.max(aspect, 1);
 
-  // Build heightmap array
+  // Converters: geo -> local scene coords
+  const geoToLocalX = (lng) => ((lng - west) / lngRange - 0.5) * meshW;
+  const geoToLocalZ = (lat) => (0.5 - (lat - south) / latRange) * meshD; // Z inverted: north = -Z
+  const elevToLocalY = (z, exag) => ((z - zMin) / relief) * relief * exag * 0.01; // scale down to scene units
+
+  // Build heightmap
   const heightValues = new Float32Array(rows * cols);
   for (let i = 0; i < rows * cols; i++) {
     const z = elevations[i];
@@ -2227,69 +2228,63 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   }
 
   let exaggerate = 3.5;
-  const layersVisible = { contours: true, catchment: true, pond: true, swale: true };
+  const layersVisible = { contours: true, catchment: true, pond: true, swale: true, trees: false };
 
-  // Initialize Three.js 3D terrain mesh
-  let scene, camera, renderer, terrainMesh, contourLines, parcelOutline;
+  // --- Three.js setup ---
+  let scene, camera, renderer, terrainMesh, contourLinesGroup, parcelOutline, treeGroup;
   let animationId = null;
   let isDragging = false, prevMouseX = 0, prevMouseY = 0;
-  let rotTheta = 0, rotPhi = Math.PI / 4; // spherical angles
-  let cameraRadius = 0.01;
+  let rotTheta = 0, rotPhi = Math.PI / 4;
+  let cameraRadius = meshSize * 1.2;
   let targetTheta = 0, targetPhi = Math.PI / 4;
 
+  // Bilinear elevation sampler
+  const elevAtRC = (rr, cc) => {
+    const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
+    const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
+    const fr = Math.max(0, Math.min(1, rr - r0));
+    const fc = Math.max(0, Math.min(1, cc - c0));
+    const e00 = heightValues[r0 * cols + c0] ?? zMean;
+    const e10 = heightValues[r0 * cols + c0 + 1] ?? e00;
+    const e01 = heightValues[(r0 + 1) * cols + c0] ?? e00;
+    const e11 = heightValues[(r0 + 1) * cols + c0 + 1] ?? e00;
+    return e00 * (1 - fr) * (1 - fc) + e10 * (1 - fr) * fc + e01 * fr * (1 - fc) + e11 * fr * fc;
+  };
+
+  // Grid-to-local converters
+  const gridToLocalX = (c) => (c / (cols - 1) - 0.5) * meshW;
+  const gridToLocalZ = (r) => (0.5 - r / (rows - 1)) * meshD;
+
   try {
-    // Calculate physical dimensions of terrain
-    const metersPerDegLng = (lngRange / cols) * 111320 * Math.cos(((south + north) / 2) * Math.PI / 180);
-    const metersPerDegLat = (latRange / rows) * 110540;
-    const widthM = cols * Math.abs(metersPerDegLng);
-    const depthM = rows * Math.abs(metersPerDegLat);
-    const centerLng = (west + east) / 2;
-    const centerLat = (south + north) / 2;
-
-    // Create scene
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky blue
+    scene.background = new THREE.Color(0x87CEEB);
 
-    // Camera setup
-    camera = new THREE.PerspectiveCamera(60, el.clientWidth / el.clientHeight, 0.001, 10);
-    camera.position.set(0, 0.005, 0.008);
+    camera = new THREE.PerspectiveCamera(60, el.clientWidth / el.clientHeight, 0.01, meshSize * 20);
 
-    // Renderer
-    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
     renderer.setSize(el.clientWidth, el.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio || 1);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.shadowMap.enabled = true;
     el.appendChild(renderer.domElement);
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    scene.add(ambientLight);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(meshSize * 0.5, meshSize, meshSize * 0.3);
+    dirLight.castShadow = true;
+    scene.add(dirLight);
+    scene.add(new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.3));
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    directionalLight.position.set(1, 1, 1);
-    directionalLight.castShadow = true;
-    scene.add(directionalLight);
-
-    const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.4);
-    scene.add(hemiLight);
-
-    // Create terrain geometry
-    const geometry = new THREE.PlaneGeometry(widthM, depthM, cols - 1, rows - 1);
+    // --- Terrain mesh ---
+    const geometry = new THREE.PlaneGeometry(meshW, meshD, cols - 1, rows - 1);
     geometry.rotateX(-Math.PI / 2);
-
-    // Set vertex heights
     const positions = geometry.attributes.position.array;
     const colors = new Float32Array(positions.length);
 
     for (let i = 0; i < cols * rows; i++) {
-      const row = Math.floor(i / cols);
-      const col = i % cols;
       const z = heightValues[i] ?? zMean;
-      const exaggeratedZ = (z - zMin) / relief * relief * exaggerate;
+      positions[i * 3 + 1] = elevToLocalY(z, exaggerate);
 
-      positions[i * 3 + 1] = exaggeratedZ; // Y component (height after rotation)
-
-      // Color based on zone
       const zone = zones[i] || 'neutral';
       let r, g, b;
       switch (zone) {
@@ -2297,42 +2292,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         case 'catchment': r = 0.16; g = 0.44; b = 0.59; break;
         case 'swale': r = 0.77; g = 0.63; b = 0.21; break;
         case 'ridge': r = 0.53; g = 0.53; b = 0.53; break;
-        default:
-          // Natural terrain color based on height
+        default: {
           const t = (z - zMin) / relief;
-          r = 0.3 + t * 0.3;
-          g = 0.5 + t * 0.2;
-          b = 0.2 + t * 0.1;
+          r = 0.3 + t * 0.3; g = 0.5 + t * 0.2; b = 0.2 + t * 0.1;
           break;
+        }
       }
-      colors[i * 3] = r;
-      colors[i * 3 + 1] = g;
-      colors[i * 3 + 2] = b;
+      colors[i * 3] = r; colors[i * 3 + 1] = g; colors[i * 3 + 2] = b;
     }
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
 
-    // Create terrain material
-    const material = new THREE.MeshLambertMaterial({
-      vertexColors: true,
-      side: THREE.DoubleSide,
-      wireframe: false,
-    });
-
+    const material = new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide });
     terrainMesh = new THREE.Mesh(geometry, material);
     terrainMesh.receiveShadow = true;
-    terrainMesh.position.set(
-      (centerLng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180),
-      0,
-      (centerLat - 90) * 110540
-    );
     scene.add(terrainMesh);
 
-    // Add contour lines
-    const addContours = () => {
-      if (contourLines) scene.remove(contourLines);
+    // --- Contour lines ---
+    contourLinesGroup = new THREE.Group();
+    contourLinesGroup.name = 'contours';
+    scene.add(contourLinesGroup);
 
+    const buildContours = () => {
+      while (contourLinesGroup.children.length) {
+        const c = contourLinesGroup.children[0];
+        contourLinesGroup.remove(c);
+        c.geometry?.dispose(); c.material?.dispose();
+      }
       if (!layersVisible.contours) return;
 
       const nLevels = Math.min(14, Math.max(6, Math.round(relief / Math.max(relief / 10, 0.5))));
@@ -2343,159 +2330,184 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       const segs = extractContourPolylines(elevations, rows, cols, levels);
       if (!segs.length) return;
 
-      const elevAtRC = (rr, cc) => {
-        const r0 = Math.max(0, Math.min(rows - 2, Math.floor(rr)));
-        const c0 = Math.max(0, Math.min(cols - 2, Math.floor(cc)));
-        const fr = Math.max(0, Math.min(1, rr - r0));
-        const fc = Math.max(0, Math.min(1, cc - c0));
-        const e00 = elevations[r0 * cols + c0] ?? zMean;
-        const e10 = elevations[r0 * cols + c0 + 1] ?? e00;
-        const e01 = elevations[(r0 + 1) * cols + c0] ?? e00;
-        const e11 = elevations[(r0 + 1) * cols + c0 + 1] ?? e00;
-        return e00 * (1 - fr) * (1 - fc) + e10 * (1 - fr) * fc + e01 * fr * (1 - fc) + e11 * fr * fc;
-      };
-
-      const points = [];
+      const pts = [];
       for (const s of segs) {
         const ea = elevAtRC(s.a[0], s.a[1]);
         const eb = elevAtRC(s.b[0], s.b[1]);
-        const xA = (west + (s.a[1] / (cols - 1)) * (east - west) - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
-        const zA = (south + (1 - s.a[0] / (rows - 1)) * (north - south) - 90) * 110540;
-        const xB = (west + (s.b[1] / (cols - 1)) * (east - west) - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
-        const zB = (south + (1 - s.b[0] / (rows - 1)) * (north - south) - 90) * 110540;
-
-        points.push(new THREE.Vector3(xA, Math.max(ea, 0) * exaggerate * 2, zA));
-        points.push(new THREE.Vector3(xB, Math.max(eb, 0) * exaggerate * 2, zB));
+        const xA = gridToLocalX(s.a[1]);
+        const zA = gridToLocalZ(s.a[0]);
+        const xB = gridToLocalX(s.b[1]);
+        const zB = gridToLocalZ(s.b[0]);
+        pts.push(new THREE.Vector3(xA, elevToLocalY(ea, exaggerate) + 0.02, zA));
+        pts.push(new THREE.Vector3(xB, elevToLocalY(eb, exaggerate) + 0.02, zB));
       }
 
-      const contourGeom = new THREE.BufferGeometry().setFromPoints(points);
-      const contourMat = new THREE.LineBasicMaterial({ color: 0x9933FF, linewidth: 1 });
-      contourLines = new THREE.LineSegments(contourGeom, contourMat);
-      scene.add(contourLines);
+      const cGeom = new THREE.BufferGeometry().setFromPoints(pts);
+      const cMat = new THREE.LineBasicMaterial({ color: 0x9933FF, linewidth: 1, transparent: true, opacity: 0.7 });
+      contourLinesGroup.add(new THREE.LineSegments(cGeom, cMat));
     };
+    buildContours();
 
-    // Add parcel outline
+    // --- Parcel boundary ---
     const parcelRing = report?.geometry?.coordinates?.[0];
     if (parcelRing && parcelRing.length >= 3) {
-      const parcelPoints = [];
+      const parcelPts = [];
       for (let i = 0; i <= parcelRing.length; i++) {
         const [lng, lat] = parcelRing[i % parcelRing.length];
-        const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
-        const z = (lat - 90) * 110540;
-        parcelPoints.push(new THREE.Vector3(x, 0.05, z));
+        const px = geoToLocalX(lng);
+        const pz = geoToLocalZ(lat);
+        // Sample elevation at this geo position
+        const gc = ((lng - west) / lngRange) * (cols - 1);
+        const gr = ((north - lat) / latRange) * (rows - 1);
+        const py = elevToLocalY(elevAtRC(gr, gc), exaggerate) + 0.03;
+        parcelPts.push(new THREE.Vector3(px, py, pz));
       }
-      const parcelGeom = new THREE.BufferGeometry().setFromPoints(parcelPoints);
-      const parcelMat = new THREE.LineBasicMaterial({ color: 0xFF00FF, linewidth: 2 });
-      parcelOutline = new THREE.LineLoop(parcelGeom, parcelMat);
+      const pGeom = new THREE.BufferGeometry().setFromPoints(parcelPts);
+      const pMat = new THREE.LineBasicMaterial({ color: 0xFF00FF, linewidth: 2 });
+      parcelOutline = new THREE.Line(pGeom, pMat);
       scene.add(parcelOutline);
     }
 
-    // Add water features
-    const addWaterFeatures = () => {
-      const waterFc = packageWaterFromReport(report);
-      if (!waterFc || !waterFc.features || !waterFc.features.length) return;
-
+    // --- Water features ---
+    const waterFc = typeof packageWaterFromReport === 'function' ? packageWaterFromReport(report) : null;
+    if (waterFc?.features?.length) {
       for (const feature of waterFc.features) {
         const geom = feature.geometry;
-        if (!geom || !geom.coordinates) continue;
-
-        let positions = null;
+        if (!geom?.coordinates) continue;
+        let wPts = null;
         if (geom.type === 'Polygon') {
           const ring = geom.coordinates[0];
-          if (ring && ring.length >= 3) {
-            for (let i = 0; i < ring.length; i++) {
-              const [lng, lat] = ring[i % ring.length];
-              const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
-              const z = (lat - 90) * 110540;
-              positions = positions || [];
-              positions.push(new THREE.Vector3(x, 0.02, z));
-            }
+          if (ring?.length >= 3) {
+            wPts = ring.map(([lng, lat]) => {
+              const gc = ((lng - west) / lngRange) * (cols - 1);
+              const gr = ((north - lat) / latRange) * (rows - 1);
+              return new THREE.Vector3(geoToLocalX(lng), elevToLocalY(elevAtRC(gr, gc), exaggerate) + 0.02, geoToLocalZ(lat));
+            });
           }
-        } else if (geom.type === 'LineString') {
-          const coords = geom.coordinates;
-          if (coords && coords.length >= 2) {
-            for (let i = 0; i < coords.length; i++) {
-              const [lng, lat] = coords[i];
-              const x = (lng - 180) * 111320 * Math.cos(centerLat * Math.PI / 180);
-              const z = (lat - 90) * 110540;
-              positions = positions || [];
-              positions.push(new THREE.Vector3(x, 0.02, z));
-            }
-          }
+        } else if (geom.type === 'LineString' && geom.coordinates?.length >= 2) {
+          wPts = geom.coordinates.map(([lng, lat]) => {
+            const gc = ((lng - west) / lngRange) * (cols - 1);
+            const gr = ((north - lat) / latRange) * (rows - 1);
+            return new THREE.Vector3(geoToLocalX(lng), elevToLocalY(elevAtRC(gr, gc), exaggerate) + 0.02, geoToLocalZ(lat));
+          });
         }
-
-        if (positions && positions.length >= 3) {
-          const waterGeom = new THREE.BufferGeometry().setFromPoints(positions);
-          const waterMat = new THREE.LineBasicMaterial({ color: 0x4DA6C9, linewidth: 3 });
-          const waterLine = new THREE.Line(waterGeom, waterMat);
-          scene.add(waterLine);
+        if (wPts?.length >= 2) {
+          const wGeom = new THREE.BufferGeometry().setFromPoints(wPts);
+          const wMat = new THREE.LineBasicMaterial({ color: 0x4DA6C9, linewidth: 2 });
+          scene.add(new THREE.Line(wGeom, wMat));
         }
       }
+    }
+
+    // --- Trees (toggleable 3D models) ---
+    treeGroup = new THREE.Group();
+    treeGroup.name = 'treeModels';
+    treeGroup.visible = false;
+    scene.add(treeGroup);
+
+    function createTreeModel(height, radius) {
+      const grp = new THREE.Group();
+      const trunkG = new THREE.CylinderGeometry(radius * 0.3, radius, height * 0.5, 6);
+      const trunkM = new THREE.MeshLambertMaterial({ color: 0x8B5A2B });
+      const trunk = new THREE.Mesh(trunkG, trunkM);
+      trunk.position.y = height * 0.25;
+      grp.add(trunk);
+      const canopyG = new THREE.ConeGeometry(radius, height * 0.6, 7);
+      const canopyM = new THREE.MeshLambertMaterial({ color: 0x2D7A2D, transparent: true, opacity: 0.85 });
+      const canopy = new THREE.Mesh(canopyG, canopyM);
+      canopy.position.y = height * 0.65;
+      grp.add(canopy);
+      const c2G = new THREE.ConeGeometry(radius * 0.7, height * 0.4, 6);
+      const c2 = new THREE.Mesh(c2G, canopyM);
+      c2.position.y = height * 0.85;
+      grp.add(c2);
+      return grp;
+    }
+
+    function placeTreesInScene() {
+      while (treeGroup.children.length) {
+        const c = treeGroup.children[0];
+        treeGroup.remove(c);
+        // Recursive dispose
+        c.traverse((obj) => { obj.geometry?.dispose(); obj.material?.dispose(); });
+      }
+      const step = Math.max(2, Math.floor(Math.min(rows, cols) / 20));
+      let count = 0;
+      for (let row = 0; row < rows; row += step) {
+        for (let col = 0; col < cols; col += step) {
+          const idx = row * cols + col;
+          const zone = zones[idx];
+          if (zone !== 'catchment' && zone !== 'swale') continue;
+          const x = gridToLocalX(col);
+          const z = gridToLocalZ(row);
+          const y = elevToLocalY(heightValues[idx] ?? zMean, exaggerate);
+          const h = 0.15 + Math.random() * 0.12;
+          const r = 0.06 + Math.random() * 0.04;
+          const tree = createTreeModel(h, r);
+          tree.position.set(x, y, z);
+          tree.rotation.y = Math.random() * Math.PI * 2;
+          treeGroup.add(tree);
+          count++;
+        }
+      }
+      return count;
+    }
+    placeTreesInScene();
+
+    // --- Camera orbit ---
+    const updateCam = () => {
+      camera.position.x = cameraRadius * Math.sin(rotPhi) * Math.sin(rotTheta);
+      camera.position.y = cameraRadius * Math.cos(rotPhi);
+      camera.position.z = cameraRadius * Math.sin(rotPhi) * Math.cos(rotTheta);
+      camera.lookAt(0, relief * exaggerate * 0.005, 0);
     };
-
-    addContours();
-    addWaterFeatures();
-
-    // Initial camera position
-    updateCameraPosition();
+    updateCam();
 
     // Animation loop
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-
-      // Smooth rotation
       rotTheta += (targetTheta - rotTheta) * 0.1;
       rotPhi += (targetPhi - rotPhi) * 0.1;
-
-      camera.position.x = cameraRadius * Math.sin(rotPhi) * Math.sin(rotTheta);
-      camera.position.y = cameraRadius * Math.cos(rotPhi);
-      camera.position.z = cameraRadius * Math.sin(rotPhi) * Math.cos(rotTheta);
-      camera.lookAt(terrainMesh.position);
-
+      updateCam();
       renderer.render(scene, camera);
     };
     animate();
 
-    // Mouse controls for rotation
-    renderer.domElement.addEventListener('mousedown', (e) => {
-      isDragging = true;
-      prevMouseX = e.clientX;
-      prevMouseY = e.clientY;
-    });
-
-    renderer.domElement.addEventListener('mousemove', (e) => {
+    // Mouse controls
+    const onDown = (e) => { isDragging = true; prevMouseX = e.clientX; prevMouseY = e.clientY; };
+    const onMove = (e) => {
       if (!isDragging) return;
-      const dx = e.clientX - prevMouseX;
-      const dy = e.clientY - prevMouseY;
-      targetTheta -= dx * 0.01;
-      targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, targetPhi + dy * 0.01));
-      prevMouseX = e.clientX;
-      prevMouseY = e.clientY;
-    });
-
-    renderer.domElement.addEventListener('mouseup', () => { isDragging = false; });
-    renderer.domElement.addEventListener('mouseleave', () => { isDragging = false; });
-
-    // Zoom with mouse wheel
-    renderer.domElement.addEventListener('wheel', (e) => {
-      e.preventDefault();
-      cameraRadius = Math.max(0.001, Math.min(0.1, cameraRadius * (1 + e.deltaY * 0.001)));
-      updateCameraPosition();
-    });
-
-    // Store reference
-    el._eeTerrain = {
-      dispose() {
-        if (animationId) cancelAnimationFrame(animationId);
-        if (renderer) renderer.dispose();
-        if (geometry) geometry.dispose();
-        if (material) material.dispose();
-        el._eeTerrain = null;
-      },
-      source,
+      targetTheta -= (e.clientX - prevMouseX) * 0.01;
+      targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, targetPhi + (e.clientY - prevMouseY) * 0.01));
+      prevMouseX = e.clientX; prevMouseY = e.clientY;
     };
+    const onUp = () => { isDragging = false; };
+    const onWheel = (e) => {
+      e.preventDefault();
+      cameraRadius = Math.max(meshSize * 0.3, Math.min(meshSize * 5, cameraRadius * (1 + e.deltaY * 0.001)));
+    };
+    renderer.domElement.addEventListener('mousedown', onDown);
+    renderer.domElement.addEventListener('mousemove', onMove);
+    renderer.domElement.addEventListener('mouseup', onUp);
+    renderer.domElement.addEventListener('mouseleave', onUp);
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
-    // Handle resize
+    // Touch controls
+    let touchStartX = 0, touchStartY = 0;
+    renderer.domElement.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) { touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY; }
+    }, { passive: true });
+    renderer.domElement.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 1) {
+        const dx = e.touches[0].clientX - touchStartX;
+        const dy = e.touches[0].clientY - touchStartY;
+        targetTheta -= dx * 0.01;
+        targetPhi = Math.max(0.1, Math.min(Math.PI - 0.1, targetPhi + dy * 0.01));
+        touchStartX = e.touches[0].clientX; touchStartY = e.touches[0].clientY;
+      }
+    }, { passive: true });
+
+    // Resize handler
     const onResize = () => {
       if (renderer && camera) {
         renderer.setSize(el.clientWidth, el.clientHeight);
@@ -2504,7 +2516,23 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
     };
     window.addEventListener('resize', onResize);
-    el._eeTerrain._onResize = onResize;
+
+    // Disposal
+    el._eeTerrain = {
+      dispose() {
+        if (animationId) cancelAnimationFrame(animationId);
+        window.removeEventListener('resize', onResize);
+        renderer.domElement.removeEventListener('mousedown', onDown);
+        renderer.domElement.removeEventListener('mousemove', onMove);
+        renderer.domElement.removeEventListener('mouseup', onUp);
+        renderer.domElement.removeEventListener('mouseleave', onUp);
+        renderer.domElement.removeEventListener('wheel', onWheel);
+        scene.traverse((obj) => { obj.geometry?.dispose(); if (obj.material) { if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose()); else obj.material.dispose(); } });
+        renderer.dispose();
+        el._eeTerrain = null;
+      },
+      source,
+    };
 
   } catch (err) {
     console.error('3D terrain viewer failed:', err);
@@ -2512,182 +2540,56 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     return;
   }
 
-  // Exaggerate slider
+  // --- Exaggerate slider ---
   const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
   const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
   if (exagInput) {
     exagInput.addEventListener('input', () => {
       exaggerate = Number(exagInput.value) || 3.5;
       if (exagVal) exagVal.textContent = `${exaggerate}×`;
-      // Rebuild terrain with new exaggeration
       if (terrainMesh) {
-        const positions = geometry.attributes.position.array;
+        const pos = geometry.attributes.position.array;
         for (let i = 0; i < cols * rows; i++) {
-          const z = heightValues[i] ?? zMean;
-          positions[i * 3 + 1] = ((z - zMin) / relief) * relief * exaggerate;
+          pos[i * 3 + 1] = elevToLocalY(heightValues[i] ?? zMean, exaggerate);
         }
         geometry.attributes.position.needsUpdate = true;
         geometry.computeVertexNormals();
       }
+      buildContours();
+      placeTreesInScene();
     });
   }
 
-    // ---- Toggleable 3D Tree/Plant Models ----
-    const treeGroup = new THREE.Group();
-    treeGroup.name = 'treeModels';
-    scene.add(treeGroup);
-    let treesVisible = false;
-
-    // Simple 3D tree: brown cylinder trunk + green cone canopy
-    function createTreeModel(height, radius) {
-      const group = new THREE.Group();
-
-      // Trunk
-      const trunkGeom = new THREE.CylinderGeometry(radius * 0.3, radius, height * 0.5, 6);
-      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8B5A2B });
-      const trunk = new THREE.Mesh(trunkGeom, trunkMat);
-      trunk.position.y = height * 0.25;
-      group.add(trunk);
-
-      // Canopy (cone)
-      const canopyGeom = new THREE.ConeGeometry(radius, height * 0.6, 7);
-      const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2D7A2D, transparent: true, opacity: 0.85 });
-      const canopy = new THREE.Mesh(canopyGeom, canopyMat);
-      canopy.position.y = height * 0.65;
-      group.add(canopy);
-
-      // Second smaller canopy layer
-      const canopy2Geom = new THREE.ConeGeometry(radius * 0.7, height * 0.4, 6);
-      const canopy2 = new THREE.Mesh(canopy2Geom, canopyMat);
-      canopy2.position.y = height * 0.85;
-      group.add(canopy2);
-
-      return group;
-    }
-
-    // Place trees in zones with high catchment/swale density
-    function placeTreesInScene() {
-      // Clear existing trees
-      while (treeGroup.children.length > 0) {
-        treeGroup.remove(treeGroup.children[0]);
+  // --- Layer toggles ---
+  document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+    cb.addEventListener('change', () => {
+      const layer = cb.getAttribute('data-layer');
+      if (layer && layersVisible[layer] != null) {
+        layersVisible[layer] = !!cb.checked;
+        if (layer === 'contours') contourLinesGroup.visible = layersVisible.contours;
+        if (layer === 'trees') treeGroup.visible = layersVisible.trees;
       }
-
-      const step = Math.max(2, Math.floor(Math.min(rows, cols) / 20));
-      let treeCount = 0;
-
-      for (let row = 0; row < rows; row += step) {
-        for (let col = 0; col < cols; col += step) {
-          const idx = row * cols + col;
-          const zone = zones[idx];
-
-          // Place trees in catchment and swale zones, plus some random forest
-          const shouldPlace = zone === 'catchment' || zone === 'swale' ||
-            (zone === 'forest' && Math.random() > 0.3);
-
-          if (!shouldPlace) continue;
-
-          // Get world position from grid coords
-          const x = (col / (cols - 1) - 0.5) * meshW;
-          const z = (row / (rows - 1) - 0.5) * meshD;
-          const elevIdx = idx;
-          const elev = heightValues[elevIdx] ?? zMean;
-          const y = ((elev - zMin) / relief) * relief * exaggerate;
-
-          // Randomize size slightly
-          const baseHeight = 0.0004 + Math.random() * 0.0003;
-          const baseRadius = 0.0002 + Math.random() * 0.00015;
-          const tree = createTreeModel(baseHeight, baseRadius);
-          tree.position.set(x, y, z);
-
-          // Slight random rotation for natural look
-          tree.rotation.y = Math.random() * Math.PI * 2;
-
-          treeGroup.add(tree);
-          treeCount++;
-        }
-      }
-
-      // Also place trees at intervention points (ponds, swales)
-      if (analysis?.elements) {
-        for (const el of analysis.elements) {
-          if (el.type === 'pond' || el.type === 'swale' || el.type === 'keyline_pond') {
-            const lat = el.lat ?? el.latitude;
-            const lng = el.lng ?? el.longitude ?? el.lon;
-            if (lat != null && lng != null) {
-              const gx = ((lng - 180) * 111320 * Math.cos(lat * Math.PI / 180) + meshW / 2 + 180 * 111320 * Math.cos(lat * Math.PI / 180)) / meshW * (cols - 1);
-              const gz = ((lat - 90) * 110540 + meshD / 2 + 90 * 110540) / meshD * (rows - 1);
-              const gcol = Math.round(gx);
-              const grow = Math.round(gz);
-              if (gcol >= 0 && gcol < cols && grow >= 0 && grow < rows) {
-                const ti = grow * cols + gcol;
-                const te = heightValues[ti] ?? zMean;
-                const tx = (gcol / (cols - 1) - 0.5) * meshW;
-                const tz = (grow / (rows - 1) - 0.5) * meshD;
-                const ty = ((te - zMin) / relief) * relief * exaggerate;
-
-                const tree = createTreeModel(0.0005 + Math.random() * 0.0002, 0.00025);
-                tree.position.set(tx, ty + 0.0003, tz);
-                treeGroup.add(tree);
-                treeCount++;
-              }
-            }
-          }
-        }
-      }
-
-      return treeCount;
-    }
-
-    const nTrees = placeTreesInScene();
-
-    // Add ambient light so trees are visible
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-    scene.add(ambientLight);
-
-    // Directional light for depth
-    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-    dirLight.position.set(0.005, 0.008, 0.005);
-    scene.add(dirLight);
-
-    // Layer toggles
-    document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
-      cb.addEventListener('change', () => {
-        const layer = cb.getAttribute('data-layer');
-        if (layer && layersVisible[layer] != null) {
-          layersVisible[layer] = !!cb.checked;
-          if (layer === 'contours' && contourLines) {
-            contourLines.visible = layersVisible.contours;
-          }
-          if (layer === 'trees') {
-            treesVisible = !!cb.checked;
-            treeGroup.visible = treesVisible;
-          }
-        }
-      });
     });
+  });
 
-  // Reset view button
+  // --- Reset view ---
   const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
   if (resetBtn) {
     resetBtn.addEventListener('click', () => {
-      targetTheta = 0;
-      targetPhi = Math.PI / 4;
-      cameraRadius = 0.01;
-      updateCameraPosition();
+      targetTheta = 0; targetPhi = Math.PI / 4; cameraRadius = meshSize * 1.2;
     });
   }
 
-  // Badge
+  // --- Info badge ---
   const badge = document.createElement('div');
   badge.className = 'fine';
-  badge.style.cssText =
-    'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;z-index:1000;max-width:90%';
+  badge.style.cssText = 'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;z-index:1000;max-width:90%';
   const nPond = zones.filter((z) => z === 'pond').length;
   const nSwale = zones.filter((z) => z === 'swale').length;
   const nCatch = zones.filter((z) => z === 'catchment').length;
-  badge.textContent = `mesh ${segsX}×${segsX} · relief ${relief.toFixed(1)}m · pond ${nPond} catch ${nCatch} swale ${nSwale}`;
-  host.style.position = 'relative';
-  host.appendChild(badge);
+  badge.textContent = `${cols}×${rows} · relief ${relief.toFixed(1)}m · pond ${nPond} catch ${nCatch} swale ${nSwale} · ${source}`;
+  el.style.position = 'relative';
+  el.appendChild(badge);
 }
 
 /**
@@ -2703,18 +2605,7 @@ function createLocalTerrainProvider(heights, rows, cols, bbox, zMin, zMax, zMean
   });
 }
 
-function updateCameraPosition() {
-  if (!camera) return;
-  camera.position.x = cameraRadius * Math.sin(rotPhi) * Math.sin(rotTheta);
-  camera.position.y = cameraRadius * Math.cos(rotPhi);
-  camera.position.z = cameraRadius * Math.sin(rotPhi) * Math.cos(rotTheta);
-  camera.lookAt(terrainMesh?.position || new THREE.Vector3());
-}
-
-function createLocalTerrainProvider(heights, rows, cols, bbox, zMin, zMax, zMean) {
-  // Deprecated: Terrain is now rendered with Three.js mesh in mountTerrain3dViewer
-  return new Cesium.EllipsoidTerrainProvider({});
-}
+// updateCameraPosition and createLocalTerrainProvider are now handled inside mountTerrain3dViewer
 
 function mountSemanticTerrainObjects(scene, payload, opts) {
   const features = payload?.features || [];
