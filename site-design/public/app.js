@@ -1947,10 +1947,10 @@ function terrain3dBlock(id, report) {
             : ''
         }</span>
       </div>
-      <div id="${id}" class="terrain-3d-host cesium-container"
-        style="height:min(420px,58vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#000;position:relative"
-        role="img" aria-label="3D terrain globe with contours, catchment, pond and swale zones">
-        <p class="fine" style="padding:1rem;color:#c8cec1">Loading Cesium globe…</p>
+      <div id="${id}-mesh" class="terrain-3d-host"
+        style="height:min(420px,58vh);margin-top:0.4rem;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#0a0f14;position:relative"
+        role="img" aria-label="3D terrain model with contours, catchment, pond and swale zones">
+        <p class="fine" style="padding:1rem;color:#c8cec1">Loading 3D terrain…</p>
       </div>
       <div class="terrain-3d-controls" style="display:flex;flex-wrap:wrap;gap:0.65rem 1rem;align-items:center;margin-top:0.5rem">
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
