@@ -15,8 +15,8 @@ const CONFIG = {
   // Terrain mesh resolution
   meshSize: 256,
   
-  // Vertical exaggeration
-  relief: 4,
+  // No vertical exaggeration - use true scale
+  relief: 1,
   
   // Layer colors (matching geo-overlay-renderer.js palette)
   colors: {
@@ -367,9 +367,16 @@ function checkEdge(e0, e1, level, c0, r0, c1, r1, points, meshW, meshH, width, h
     const col = c0 + t * (c1 - c0);
     const row = r0 + t * (r1 - r0);
     
+    // Match terrain mesh coordinate mapping exactly
+    // PlaneGeometry after rotateX(-PI/2):
+    //   X axis maps to columns (west→east)
+    //   Z axis maps to rows (north→south, inverted because plane UV goes top-to-bottom)
+    //   Y axis is up (elevation)
+    // The terrain mesh sets positions[i*3+1] = (elev - zMin) * relief
+    // So contour Y must match: (level - zMin) * relief
     const x = (col / (width - 1)) * meshW;
     const z = (row / (height - 1)) * meshH;
-    const y = (level - zMin) * relief + 0.5;
+    const y = (level - zMin) * relief;
     
     points.push(new THREE.Vector3(x, y, z));
   }
@@ -494,7 +501,8 @@ function renderFeatures(features) {
           for (const [lng, lat] of ring) {
             const x = ((lng - bbox.west) / (bbox.east - bbox.west)) * meshW;
             const z = ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
-            const y = sampleTerrainAt(lng, lat) * CONFIG.relief + 1;
+            const elev = sampleTerrainAt(lng, lat);
+            const y = (elev - state.terrain.zMin) * CONFIG.relief + 0.2;
             points.push(new THREE.Vector3(x, y, z));
           }
         }
@@ -522,7 +530,8 @@ function renderFeatures(features) {
       for (const [lng, lat] of geom.coordinates) {
         const x = ((lng - bbox.west) / (bbox.east - bbox.west)) * meshW;
         const z = ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
-        const y = sampleTerrainAt(lng, lat) * CONFIG.relief + 0.5;
+        const elev = sampleTerrainAt(lng, lat);
+        const y = (elev - state.terrain.zMin) * CONFIG.relief + 0.2;
         points.push(new THREE.Vector3(x, y, z));
       }
       
@@ -544,12 +553,26 @@ function renderFeatures(features) {
 function sampleTerrainAt(lng, lat) {
   const { grid, width, height, bbox, zMin } = state.terrain;
   
-  const col = Math.round(((lng - bbox.west) / (bbox.east - bbox.west)) * (width - 1));
-  const row = Math.round(((lat - bbox.south) / (bbox.north - bbox.south)) * (height - 1));
-  
-  if (col < 0 || col >= width || row < 0 || row >= height) return zMin;
-  
-  return grid[row * width + col] ?? zMin;
+  // Match terrain mesh coordinate mapping:
+  // Terrain mesh iterates i from 0 to width*height-1
+  // row = floor(i / width), col = i % width
+  // x = (col / (width-1)) * meshW  → lng maps to col
+  // z = (row / (height-1)) * meshH → lat maps to row
+  const col = ((lng - bbox.west) / (bbox.east - bbox.west)) * (width - 1);
+  const row = ((lat - bbox.south) / (bbox.north - bbox.south)) * (height - 1);
+
+  // Bilinear interpolation for smoother sampling
+  const c0 = Math.max(0, Math.min(width - 2, Math.floor(col)));
+  const r0 = Math.max(0, Math.min(height - 2, Math.floor(row)));
+  const fc = Math.max(0, Math.min(1, col - c0));
+  const fr = Math.max(0, Math.min(1, row - r0));
+
+  const e00 = grid[r0 * width + c0] ?? zMin;
+  const e10 = grid[r0 * width + c0 + 1] ?? e00;
+  const e01 = grid[(r0 + 1) * width + c0] ?? e00;
+  const e11 = grid[(r0 + 1) * width + c0 + 1] ?? e00;
+
+  return e00 * (1 - fr) * (1 - fc) + e10 * (1 - fr) * fc + e01 * fr * (1 - fc) + e11 * fr * fc;
 }
 
 // ── UI Controls ──────────────────────────────────────────────────────────────
@@ -566,16 +589,8 @@ function setupUIControls() {
     });
   });
   
-  // Relief slider
-  const reliefSlider = document.getElementById('relief-slider');
-  const reliefVal = document.getElementById('relief-val');
-  reliefSlider.addEventListener('input', () => {
-    const val = parseFloat(reliefSlider.value);
-    CONFIG.relief = val;
-    reliefVal.textContent = val + '×';
-    rebuildTerrainHeight();
-  });
-  
+  // Relief slider removed - using fixed scale of 1
+
   // Opacity slider
   const opacitySlider = document.getElementById('opacity-slider');
   const opacityVal = document.getElementById('opacity-val');
@@ -584,7 +599,7 @@ function setupUIControls() {
     opacityVal.textContent = Math.round(val * 100) + '%';
     updateOverlayOpacity(val);
   });
-  
+
   // Reset button
   document.getElementById('btn-reset').addEventListener('click', () => {
     const meshW = 400;
