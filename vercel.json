@@ -3,14 +3,10 @@
   "cleanUrls": true,
   "rewrites": [
     {
-      "source": "/",
-      "destination": "/index.html"
-    },
-    {
       "source": "/(.*)",
       "destination": {
         "type": "service",
-        "service": "resilience-quiz-edmonton"
+        "service": "site-design"
       }
     }
   ],
@@ -35,8 +31,8 @@
     }
   ],
   "services": {
-    "resilience-quiz-edmonton": {
-      "root": ".",
+    "site-design": {
+      "root": "site-design",
       "entrypoint": "server.js"
     }
   }
