@@ -8846,12 +8846,13 @@ function buildFindingsHtml(r, ctx, opts = {}) {
   const acc = (id, title, blurb, body) =>
     findingsAccordion(id, title, blurb, body, { forPdf });
 
-  // ── Land: legal description, distance / access, soils, topo, hardiness ──
+  // ── Land: legal description, distance / access, soils, topo, hardiness, precipitation ──
   const landBody = [
     atsSection(r.ats, r.parcel_address),
     accessSection(r.access, city?.name, city?.distance_km),
     distanceContextSection(px, water, city, settlement),
     topologySection(topo, a),
+    precipitationSection(r.precipitation || r.hydrology || r.climate),
     soilSurveySection(r.soil_survey || a.soil_survey),
     hardinessFloodZoningSection(hardiness, flood, zoning, r),
     temperatureSection(r.temperature || a.temperature),
