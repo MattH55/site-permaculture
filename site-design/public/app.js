@@ -2297,6 +2297,132 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     terrainMesh = new THREE.Mesh(geometry, material);
     scene.add(terrainMesh);
 
+    // --- Zone overlay groups (catchment, pond, swale) ---
+    const groupCatchment = new THREE.Group(); groupCatchment.name = 'catchment';
+    const groupPond = new THREE.Group(); groupPond.name = 'pond';
+    const groupSwale = new THREE.Group(); groupSwale.name = 'swale';
+    const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
+    scene.add(groupCatchment, groupPond, groupSwale, groupTrees);
+
+    // Build zone overlays from DEM classification
+    const buildZoneOverlays = () => {
+      // Clear existing
+      [groupCatchment, groupPond, groupSwale].forEach(g => {
+        while (g.children.length) {
+          const c = g.children[0];
+          g.remove(c);
+          c.geometry?.dispose();
+          c.material?.dispose();
+        }
+      });
+
+      const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
+      
+      // Create colored point clouds for each zone type
+      const zoneColors = {
+        catchment: { color: 0x2a6f97, group: groupCatchment },
+        pond: { color: 0x1a9bb5, group: groupPond },
+        swale: { color: 0xc4a035, group: groupSwale },
+      };
+      
+      const zonePoints = { catchment: [], pond: [], swale: [] };
+      
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const i = r * cols + c;
+          const zone = zones[i];
+          if (zonePoints[zone]) {
+            const x = gridToLocalX(c);
+            const z = gridToLocalZ(r);
+            const y = elevToLocalY(heightValues[i] ?? zMean, exaggerate) + 0.02;
+            zonePoints[zone].push(x, y, z);
+          }
+        }
+      }
+      
+      for (const [zoneName, pts] of Object.entries(zonePoints)) {
+        if (pts.length === 0) continue;
+        const geom = new THREE.BufferGeometry();
+        geom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+        const mat = new THREE.PointsMaterial({ 
+          color: zoneColors[zoneName].color, 
+          size: 0.08,
+          transparent: true,
+          opacity: 0.7,
+          sizeAttenuation: true
+        });
+        zoneColors[zoneName].group.add(new THREE.Points(geom, mat));
+      }
+    };
+    buildZoneOverlays();
+
+    // --- Trees from report data ---
+    const buildTrees = () => {
+      while (groupTrees.children.length) {
+        const c = groupTrees.children[0];
+        groupTrees.remove(c);
+        c.geometry?.dispose();
+        c.material?.dispose();
+      }
+
+      // Get tree locations from report - only use actual coordinate-bearing data
+      const treeFeatures = [];
+      
+      // Check semantic_terrain features for trees/vegetation
+      const semFeatures = report?.semantic_terrain?.features || [];
+      for (const f of semFeatures) {
+        const layer = f.layer || f.priority_group || '';
+        const ftype = f.feature_type || '';
+        if (layer === 'trees' || layer === 'vegetation' || ftype === 'tree' || ftype === 'vegetation') {
+          if (f.geometry?.coordinates) {
+            treeFeatures.push(f);
+          }
+        }
+      }
+      
+      // Check design_elements for tree plantings with coordinates
+      const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
+      for (const el of designEls) {
+        if ((el.element_type === 'tree' || el.element_type === 'food_forest' || el.element_type === 'windbreak') && el.coordinates) {
+          treeFeatures.push({ geometry: { type: 'Point', coordinates: el.coordinates }, element_type: el.element_type });
+        }
+      }
+
+      if (treeFeatures.length === 0) return;
+
+      // Simple tree representation: green cones
+      const trunkGeo = new THREE.CylinderGeometry(0.02, 0.03, 0.15, 6);
+      const canopyGeo = new THREE.ConeGeometry(0.12, 0.3, 8);
+      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+      const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
+
+      for (const f of treeFeatures) {
+        const coords = f.geometry?.coordinates;
+        if (!coords || coords.length < 2) continue;
+        
+        const lng = Number(coords[0]);
+        const lat = Number(coords[1]);
+        
+        // Convert to local coordinates
+        if (lng < west || lng > east || lat < south || lat > north) continue;
+        
+        const gc = ((lng - west) / (east - west)) * (cols - 1);
+        const gr = ((north - lat) / (north - south)) * (rows - 1);
+        const x = gridToLocalX(gc);
+        const z = gridToLocalZ(gr);
+        const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
+
+        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+        trunk.position.set(x, y + 0.075, z);
+        
+        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+        canopy.position.set(x, y + 0.25, z);
+        
+        groupTrees.add(trunk, canopy);
+      }
+    };
+    buildTrees();
+
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
     contourLinesGroup.name = 'contours';
@@ -2403,12 +2529,20 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     });
   }
 
-  // --- Contour toggle ---
+  // --- Layer toggles (contours, catchment, pond, swale, trees) ---
   document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
     cb.addEventListener('change', () => {
       const layer = cb.getAttribute('data-layer');
       if (layer === 'contours' && contourLinesGroup) {
         contourLinesGroup.visible = !!cb.checked;
+      } else if (layer === 'catchment') {
+        groupCatchment.visible = !!cb.checked;
+      } else if (layer === 'pond') {
+        groupPond.visible = !!cb.checked;
+      } else if (layer === 'swale') {
+        groupSwale.visible = !!cb.checked;
+      } else if (layer === 'trees') {
+        groupTrees.visible = !!cb.checked;
       }
     });
   });
