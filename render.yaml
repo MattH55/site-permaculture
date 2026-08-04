@@ -20,6 +20,23 @@ services:
           name: quiz-leads
           property: connectionString
 
+  - type: web
+    name: ee-site-design
+    runtime: node
+    plan: free
+    region: oregon
+    rootDir: site-design
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: NODE_ENV
+        value: production
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false
+
 databases:
   - name: quiz-leads
     plan: basic-256mb
