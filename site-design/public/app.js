@@ -1648,6 +1648,106 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
         .catch((e) => console.warn('contour fetch failed', e));
     }
 
+    // --- Add zone overlays (catchment, pond, swale) from DEM classification ---
+    try {
+      const elevPayload = elevPayloadFromTopology(report, latlngs);
+      if (elevPayload && elevPayload.elevations_m?.length) {
+        const { rows, cols, elevations_m, bbox: ebbox, min_m, max_m } = elevPayload;
+        const zMin = min_m ?? Math.min(...elevations_m.filter(Number.isFinite));
+        const zMax = max_m ?? Math.max(...elevations_m.filter(Number.isFinite));
+        const zMean = elevations_m.reduce((a, b) => a + (Number.isFinite(b) ? b : 0), 0) / elevations_m.length;
+        const { zones } = classifyTerrainZones(elevations_m, rows, cols, zMin, zMax, zMean);
+
+        const zoneColors = {
+          catchment: '#2a6f97',
+          pond: '#1a9bb5',
+          swale: '#c4a035',
+        };
+        const zoneGroups = { catchment: [], pond: [], swale: [] };
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            const z = zones[i];
+            if (!zoneColors[z]) continue;
+            // Convert grid cell to lat/lng
+            const lng = ebbox.west + (c / (cols - 1)) * (ebbox.east - ebbox.west);
+            const lat = ebbox.north - (r / (rows - 1)) * (ebbox.north - ebbox.south);
+            zoneGroups[z].push([lat, lng]);
+          }
+        }
+
+        for (const [zoneName, pts] of Object.entries(zoneGroups)) {
+          if (pts.length < 10) continue;
+          // Sample points to avoid too many markers
+          const step = Math.max(1, Math.floor(pts.length / 200));
+          const sampled = pts.filter((_, i) => i % step === 0);
+          const layer = L.layerGroup(
+            sampled.map(([lat, lng]) =>
+              L.circleMarker([lat, lng], {
+                radius: 4,
+                color: zoneColors[zoneName],
+                fillColor: zoneColors[zoneName],
+                fillOpacity: 0.6,
+                weight: 1,
+              })
+            )
+          ).addTo(map);
+          overlays[`${zoneName.charAt(0).toUpperCase() + zoneName.slice(1)} zones`] = layer;
+        }
+      }
+    } catch (e) {
+      console.warn('Zone overlays skipped', e);
+    }
+
+    // --- Add trees from report data ---
+    try {
+      const treeFeatures = [];
+      // From semantic_terrain.features
+      const semFeats = report?.semantic_terrain?.features || [];
+      for (const f of semFeats) {
+        const layer = f?.layer || f?.properties?.layer;
+        if (layer === 'trees' || layer === 'vegetation') {
+          treeFeatures.push(f);
+        }
+      }
+      // From design_elements
+      const desEls = report?.design_elements || [];
+      for (const el of desEls) {
+        const kind = (el?.kind || el?.type || '').toLowerCase();
+        if (['tree', 'food_forest', 'windbreak', 'planting'].some(k => kind.includes(k))) {
+          if (el?.geometry?.coordinates || el?.coordinates) {
+            treeFeatures.push(el);
+          }
+        }
+      }
+
+      if (treeFeatures.length > 0) {
+        const treeMarkers = [];
+        for (const f of treeFeatures) {
+          const coords = f?.geometry?.coordinates || f?.coordinates;
+          if (!coords || coords.length < 2) continue;
+          const [lng, lat] = coords;
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          treeMarkers.push(
+            L.circleMarker([lat, lng], {
+              radius: 5,
+              color: '#2d5a27',
+              fillColor: '#4a8c3f',
+              fillOpacity: 0.8,
+              weight: 2,
+            }).bindPopup(`<strong>Tree</strong><br/>${f?.properties?.species || f?.species || 'Tree'}`)
+          );
+        }
+        if (treeMarkers.length > 0) {
+          const treeLayer = L.layerGroup(treeMarkers).addTo(map);
+          overlays['Trees'] = treeLayer;
+        }
+      }
+    } catch (e) {
+      console.warn('Tree overlay skipped', e);
+    }
+
     try {
       parcelLayer.bringToFront();
     } catch { /* ignore */ }
