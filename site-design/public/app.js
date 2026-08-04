@@ -2099,6 +2099,27 @@ function terrain3dBlock(id, report) {
 }
 
 /**
+ * Ray-casting point-in-polygon test.
+ * @param {number} px - X coordinate of test point
+ * @param {number} py - Y coordinate of test point  
+ * @param {Array<[number,number]>} polygon - Array of [x,y] pairs forming closed ring
+ * @returns {boolean} true if point is inside polygon
+ */
+function pointInPolygon2D(px, py, polygon) {
+  if (!polygon || polygon.length < 3) return true; // no clip if no polygon
+  let inside = false;
+  const n = polygon.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
  * Classify DEM cells into catchment / pond / swale / ridge / neutral for 3D colouring.
  * Pond = low + flat; catchment = broader low basin; swale = mid-slope hillsides.
  */
@@ -2411,11 +2432,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         // Calculate tile coordinates for the bbox center at appropriate zoom
         const latCenter = (south + north) / 2;
         const lngCenter = (west + east) / 2;
-        const latRange = north - south;
-        const lngRange = east - west;
+        const parcelLatRange = north - south;
+        const parcelLngRange = east - west;
         
         // Choose zoom level based on parcel size (smaller parcels need higher zoom)
-        const maxDim = Math.max(latRange, lngRange);
+        const maxDim = Math.max(parcelLatRange, parcelLngRange);
         let zoom = 14;
         if (maxDim < 0.005) zoom = 16;
         else if (maxDim < 0.01) zoom = 15;
@@ -2423,72 +2444,97 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         else if (maxDim < 0.08) zoom = 13;
         else zoom = 12;
         
-        // Convert lat/lng to tile coordinates
-        const lat2tile = (lat, z) => Math.floor((1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z));
-        const lng2tile = (lng, z) => Math.floor((lng + 180) / 360 * Math.pow(2, z));
+        // Convert lat/lng to tile coordinates (exact float, not floored)
+        const lat2tileExact = (lat, z) => (1 - Math.log(Math.tan(lat * Math.PI / 180) + 1 / Math.cos(lat * Math.PI / 180)) / Math.PI) / 2 * Math.pow(2, z);
+        const lng2tileExact = (lng, z) => (lng + 180) / 360 * Math.pow(2, z);
+        const lat2tile = (lat, z) => Math.floor(lat2tileExact(lat, z));
+        const lng2tile = (lng, z) => Math.floor(lng2tileExact(lng, z));
         
-        const tileX = lng2tile(lngCenter, zoom);
-        const tileY = lat2tile(latCenter, zoom);
+        // Get tile range that covers the entire parcel bbox
+        const tileXMin = lng2tile(west, zoom);
+        const tileXMax = lng2tile(east, zoom);
+        const tileYMin = lat2tile(north, zoom); // north has smaller tile Y
+        const tileYMax = lat2tile(south, zoom); // south has larger tile Y
         
-        // Create a canvas to stitch tiles together (3x3 grid for coverage)
+        // Add 1 tile padding on each side
+        const startX = tileXMin - 1;
+        const endX = tileXMax + 1;
+        const startY = tileYMin - 1;
+        const endY = tileYMax + 1;
+        
+        const tilesWide = endX - startX + 1;
+        const tilesHigh = endY - startY + 1;
+        
+        // Create a canvas to stitch tiles together
         const tileSize = 256;
-        const gridTiles = 3;
         const canvas = document.createElement('canvas');
-        canvas.width = tileSize * gridTiles;
-        canvas.height = tileSize * gridTiles;
+        canvas.width = tileSize * tilesWide;
+        canvas.height = tileSize * tilesHigh;
         const ctx = canvas.getContext('2d');
         
         let loadedCount = 0;
-        const totalTiles = gridTiles * gridTiles;
+        const totalTiles = tilesWide * tilesHigh;
         
-        for (let dy = -1; dy <= 1; dy++) {
-          for (let dx = -1; dx <= 1; dx++) {
-            const tx = tileX + dx;
-            const ty = tileY + dy;
+        for (let ty = startY; ty <= endY; ty++) {
+          for (let tx = startX; tx <= endX; tx++) {
             const img = new Image();
             img.crossOrigin = 'anonymous';
             img.onload = () => {
-              const cx = (dx + 1) * tileSize;
-              const cy = (dy + 1) * tileSize;
+              // Draw tile at correct position in canvas
+              const cx = (tx - startX) * tileSize;
+              const cy = (ty - startY) * tileSize;
               ctx.drawImage(img, cx, cy, tileSize, tileSize);
               loadedCount++;
               if (loadedCount === totalTiles) {
                 // Create texture from stitched canvas
                 satelliteTexture = new THREE.CanvasTexture(canvas);
                 satelliteTexture.colorSpace = THREE.SRGBColorSpace;
+                satelliteTexture.minFilter = THREE.LinearFilter;
+                satelliteTexture.magFilter = THREE.LinearFilter;
                 
-                // Calculate UV offset to crop to exact bbox
-                // Tile bounds in lat/lng
+                // Calculate exact tile bounds in lat/lng
                 const tile2lng = (x, z) => x / Math.pow(2, z) * 360 - 180;
                 const tile2lat = (y, z) => {
                   const n = Math.PI - 2 * Math.PI * y / Math.pow(2, z);
                   return 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
                 };
                 
-                const tileWest = tile2lng(tileX - 1, zoom);
-                const tileEast = tile2lng(tileX + 2, zoom);
-                const tileNorth = tile2lat(tileY - 1, zoom);
-                const tileSouth = tile2lat(tileY + 2, zoom);
+                // Bounds of the entire stitched tile area
+                const tileWest = tile2lng(startX, zoom);
+                const tileEast = tile2lng(endX + 1, zoom);
+                const tileNorth = tile2lat(startY, zoom);
+                const tileSouth = tile2lat(endY + 1, zoom);
                 
                 const tileLngRange = tileEast - tileWest;
                 const tileLatRange = tileNorth - tileSouth;
                 
-                // UV coordinates (Three.js UV: 0,0 is bottom-left; textures: 0,0 is top-left)
+                // UV coordinates for the parcel bbox within the tile area
+                // Three.js PlaneGeometry UV: (0,0) at top-left when viewed from above after rotateX(-PI/2)
+                // But actually after rotateX(-PI/2), UV (0,0) maps to corner (-meshW/2, 0, -meshD/2)
+                // and UV (1,1) maps to (meshW/2, 0, meshD/2)
+                // The texture image has (0,0) at top-left, so we need to match this
+                
+                // Parcel position within tile coverage (normalized 0-1)
                 const uMin = (west - tileWest) / tileLngRange;
                 const uMax = (east - tileWest) / tileLngRange;
-                const vMin = 1 - (north - tileSouth) / tileLatRange; // flip for texture coords
-                const vMax = 1 - (south - tileSouth) / tileLatRange;
+                // For V: texture top (v=1) is north, texture bottom (v=0) is south
+                // But canvas draws tiles top-to-bottom (startY=north at top)
+                // So v=1 corresponds to tileNorth, v=0 to tileSouth
+                const vMax = (tileNorth - north) / tileLatRange; // top of parcel
+                const vMin = (tileNorth - south) / tileLatRange; // bottom of parcel
                 
-                // Update UVs on geometry
+                // Update UVs on geometry to map parcel area to texture
                 const uvs = geometry.attributes.uv;
                 if (uvs) {
                   const uvArray = uvs.array;
                   for (let i = 0; i < cols * rows; i++) {
-                    // PlaneGeometry UVs go 0-1 across the plane; remap to satellite crop
+                    // PlaneGeometry default UVs go 0-1 across the plane
+                    // We remap them to the parcel's portion of the texture
                     const origU = uvArray[i * 2];
                     const origV = uvArray[i * 2 + 1];
                     uvArray[i * 2] = uMin + origU * (uMax - uMin);
-                    uvArray[i * 2 + 1] = vMin + origV * (vMax - vMin);
+                    // Flip V because PlaneGeometry has V=0 at bottom but texture has V=0 at bottom (south)
+                    uvArray[i * 2 + 1] = vMin + (1 - origV) * (vMax - vMin);
                   }
                   uvs.needsUpdate = true;
                 }
@@ -2517,6 +2563,101 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     
     terrainMesh = new THREE.Mesh(geometry, materialNoSat);
     scene.add(terrainMesh);
+
+    // --- Parcel boundary on 3D terrain ---
+    const groupParcel = new THREE.Group(); groupParcel.name = 'parcel';
+    scene.add(groupParcel);
+
+    const buildParcelBoundary = () => {
+      while (groupParcel.children.length) {
+        const c = groupParcel.children[0];
+        groupParcel.remove(c);
+        c.geometry?.dispose();
+        c.material?.dispose();
+      }
+
+      // Get parcel ring from report geometry
+      const parcelRing = report?.geometry?.coordinates?.[0] || report?.geometry?.coordinates;
+      if (!parcelRing || parcelRing.length < 3) return;
+
+      // Convert parcel coords to local 3D coordinates, draping onto terrain
+      const parcelPts3D = [];
+      for (const coord of parcelRing) {
+        const lng = Number(coord[0]);
+        const lat = Number(coord[1]);
+        if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+        
+        // Convert to grid coordinates
+        const gc = ((lng - west) / (east - west)) * (cols - 1);
+        const gr = ((north - lat) / (north - south)) * (rows - 1);
+        
+        // Clamp to grid bounds
+        const gcClamped = Math.max(0, Math.min(cols - 1, gc));
+        const grClamped = Math.max(0, Math.min(rows - 1, gr));
+        
+        const x = gridToLocalX(gcClamped);
+        const z = gridToLocalZ(grClamped);
+        const y = elevToLocalY(elevAtRC(grClamped, gcClamped), exaggerate) + 0.01; // slight offset above terrain
+        
+        parcelPts3D.push(new THREE.Vector3(x, y, z));
+      }
+
+      if (parcelPts3D.length < 3) return;
+
+      // Close the ring if not already closed
+      const first = parcelPts3D[0];
+      const last = parcelPts3D[parcelPts3D.length - 1];
+      if (first.distanceTo(last) > 0.001) {
+        parcelPts3D.push(first.clone());
+      }
+
+      // Parcel boundary line
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(parcelPts3D);
+      const lineMat = new THREE.LineBasicMaterial({ 
+        color: 0xffd700, // gold
+        linewidth: 2,
+        transparent: true,
+        opacity: 0.9
+      });
+      const parcelLine = new THREE.Line(lineGeo, lineMat);
+      groupParcel.add(parcelLine);
+
+      // Semi-transparent parcel fill (using triangle fan from centroid)
+      if (parcelPts3D.length >= 4) {
+        // Calculate centroid
+        const centroid = new THREE.Vector3();
+        for (let i = 0; i < parcelPts3D.length - 1; i++) {
+          centroid.add(parcelPts3D[i]);
+        }
+        centroid.divideScalar(parcelPts3D.length - 1);
+        centroid.y = elevToLocalY(elevAtRC(
+          ((north - (south + north) / 2) / (north - south)) * (rows - 1),
+          (((west + east) / 2 - west) / (east - west)) * (cols - 1)
+        ), exaggerate) + 0.005;
+
+        // Build triangles from centroid to each edge
+        const fillVerts = [];
+        for (let i = 0; i < parcelPts3D.length - 1; i++) {
+          fillVerts.push(centroid.x, centroid.y, centroid.z);
+          fillVerts.push(parcelPts3D[i].x, parcelPts3D[i].y, parcelPts3D[i].z);
+          fillVerts.push(parcelPts3D[i + 1].x, parcelPts3D[i + 1].y, parcelPts3D[i + 1].z);
+        }
+        
+        const fillGeo = new THREE.BufferGeometry();
+        fillGeo.setAttribute('position', new THREE.Float32BufferAttribute(fillVerts, 3));
+        fillGeo.computeVertexNormals();
+        const fillMat = new THREE.MeshBasicMaterial({
+          color: 0xffd700,
+          transparent: true,
+          opacity: 0.12,
+          side: THREE.DoubleSide,
+          depthWrite: false
+        });
+        const fillMesh = new THREE.Mesh(fillGeo, fillMat);
+        groupParcel.add(fillMesh);
+      }
+    };
+    buildParcelBoundary();
 
     // --- Zone overlay groups (catchment, pond, swale) ---
     const groupCatchment = new THREE.Group(); groupCatchment.name = 'catchment';
