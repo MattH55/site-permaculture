@@ -31,3 +31,12 @@ vercel-build/
 *.sqlite
 *.geojson
 data/
+
+# Temporary inspection/debug files
+tmp_*.py
+tmp_*.js
+tmp_*.mjs
+tmp_*.txt
+tmp_*.json
+tmp_*.html
+x[1])
