@@ -1978,11 +1978,6 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
           Trees
         </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.4rem">
-          Exaggerate
-          <input type="range" min="1" max="12" step="0.5" value="3.5" data-terrain-exag="${esc(id)}" style="width:7rem" />
-          <span class="mono" data-terrain-exag-val="${esc(id)}">3.5×</span>
-        </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
       <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
@@ -2210,9 +2205,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   const meshD = meshSize / Math.max(aspect, 1);
 
   // Height scaling: normalize elevation to scene units
-  // At exaggerate=1, max height difference = relief * 0.05 scene units
+  // True scale (exaggerate=1): max height difference = relief * 0.05 scene units
   const heightScale = 0.05;
-  let exaggerate = 2.0;
+  const exaggerate = 1.0;
 
   // Build heightmap array
   const heightValues = new Float32Array(rows * cols);

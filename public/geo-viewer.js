@@ -370,12 +370,11 @@ function checkEdge(e0, e1, level, c0, r0, c1, r1, points, meshW, meshH, width, h
     // Match terrain mesh coordinate mapping exactly
     // PlaneGeometry after rotateX(-PI/2):
     //   X axis maps to columns (west→east)
-    //   Z axis maps to rows (north→south, inverted because plane UV goes top-to-bottom)
+    //   Z axis is INVERTED relative to row index (row 0 = north = high Z after rotation)
     //   Y axis is up (elevation)
-    // The terrain mesh sets positions[i*3+1] = (elev - zMin) * relief
-    // So contour Y must match: (level - zMin) * relief
+    // Reflect Z over the long axis: row 0 → meshH, row max → 0
     const x = (col / (width - 1)) * meshW;
-    const z = (row / (height - 1)) * meshH;
+    const z = meshH - (row / (height - 1)) * meshH;
     const y = (level - zMin) * relief;
     
     points.push(new THREE.Vector3(x, y, z));
@@ -500,7 +499,8 @@ function renderFeatures(features) {
         for (const ring of rings) {
           for (const [lng, lat] of ring) {
             const x = ((lng - bbox.west) / (bbox.east - bbox.west)) * meshW;
-            const z = ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
+            // Reflect Z over long axis to match contour orientation
+            const z = meshH - ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
             const elev = sampleTerrainAt(lng, lat);
             const y = (elev - state.terrain.zMin) * CONFIG.relief + 0.2;
             points.push(new THREE.Vector3(x, y, z));
@@ -529,7 +529,8 @@ function renderFeatures(features) {
       const points = [];
       for (const [lng, lat] of geom.coordinates) {
         const x = ((lng - bbox.west) / (bbox.east - bbox.west)) * meshW;
-        const z = ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
+        // Reflect Z over long axis to match contour orientation
+        const z = meshH - ((lat - bbox.south) / (bbox.north - bbox.south)) * meshH;
         const elev = sampleTerrainAt(lng, lat);
         const y = (elev - state.terrain.zMin) * CONFIG.relief + 0.2;
         points.push(new THREE.Vector3(x, y, z));
