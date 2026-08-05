@@ -1,0 +1,658 @@
+{
+  "ethics": [
+    {
+      "id": "earth-care",
+      "name": "Earth Care",
+      "icon": "🌍",
+      "short": "Rebuild natural capital — healthy soil, clean water, thriving ecosystems.",
+      "description": "Earth Care is the first ethic. It means designing systems that regenerate the living world: building soil instead of depleting it, cleaning water as it flows through the landscape, increasing biodiversity, and sequestering carbon. Every design decision should leave the land healthier than we found it.",
+      "why": "Without healthy ecosystems, neither people nor economies can thrive long-term. In Alberta, a century of extractive agriculture and resource development has degraded vast areas of topsoil, wetlands, and native grasslands. Permaculture design actively reverses this trend.",
+      "example": "On a central Alberta acreage, we transformed a compacted, depleted hayfield into a multi-layered food forest. Within three years, soil organic matter increased from 1.8% to 4.2%, earthworm counts tripled, and the property now hosts 40+ bird species that hadn't been seen there in decades.",
+      "relatedPrinciples": ["observe-and-interact", "catch-and-store-energy", "use-and-value-diversity"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "people-care",
+      "name": "People Care",
+      "icon": "🤝",
+      "short": "Design for human well-being — health, connection, meaningful work, and beauty.",
+      "description": "People Care starts with self and ripples outward to family, community, and culture. Permaculture design places people within the system — not above it. This means creating spaces that nourish body and spirit, building social connections, ensuring fair access to resources, and making regenerative living practical and joyful.",
+      "why": "Regenerative landscapes only last if the people managing them are healthy, motivated, and supported. Burnout, isolation, and financial stress cause more homestead and farm failures than any pest or drought. Designing for people means designing for long-term viability.",
+      "example": "A multi-generational family near Red Deer wanted to farm together but kept stepping on each other's toes. We designed zone placements that gave each household its own private outdoor space, communal gardens where they wanted to collaborate, and traffic flow patterns that reduced daily friction. Three years later, all three generations are still farming together.",
+      "relatedPrinciples": ["observe-and-interact", "integrate-rather-than-segregate", "use-edges-and-value-the-marginal"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "fair-share",
+      "name": "Fair Share / Return of Surplus",
+      "icon": "⚖️",
+      "short": "Set limits to consumption and redistribute surplus — time, money, harvests, knowledge.",
+      "description": "Fair Share recognizes that our consumption affects others — human and non-human, present and future. It's about living within our ecological means and reinvesting surplus back into the system. This could mean donating extra produce to a food bank, teaching neighbors what you've learned, pricing services on a sliding scale, or simply taking only what you need from the land.",
+      "why": "Unlimited growth on a finite planet is mathematically impossible. Permaculture asks us to consciously set limits and find creative ways to share abundance. This ethic is what keeps the whole system ethical — without it, Earth Care and People Care can be co-opted to serve narrow interests.",
+      "example": "A market garden client near Leduc calculated that 30% of their harvest was going to waste due to cosmetic standards. We helped them set up a CSA program with a 'surplus share' tier — subscribers pay what they can and receive the perfectly edible seconds. The program now feeds 15 families and reduced field waste to under 5%.",
+      "relatedPrinciples": ["apply-self-regulation-and-accept-feedback", "produce-no-waste", "creatively-use-and-respond-to-change"],
+      "portfolioLink": "#"
+    }
+  ],
+  "principles": [
+    {
+      "id": "observe-and-interact",
+      "name": "Observe and Interact",
+      "icon": "👁️",
+      "short": "Watch the land carefully before you change anything. Beauty and solutions are in the details.",
+      "why": "Every site has its own personality — microclimates, water flows, wildlife patterns, soil variations. Rushing into earthworks or planting before understanding these patterns leads to expensive mistakes. Taking time to observe through all four seasons reveals opportunities that a quick survey misses.",
+      "howItShapesDesign": "We start every project with a thorough site observation period — walking the land in different weather, noting where snow melts first, where water pools, which way the prevailing winds blow, what native plants are already thriving. This information becomes the foundation for all placement decisions.",
+      "example": "A client near Fort Saskatchewan wanted a pond dug immediately. During our observation period, we noticed that spring meltwater already collected naturally in a shallow depression 50 meters from where they had planned the pond. We designed the pond for that natural low point instead, saving $8,000 in excavation and creating a more functional water feature.",
+      "relatedTools": ["observation-journal", "sector-analysis", "base-mapping", "photo-monitoring"],
+      "relatedDrivers": ["microclimates-zones-sectors", "water-management", "landform-topography"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "catch-and-store-energy",
+      "name": "Catch and Store Energy",
+      "icon": "🔋",
+      "short": "Capture abundant energy when it's available and store it for times of scarcity.",
+      "why": "Energy flows through every site — sunlight, rainwater, wind, biomass, even passing traffic. Most conventional designs let it pass through unused. Catching and storing energy (in living systems, structures, and storage) builds resilience against seasonal fluctuations and extreme events.",
+      "howItShapesDesign": "We design for multiple forms of energy capture: water harvesting in soil and tanks, passive solar building orientation, windbreaks that redirect energy rather than block it, biomass accumulation through perennial plantings, and financial/ social energy through community connections.",
+      "example": "On a grazing operation near Rocky Mountain House, we designed a Keyline water-harvesting system that captures snowmelt and rain across 80 acres of pasture. Water that previously ran off in 48 hours now infiltrates over 2-3 weeks, extending the green growing season by 3-4 weeks and eliminating the need for supplemental irrigation.",
+      "relatedTools": ["keyline-plow", "swale-layout", "rainwater-harvesting", "passive-solar-analysis", "windbreak-design"],
+      "relatedDrivers": ["water-management", "climate-energy-flows", "soil-fertility"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "obtain-a-yield",
+      "name": "Obtain a Yield",
+      "icon": "🌾",
+      "short": "Design must produce useful returns — food, energy, income, or satisfaction — from day one.",
+      "why": "A system that doesn't produce tangible rewards won't be maintained. Yields can be immediate (salad greens in week 3), short-term (eggs from a mobile chicken tractor), or long-term (timber from a shelterbelt), but the design needs to provide something at every stage.",
+      "howItShapesDesign": "We sequence implementation so that quick yields fund and motivate longer-term investments. Early yields might be annual vegetables planted between future orchard rows. Mid-term yields include berries and poultry. Long-term yields include nut trees, timber, and mature food forests.",
+      "example": "A 10-acre property outside Leduc started with a half-acre market garden that generated $12,000 in its first season. That income funded the swales, pond, and tree plantings in years 2-3. By year 5, the food forest and perennial systems out-produced the annual garden with a fraction of the labor.",
+      "relatedTools": ["enterprise-analysis", "crop-planning", "stacking-functions", "market-channel-assessment"],
+      "relatedDrivers": ["vegetation-food-systems", "access-circulation", "invisible-social-structures"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "apply-self-regulation-and-accept-feedback",
+      "name": "Apply Self-Regulation and Accept Feedback",
+      "icon": "🔄",
+      "short": "Build in checks and balances. Pay attention to what the land tells you and adjust.",
+      "why": "Complex living systems generate constant feedback — a pond that goes anaerobic, a windbreak that channels snow into the driveway, a fruit tree that isn't setting fruit. Ignoring these signals leads to system breakdown. Designing self-regulating systems (like predator habitat for pest control) reduces the need for external intervention.",
+      "howItShapesDesign": "We build monitoring into every design: observation points, photo monitoring stations, water quality testing protocols, and regular check-in schedules. We also design ecological self-regulation — diverse plantings that resist pests, wetlands that self-filter, grazing rotations that prevent overgrazing.",
+      "example": "A client's swale system was pooling water too long in one section, creating mosquito habitat. Instead of draining it, we planted a small wetland garden of cattails, sedges, and wild iris that absorbed the excess water, attracted dragonflies (which eat mosquitoes), and created a beautiful feature the family now loves.",
+      "relatedTools": ["monitoring-protocols", "feedback-journals", "soil-testing", "water-quality-testing"],
+      "relatedDrivers": ["water-management", "soil-fertility", "microclimates-zones-sectors"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "use-and-value-renewable-resources",
+      "name": "Use and Value Renewable Resources and Services",
+      "icon": "♻️",
+      "short": "Rely on sunlight, wind, water, biology, and community rather than fossil fuels and external inputs.",
+      "why": "Non-renewable resources are becoming more expensive and less accessible. Designing systems powered by renewable flows — sun growing plants, gravity moving water, biology building soil — reduces costs, increases resilience, and aligns with natural abundance.",
+      "howItShapesDesign": "We prioritize biological solutions over mechanical ones. A well-placed tree provides shade, wind protection, wildlife habitat, mulch, and eventually fuel or timber — all powered by sunlight. We design gravity-fed water systems, passive solar heating, and biological fertility building through nitrogen-fixing plants and animal integration.",
+      "example": "Instead of recommending electric pumps for a remote pasture watering system, we designed a gravity-fed system from an upslope pond. The 12-meter elevation drop provides enough pressure for troughs and drip irrigation across 5 acres of silvopasture with zero ongoing energy cost.",
+      "relatedTools": ["gravity-feed-calculations", "solar-site-analysis", "nitrogen-fixing-species-selection", "coppice-planning"],
+      "relatedDrivers": ["climate-energy-flows", "water-management", "vegetation-food-systems"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "produce-no-waste",
+      "name": "Produce No Waste",
+      "icon": "♾️",
+      "short": "Everything is a resource in the right context. Close loops — one element's output becomes another's input.",
+      "why": "In nature, there is no waste — a fallen tree becomes nurse log, then soil, then new trees. Linear systems that extract → use → dispose are fundamentally unsustainable. Circular design finds uses for every output stream, turning problems into productivity.",
+      "howItShapesDesign": "We map flows and look for connection opportunities: greywater feeds fruit trees, kitchen scraps become chicken feed then compost, wood waste becomes mushroom substrate then biochar, animal manure builds soil fertility. We sequence elements so waste from one process arrives at the next process at the right time.",
+      "example": "A 5-acre homestead near Stony Plain integrated chickens, a greenhouse, and a food forest. Kitchen scraps + garden waste → chicken feed. Chicken manure + bedding → hot compost. Compost → greenhouse fertility. Greenhouse greywater → food forest irrigation. The system eliminated garbage pickup (saving $40/month) and cut purchased inputs by 70%.",
+      "relatedTools": ["flow-analysis", "composting-systems", "greywater-design", "animal-integration-planning"],
+      "relatedDrivers": ["water-management", "soil-fertility", "animals-livestock"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "design-from-patterns-to-details",
+      "name": "Design from Patterns to Details",
+      "icon": "🔍",
+      "short": "Start with the big patterns — sun, wind, water, topography — before sweating the small stuff.",
+      "why": "Getting lost in details too early leads to designs that fight against the underlying landscape patterns. Water flows downhill, sun tracks south (in the northern hemisphere), wind funnels through valleys. These big patterns are non-negotiable. Once the pattern-level design is right, details can be infinitely flexible.",
+      "howItShapesDesign": "We always start with a sector analysis (sun, wind, water, wildlife, views, fire risk) and work through the Scale of Permanence: climate → landform → water → access → vegetation → structures. Only after these big patterns are resolved do we get into species selection, material choices, or aesthetic details.",
+      "example": "A client wanted an orchard in a location that 'felt right' but was a frost pocket where cold air pooled. By overlaying a topographic map with frost-flow patterns, we identified a mid-slope location with 3°C warmer minimum temperatures — the difference between crop failure and reliable harvest in Alberta's climate.",
+      "relatedTools": ["sector-analysis", "zone-mapping", "scale-of-permanence-checklist", "topographic-analysis"],
+      "relatedDrivers": ["climate-energy-flows", "landform-topography", "microclimates-zones-sectors"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "integrate-rather-than-segregate",
+      "name": "Integrate Rather Than Segregate",
+      "icon": "🧩",
+      "short": "Put things in the right relationship so they help each other. Connections create resilience.",
+      "why": "Segregated systems (monocultures, separate departments, isolated infrastructure) are brittle — if one part fails, the whole system suffers. Integrated systems create beneficial relationships: a greenhouse attached to a house shares heat, chickens under fruit trees eat pests and add fertility, a pond near the garden provides irrigation and frog habitat.",
+      "howItShapesDesign": "We use functional analysis to identify what each element needs and produces, then place elements so they can exchange resources. We look for high-intensity interfaces — the edges where multiple systems meet are often the most productive and diverse parts of the landscape.",
+      "example": "On a mixed farm near Camrose, we co-located the chicken coop, vegetable garden, and compost operation. The chickens clean up garden waste and provide fertility. The compost receives chicken bedding and garden residue. The garden gets finished compost. Labor that was previously scattered across the property now happens in a single efficient loop.",
+      "relatedTools": ["functional-analysis", "connection-mapping", "guild-design", "zone-and-sector-overlay"],
+      "relatedDrivers": ["access-circulation", "structures-shelter", "vegetation-food-systems"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "use-small-and-slow-solutions",
+      "name": "Use Small and Slow Solutions",
+      "icon": "🐢",
+      "short": "Start small, learn as you go, and let systems build over time. Speed creates expensive mistakes.",
+      "why": "Small systems are easier to manage, cheaper to build, and less catastrophic when they fail. Slow implementation allows for observation, feedback, and adjustment. The most successful permaculture sites are almost always the ones where the designer/owner started with a small area and expanded gradually.",
+      "howItShapesDesign": "We phase every design: Phase 1 covers the most critical infrastructure (water, access, shelter) on a manageable scale. Phase 2 expands outward based on what was learned. Phase 3+ fills in details and connections. Every phase generates yields and learning that inform the next.",
+      "example": "Instead of planting 500 fruit trees at once (which would have required irrigation infrastructure they couldn't afford), a client near Athabasca started with 50 trees, hand-watered, in a carefully prepared 1/4-acre food forest guild. The lessons from those first two years informed variety selection, spacing, and guild design for the remaining 450 trees planted over the next five seasons.",
+      "relatedTools": ["phased-implementation-planning", "pilot-plot-design", "minimum-viable-system-checklist", "budget-phasing"],
+      "relatedDrivers": ["vegetation-food-systems", "water-management", "structures-shelter"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "use-and-value-diversity",
+      "name": "Use and Value Diversity",
+      "icon": "🌿",
+      "short": "Many elements, many connections, many ways to succeed. Diversity is insurance against uncertainty.",
+      "why": "Monocultures fail catastrophically — one pest, one drought, one market shift. Diverse systems have redundancy: if one crop fails, others compensate. If one income stream dries up, others sustain. Diversity also creates ecological niches that support beneficial insects, birds, soil life, and natural pest control.",
+      "howItShapesDesign": "At every level: genetic diversity (multiple varieties of each crop), species diversity (polycultures and guilds), ecosystem diversity (different habitats across the property), and economic diversity (multiple income streams, products, and markets). We also consider temporal diversity — early, mid, and late-season yields.",
+      "example": "A 20-acre market farm diversified from a single crop (carrots for wholesale) to 40+ crops sold through CSA, farmers market, and restaurant accounts. When a hailstorm destroyed the outdoor crops, the greenhouse tomatoes and protected berry patches carried the season. When COVID closed restaurants, CSA and farmers market revenue doubled.",
+      "relatedTools": ["species-selection-matrices", "polyculture-planning", "enterprise-diversification-mapping", "guild-charts"],
+      "relatedDrivers": ["vegetation-food-systems", "animals-livestock", "invisible-social-structures"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "use-edges-and-value-the-marginal",
+      "name": "Use Edges and Value the Marginal",
+      "icon": "〰️",
+      "short": "The most interesting, productive, and diverse parts of any system are at the edges and margins.",
+      "why": "In ecology, the edge between forest and meadow (ecotone) supports more species than either habitat alone. The same principle applies everywhere: pond edges are more productive than open water or dry land. The interface between organizations, disciplines, or cultures generates innovation. Marginal ideas and overlooked spaces often hold the greatest potential.",
+      "howItShapesDesign": "We maximize edge: wavy pond margins instead of perfect circles, keyhole garden beds, hedgerows along field boundaries, shelterbelts with diverse understory. We also look for 'marginal' opportunities — the awkward corner that becomes a quiet seating area, the wet spot that becomes a wetland garden, the steep slope that becomes terraced herbs.",
+      "example": "A property with a long, narrow strip between the driveway and property line was considered 'wasted space' by the owners. We designed a multi-layered edible hedgerow: saskatoon and sea buckthorn as the canopy, currants and gooseberries in the mid-layer, comfrey and rhubarb at ground level. It now produces over 100 kg of fruit annually from previously unused land.",
+      "relatedTools": ["edge-mapping", "keyhole-design", "hedgerow-layering", "microclimate-identification"],
+      "relatedDrivers": ["microclimates-zones-sectors", "vegetation-food-systems", "landform-topography"],
+      "portfolioLink": "#"
+    },
+    {
+      "id": "creatively-use-and-respond-to-change",
+      "name": "Creatively Use and Respond to Change",
+      "icon": "🦋",
+      "short": "Change is inevitable and necessary. Design systems that can adapt, evolve, and transform gracefully.",
+      "why": "Climate is changing, markets shift, families grow and shrink, personal capacities change with age. Rigid designs break under pressure. Adaptive designs use disturbance as an opportunity for renewal — a windstorm opens a canopy gap for new plantings, a market shift opens space for a new enterprise, a personal injury prompts a redesign for accessibility.",
+      "howItShapesDesign": "We avoid locking into a single 'final' vision. Instead, we design for multiple possible futures: succession plantings that can shift from timber to orchard to silvopasture depending on circumstances, buildings that can change use, access routes that can become garden beds, income streams that can dial up or down.",
+      "example": "A couple designed their homestead for active retirement, but five years in, one partner developed mobility issues. Because the design included wide, gently sloped paths (originally for wheelbarrows), raised beds at varying heights, and a compact zone 1 layout, they adapted in a single season without major reconstruction.",
+      "relatedTools": ["succession-planning", "scenario-mapping", "adaptive-management-framework", "accessibility-audit"],
+      "relatedDrivers": ["climate-energy-flows", "access-circulation", "invisible-social-structures"],
+      "portfolioLink": "#"
+    }
+  ],
+  "drivers": [
+    {
+      "id": "climate-energy-flows",
+      "name": "Climate & Energy Flows",
+      "icon": "☀️",
+      "short": "Sun, wind, frost, and fire shape every site. Design with these forces, not against them.",
+      "description": "Understanding climate patterns — prevailing winds, solar exposure, frost flows, precipitation distribution — is the first and most fundamental design step. These patterns are non-negotiable: you can't change where the sun tracks or which direction winter storms come from.",
+      "whyItMatters": "Alberta's climate is extreme and variable — 40°C summer days, -40°C winter nights, chinook winds, hailstorms, and drought cycles. Designs that don't account for these realities fail. Designs that work with them thrive with minimal intervention.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "catch-and-store-energy", "use-and-value-renewable-resources"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Solar Aspect & Passive Solar Design", "description": "Mapping sun angles and designing building orientation, planting patterns, and microclimate creation around solar gain." },
+        { "name": "Wind — Prevailing & Storm", "description": "Understanding seasonal wind patterns and designing windbreaks, shelterbelts, and building placements." },
+        { "name": "Frost & Cold Air Drainage", "description": "Mapping frost pockets and cold air flows to protect sensitive plantings and infrastructure." },
+        { "name": "Fire Resilience", "description": "Designing defensible space, fire-resistant plantings, and evacuation routes for wildfire-prone areas." },
+        { "name": "Precipitation — Snow & Rain", "description": "Working with Alberta's precipitation patterns for water harvesting and drought resilience." }
+      ]
+    },
+    {
+      "id": "landform-topography",
+      "name": "Landform / Topography",
+      "icon": "⛰️",
+      "short": "The shape of the land determines water flow, access, microclimates, and where everything goes.",
+      "description": "Topography is the structural skeleton of any site design. Slope, aspect, elevation change, and landform features create the template on which water, access, vegetation, and structures are arranged.",
+      "whyItMatters": "In much of Alberta, subtle topographic variation (even 1-2 meters) creates dramatically different growing conditions, frost risk, and water availability. Reading topography correctly prevents expensive earthworks mistakes and reveals the best sites for ponds, buildings, and orchards.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "observe-and-interact", "catch-and-store-energy"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Reading Slope & Aspect", "description": "Using topographic maps and on-site observation to understand how landform shapes every other design decision." },
+        { "name": "Keyline Design", "description": "A water-harvesting and soil-building pattern system based on landform geometry, developed by P.A. Yeomans." },
+        { "name": "Terracing & Earth Shaping", "description": "Creating level growing spaces on slopes, managing erosion, and building soil over time." }
+      ]
+    },
+    {
+      "id": "water-management",
+      "name": "Water Management",
+      "icon": "💧",
+      "short": "Water is the master element. Design first for how water moves across and is stored on the site so everything else (access, structures, plants) can work with it instead of against it.",
+      "description": "Water Management is the cornerstone of permaculture design. In semi-arid Alberta, water is the most limiting and most powerful factor on any property. Designing water systems first — before access, buildings, or plantings — ensures that every other element has the water it needs, where and when it needs it, with minimal external inputs.",
+      "whyItMatters": "Alberta experiences boom-and-bust precipitation: spring snowmelt arrives all at once, summer thunderstorms deliver intense bursts, and August-September is typically dry. Without water management design, land oscillates between flooding and drought. With good design, the same property can capture and store excess water for use during dry periods, reduce erosion, build soil, and create diverse aquatic and riparian habitat.",
+      "relatedPrinciples": ["catch-and-store-energy", "observe-and-interact", "design-from-patterns-to-details", "apply-self-regulation-and-accept-feedback", "use-and-value-renewable-resources"],
+      "portfolioLink": "#",
+      "children": [
+        {
+          "name": "Controlling water speed — Slow, Spread, Sink",
+          "description": "The three-word mantra of permaculture water design. Slow water down to reduce erosion, spread it to increase infiltration area, sink it into the soil where plants can access it.",
+          "children": [
+            {
+              "name": "Swales & Berms",
+              "slug": "swales",
+              "description": "On-contour shallow trenches with downhill berms that slow, spread and sink rainwater into the soil. Swales are the iconic permaculture earthwork — simple to design (with a laser level or A-frame), powerful in effect, and scalable from backyard to broadacre.",
+              "whyItMattersHere": "In Alberta, most precipitation comes as snow that melts rapidly in spring, often running off frozen soil before it can infiltrate. Swales built on contour capture this meltwater, hold it in place, and let it slowly percolate into the soil profile. This recharges groundwater, extends the growing season, and reduces or eliminates irrigation needs for downslope plantings.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["catch-and-store-energy", "design-from-patterns-to-details"],
+              "tools": ["a-frame-level", "laser-level", "bunyip-water-level", "contour-mapping"]
+            },
+            {
+              "name": "Check Dams, Gabions & Weirs",
+              "slug": "check-dams",
+              "description": "Small structures built across drainage channels, gullies, or seasonal streams to slow water velocity, trap sediment, and create step-pool sequences that raise the water table locally.",
+              "whyItMattersHere": "Many Alberta properties have eroded gullies or seasonal drainage channels that move water too fast, cutting deeper each year. Check dams and gabions stabilize these channels, capture sediment, and transform erosion problems into productive wet microclimates.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["apply-self-regulation-and-accept-feedback"],
+              "tools": ["flow-monitoring", "sediment-analysis"]
+            },
+            {
+              "name": "Contour Plantings & Edge Enhancement",
+              "slug": "contour-plantings",
+              "description": "Trees, shrubs, and perennial plantings arranged along contour lines to create living terraces. Roots hold soil, stems slow surface flow, and leaf litter builds organic matter in place.",
+              "whyItMattersHere": "Combining woody perennials with earthworks creates a self-reinforcing system: the plants stabilize the earthworks, and the earthworks provide improved growing conditions for the plants. On Alberta's windy plains, contour shelterbelts also protect crops and reduce evaporation.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["integrate-rather-than-segregate", "use-and-value-diversity"],
+              "tools": ["species-selection-guides", "alley-cropping-design"]
+            },
+            {
+              "name": "Induced Meandering",
+              "slug": "induced-meandering",
+              "description": "Restoring natural sinuosity to straightened or incised streams by installing structures that redirect flow and encourage the channel to re-establish its natural meander pattern.",
+              "whyItMattersHere": "Many Alberta creeks and drainage ditches were historically straightened for agriculture or development, increasing flow velocity and downstream erosion. Induced meandering restores stream length, slows water, reconnects floodplains, and creates diverse aquatic habitat.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["creatively-use-and-respond-to-change", "use-edges-and-value-the-marginal"],
+              "tools": ["stream-assessment", "fluvial-geomorphology"]
+            }
+          ]
+        },
+        {
+          "name": "Storage Capacity",
+          "description": "Water that leaves the property is a lost resource. Building storage capacity throughout the landscape — in soil, ponds, tanks, and living systems — ensures water availability during dry periods.",
+          "children": [
+            {
+              "name": "Ponds, Micro-Dams & Wetlands",
+              "slug": "ponds",
+              "description": "Purpose-built water bodies that store seasonal surplus for irrigation, livestock, fire suppression, aquaculture, wildlife habitat, and microclimate moderation.",
+              "whyItMattersHere": "A well-designed pond in Alberta can capture spring runoff that would otherwise leave the property, store it through the growing season, and provide gravity-fed irrigation to downslope areas. Even small ponds (500-2000 m³) can transform a dryland property's productive capacity.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["catch-and-store-energy", "use-and-value-diversity"],
+              "tools": ["pond-sizing-calculator", "sealing-techniques", "spillway-design"]
+            },
+            {
+              "name": "Soil Organic Matter & Infiltration",
+              "slug": "soil-infiltration",
+              "description": "Building soil carbon through compost, mulch, cover crops, and perennial roots dramatically increases water-holding capacity. Each 1% increase in soil organic matter stores roughly 20,000 additional liters of water per acre.",
+              "whyItMattersHere": "Alberta's agricultural soils have lost 40-60% of their original organic matter since cultivation began. Rebuilding this 'soil sponge' is the cheapest, most scalable form of water storage available — and it doubles as fertility building.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["produce-no-waste", "use-and-value-renewable-resources"],
+              "tools": ["soil-organic-matter-testing", "cover-crop-selection", "compost-application-rates"]
+            },
+            {
+              "name": "Cisterns & Rainwater Harvesting",
+              "slug": "cisterns",
+              "description": "Capturing rainwater from roofs and hard surfaces for domestic use, irrigation, and emergency storage. Rooftop harvesting can collect approximately 600 liters per 100 m² of roof area per 1 cm of rainfall.",
+              "whyItMattersHere": "In rural Alberta, municipal water is unavailable and well water quality varies. Rainwater harvesting provides a free, high-quality water source that reduces pressure on aquifers and provides backup supply during power outages or well failures.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["catch-and-store-energy", "use-and-value-renewable-resources"],
+              "tools": ["roof-catchment-calculator", "first-flush-diverter", "cistern-sizing"]
+            },
+            {
+              "name": "Net-and-Pan Systems",
+              "slug": "net-and-pan",
+              "description": "A Keyline-derived water storage pattern that uses a network of dams connected by contour channels. Water harvested in upper dams overflows into lower dams, creating a cascading storage network across the landscape.",
+              "whyItMattersHere": "On larger Alberta properties (40+ acres) with significant topographic relief, net-and-pan systems can capture and store millions of liters of runoff that would otherwise leave the property, providing multi-year drought resilience.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["design-from-patterns-to-details"],
+              "tools": ["keyline-planning", "dam-engineering", "catchment-hydrology"]
+            }
+          ]
+        },
+        {
+          "name": "Distribution & Recycling",
+          "description": "Once water is slowed and stored, it needs to be moved efficiently to where it's needed and cycled through the system multiple times before leaving.",
+          "children": [
+            {
+              "name": "Diversion Drains",
+              "slug": "diversion-drains",
+              "description": "Gently sloping channels that redirect water from areas of excess (driveways, building sites, flood-prone zones) to areas of need (plantings, ponds, recharge zones) without causing erosion.",
+              "whyItMattersHere": "Alberta's rapid spring melt often overwhelms natural drainage. Diversion drains channel this excess water away from infrastructure and toward storage or infiltration areas, preventing damage while turning a problem into a resource.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["catch-and-store-energy"],
+              "tools": ["gradient-calculation", "erosion-control"]
+            },
+            {
+              "name": "Gravity Feed",
+              "slug": "gravity-feed",
+              "description": "Using elevation difference to move water without pumps — from storage ponds to irrigation systems, from roof catchment to gardens, from upper swales to lower plantings.",
+              "whyItMattersHere": "On Alberta properties with even modest slopes (2-5%), gravity-fed systems can eliminate pump costs, electricity dependence, and mechanical failure points for irrigation and livestock watering.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["use-and-value-renewable-resources", "obtain-a-yield"],
+              "tools": ["pressure-calculation", "pipe-sizing", "float-valve-design"]
+            },
+            {
+              "name": "Greywater & Pollution Processing",
+              "slug": "greywater",
+              "description": "Filtering and reusing household wastewater (from sinks, showers, laundry) through biological systems like constructed wetlands, mulch basins, and living walls before returning clean water to the landscape.",
+              "whyItMattersHere": "Rural Alberta properties with septic systems typically send all household water to a buried field where it's lost to deep percolation. Greywater systems intercept and reuse this water for irrigation, reducing well or cistern demand while increasing landscape productivity.",
+              "portfolioLink": "#",
+              "relatedPrinciples": ["produce-no-waste", "integrate-rather-than-segregate"],
+              "tools": ["greywater-assessment", "plant-selection", "plumbing-retrofit"]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "access-circulation",
+      "name": "Access & Circulation",
+      "icon": "🛤️",
+      "short": "How people, animals, and materials move through the site determines efficiency, safety, and daily experience.",
+      "description": "Access design determines where roads, paths, gates, and work areas go. Good access saves enormous time and energy over the life of a property. Poor access creates daily friction that wears down motivation and productivity.",
+      "whyItMatters": "In Alberta's climate, access includes snow management, freeze-thaw cycle impacts on roads, fire access requirements, and livestock movement patterns. Access routes also shape water flow — poorly placed roads become unwanted drainage channels.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "integrate-rather-than-segregate"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Main Access & Driveways", "description": "Designing entry points and primary routes for vehicles, deliveries, and emergency access." },
+        { "name": "Paths & Daily Circulation", "description": "Foot paths, work routes, and desire-line analysis for efficient daily movement." },
+        { "name": "Livestock Movement & Handling", "description": "Lanes, gates, corrals, and rotational grazing infrastructure." },
+        { "name": "Snow & Winter Access", "description": "Planning for snow drifting, storage, and year-round accessibility." }
+      ]
+    },
+    {
+      "id": "vegetation-food-systems",
+      "name": "Vegetation & Trees / Food Systems",
+      "icon": "🌳",
+      "short": "From annual gardens to mature food forests, the living architecture of productive plants and supportive ecologies.",
+      "description": "Vegetation is the productive heart of most permaculture designs — food, fuel, fiber, fodder, and ecological services all flow from well-designed plant systems. The goal is to create self-managing, diverse, multi-layered plant communities that produce abundant yields while building soil and habitat.",
+      "whyItMatters": "Alberta's short growing season (90-120 frost-free days) and cold winters demand careful species selection, microclimate creation, and season extension. The right plant in the right place, supported by the right guild, can thrive here — the wrong one is dead investment.",
+      "relatedPrinciples": ["use-and-value-diversity", "integrate-rather-than-segregate", "use-edges-and-value-the-marginal"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Food Forests & Perennial Polycultures", "description": "Multi-layered plant communities modeled on young forests with canopy, understory, shrub, herbaceous, groundcover, root, and vine layers." },
+        { "name": "Annual Gardens & Market Gardens", "description": "Intensive production zones for annual vegetables, herbs, and cut flowers in zone 1-2." },
+        { "name": "Shelterbelts & Windbreaks", "description": "Linear plantings for wind protection, snow capture, wildlife corridors, and diversified yields." },
+        { "name": "Silvopasture & Agroforestry", "description": "Integrating trees with grazing animals and/or crops for multiple stacked yields." },
+        { "name": "Native & Naturalized Species", "description": "Working with Alberta's native plant communities for low-maintenance, high-ecological-value plantings." }
+      ]
+    },
+    {
+      "id": "structures-shelter",
+      "name": "Structures & Shelter",
+      "icon": "🏠",
+      "short": "Buildings, greenhouses, barns, and other structures placed to maximize passive solar gain, minimize energy use, and integrate with the landscape.",
+      "description": "Structures are major, long-term investments. Their placement affects everything else: solar access for gardens, water flow patterns, wind exposure, zone organization, and daily movement patterns. Good placement reduces energy costs permanently. Bad placement creates permanent problems.",
+      "whyItMatters": "Alberta's heating-dominated climate means passive solar design can cut energy costs by 30-50%. Building placement also affects snow management, fire safety, and the practical organization of daily work zones.",
+      "relatedPrinciples": ["catch-and-store-energy", "design-from-patterns-to-details", "use-and-value-renewable-resources"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Passive Solar Building Design", "description": "Orientation, thermal mass, window placement, and overhang design for free heating and natural cooling." },
+        { "name": "Greenhouses & Season Extension", "description": "Attached and standalone growing structures that extend Alberta's short growing season." },
+        { "name": "Barns, Sheds & Outbuildings", "description": "Placement for work efficiency, animal health, fire safety, and integration with other systems." },
+        { "name": "Earth-sheltered & Alternative Construction", "description": "Rammed earth, straw bale, earth berming, and other high-thermal-mass approaches suited to Alberta's climate." }
+      ]
+    },
+    {
+      "id": "soil-fertility",
+      "name": "Soil & Fertility",
+      "icon": "🪱",
+      "short": "Soil is not dirt — it's a living ecosystem and the foundation of all terrestrial productivity.",
+      "description": "Healthy soil is the engine of any land-based system. It stores water, cycles nutrients, supports plants, and sequesters carbon. Most Alberta soils have been degraded by conventional agriculture. Permaculture design rebuilds soil fertility through perennial roots, organic matter accumulation, biological inoculation, and minimal disturbance.",
+      "whyItMatters": "Alberta's soils range from deep Chernozemic prairie soils to thin, acidic boreal forest soils. Understanding your soil type and history is essential for choosing appropriate strategies for rebuilding fertility.",
+      "relatedPrinciples": ["produce-no-waste", "use-and-value-renewable-resources", "apply-self-regulation-and-accept-feedback"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Soil Testing & Assessment", "description": "Understanding soil texture, structure, organic matter, mineral balance, and biology as a design baseline." },
+        { "name": "Compost & Organic Matter Cycling", "description": "Hot composting, vermicomposting, mulch systems, and carbon farming for building soil organic matter." },
+        { "name": "Cover Crops & Green Manures", "description": "Using plants to protect and build soil during fallow periods, fix nitrogen, and break compaction." },
+        { "name": "Biochar & Mineral Amendments", "description": "Strategic use of biochar, rock dust, and targeted mineral additions for long-term soil building." }
+      ]
+    },
+    {
+      "id": "microclimates-zones-sectors",
+      "name": "Microclimates, Zones & Sectors",
+      "icon": "🎯",
+      "short": "Reading the subtle variations across a site and organizing elements by how often you need to visit them.",
+      "description": "Every property has microclimates — warm south-facing walls, cold frost pockets, sheltered corners, wind-tunnel gaps between buildings. Learning to read and create microclimates dramatically expands what you can grow and where. Zones (0-5) organize the site by frequency of human use, while sectors map external energies (sun, wind, wildlife, fire, views).",
+      "whyItMatters": "In Alberta's challenging climate, microclimate manipulation can mean the difference between growing peaches or only potatoes. Zone planning ensures that high-maintenance elements are placed close to the house where they'll actually get tended, saving countless hours of walking and hauling.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "observe-and-interact", "integrate-rather-than-segregate"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Sector Analysis", "description": "Mapping sun angles, prevailing winds, wildlife corridors, fire risk, noise, and views for each season." },
+        { "name": "Zone Planning (0-5)", "description": "Organizing elements from zone 0 (the home/center) through zone 5 (wilderness) based on visit frequency." },
+        { "name": "Microclimate Creation & Enhancement", "description": "Using structures, plantings, water bodies, and landform to create warmer, more sheltered growing niches." }
+      ]
+    },
+    {
+      "id": "animals-livestock",
+      "name": "Animals & Livestock",
+      "icon": "🐄",
+      "short": "Integrating animals for their ecological roles — grazing, tilling, pest control, fertility cycling — not just as products.",
+      "description": "Animals are powerful design tools. Chickens till and fertilize. Pigs clear brush and prepare ground. Cattle and sheep manage grasslands. Ducks control slugs. Bees pollinate. The key is designing systems where animals express their natural behaviors in ways that benefit the landscape.",
+      "whyItMatters": "Alberta has a strong livestock tradition. Applying permaculture design to animal systems — intensive rotational grazing, silvopasture, mobile housing, multi-species integration — can dramatically improve animal welfare, reduce feed costs, and regenerate pastures simultaneously.",
+      "relatedPrinciples": ["integrate-rather-than-segregate", "use-and-value-diversity", "obtain-a-yield"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Rotational & Mob Grazing", "description": "High-density, short-duration grazing that mimics natural herd behavior to build grassland soil." },
+        { "name": "Poultry Systems", "description": "Mobile chicken tractors, egg mobiles, and integrated pest-and-fertility systems." },
+        { "name": "Silvopasture Integration", "description": "Combining trees, forage, and grazing animals for stacked yields and animal comfort." },
+        { "name": "Aquaculture & Small Livestock", "description": "Fish, bees, rabbits, and other small livestock for diversified small-scale production." }
+      ]
+    },
+    {
+      "id": "invisible-social-structures",
+      "name": "Invisible / Social Structures",
+      "icon": "🕸️",
+      "short": "The human systems that make land-based enterprises viable — legal, financial, social, and educational infrastructure.",
+      "description": "The most beautifully designed landscape will fail without functional invisible structures: clear ownership and decision-making, viable business models, labor management, community relationships, and legal/regulatory compliance. Permaculture's 'invisible structures' are often the difference between a project that thrives for decades and one that collapses in year three.",
+      "whyItMatters": "Land access, zoning regulations, water rights, food safety rules, labor availability, and market access all shape what's possible on an Alberta property. Designing invisible structures with the same care as visible ones prevents expensive legal and social problems.",
+      "relatedPrinciples": ["apply-self-regulation-and-accept-feedback", "observe-and-interact", "creatively-use-and-respond-to-change"],
+      "portfolioLink": "#",
+      "children": [
+        { "name": "Land Access & Tenure Models", "description": "Ownership, leasing, cooperatives, land trusts, and creative access models for getting onto land." },
+        { "name": "Enterprise & Business Design", "description": "Viable business models for regenerative enterprises, diversified income streams, and financial planning." },
+        { "name": "Community & Social Connections", "description": "Building relationships with neighbors, customers, suppliers, and the broader regenerative community." },
+        { "name": "Legal & Regulatory Navigation", "description": "Understanding zoning, water rights, food safety regulations, and other legal frameworks affecting land use." }
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "id": "sector-analysis",
+      "name": "Sector Analysis",
+      "icon": "🧭",
+      "short": "Mapping external energies — sun, wind, water, fire, wildlife, views — that flow across a site.",
+      "description": "A foundational permaculture design tool that maps the external forces affecting a property. Creates an overlay diagram showing seasonal sun paths, prevailing winds, wildfire risk direction, noise sources, desirable and undesirable views, and wildlife corridors.",
+      "relatedPrinciples": ["observe-and-interact", "design-from-patterns-to-details"],
+      "relatedDrivers": ["microclimates-zones-sectors", "climate-energy-flows"],
+      "category": "observation"
+    },
+    {
+      "id": "zone-mapping",
+      "name": "Zone Mapping (0-5)",
+      "icon": "🎯",
+      "short": "Organizing site elements by frequency of human use — from zone 0 (home) through zone 5 (wilderness).",
+      "description": "Zones are a core permaculture planning tool. Zone 0 is the home or center of activity. Zone 1 contains daily-use elements (kitchen garden, herb spiral, compost). Zone 2 holds weekly-use elements (orchard, poultry). Zone 3 is commercial or broad-scale production. Zone 4 is managed woodland/grazing. Zone 5 is unmanaged wilderness for observation and biodiversity.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "integrate-rather-than-segregate"],
+      "relatedDrivers": ["microclimates-zones-sectors", "access-circulation"],
+      "category": "planning"
+    },
+    {
+      "id": "contour-mapping",
+      "name": "Contour Mapping & Tools",
+      "icon": "📐",
+      "short": "Finding level lines across the landscape using A-frames, laser levels, or GPS — and translating them into actionable design.",
+      "description": "Contour mapping is the bridge between a topographic map and on-the-ground design. A contour line connects points of equal elevation. On a map, closely spaced lines mean steep slope; widely spaced lines mean gentle grade. But the real skill is translating those squiggly lines into placement decisions: where to dig a swale, where to place a pond, where the access road can go without causing erosion, and where cold air will pool on a frosty night.",
+      "howToAnalyze": {
+        "title": "How to Analyze a Contour Elevation Map",
+        "steps": [
+          {
+            "step": 1,
+            "name": "Identify the Overall Slope Direction",
+            "detail": "Look at the contour labels (numbers on the lines). The direction in which numbers decrease is downhill. Water flows perpendicular to contour lines — straight down the fall line. This immediately tells you which way water moves across the property and where it will naturally concentrate."
+          },
+          {
+            "step": 2,
+            "name": "Find the Steep and Gentle Zones",
+            "detail": "Where contour lines bunch together tightly, the slope is steep — often too steep for vehicles, cultivation, or structures without terracing. Where lines spread far apart, the land is nearly flat — good for buildings and intensive gardens, but watch for poor drainage. On a typical Alberta quarter-section, you might find 2-15% slopes in the rolling parkland; understanding exactly where the grade changes is essential for access road design (aim for <10% grade) and pond placement (need enough catchment above)."
+          },
+          {
+            "step": 3,
+            "name": "Locate the Keypoint",
+            "detail": "The keypoint is where the slope profile transitions from convex (rounded, shedding water) to concave (hollow, collecting water). On a contour map, this shows up as a change in contour spacing pattern. The contour line that passes through the keypoint is the 'keyline' — the master-level line from which Keyline design organizes water distribution. Above the keypoint, water is dispersed; below it, water concentrates. Identifying this transition is the single most important map-reading skill for water-harvesting design."
+          },
+          {
+            "step": 4,
+            "name": "Map the Ridge Lines and Valley Lines",
+            "detail": "Ridge lines are where contour lines bulge outward (point downhill). Valley lines are where they indent inward (point uphill). Water sheds off ridges and collects in valleys. These natural drainage patterns determine where swales should start and stop, where ponds can be placed, and where you should avoid building or planting anything you don't want flooded. In Alberta's prairie pothole landscape, subtle valley lines that are barely visible on the ground become obvious on a 1-meter contour map."
+          },
+          {
+            "step": 5,
+            "name": "Calculate Slope Percentages for Key Areas",
+            "detail": "Pick two points on the map. Measure the horizontal distance between them (using the map scale). Find the elevation difference (subtract the contour values). Slope % = (elevation change ÷ horizontal distance) × 100. For example: a 3-meter drop over 100 meters = 3% slope. This number drives decisions: swales work best on 2-15% slopes; ponds need a certain catchment-to-storage ratio; access roads should stay under 10%; gravity-fed irrigation needs at least 2% grade to move water."
+          },
+          {
+            "step": 6,
+            "name": "Identify Frost Pockets and Cold Air Flow",
+            "detail": "Cold air behaves like water — it flows downhill and pools in low spots. On a contour map, look for enclosed basins or valley bottoms where cold air has no exit. These are frost pockets where tender plants will struggle. Conversely, mid-slope locations (thermal belts) stay warmer because cold air drains past them. In Alberta's short-season climate, identifying these microclimates on the map before you plant can mean the difference between peach trees that fruit reliably and ones that never produce."
+          },
+          {
+            "step": 7,
+            "name": "Plan Water-Harvesting Features on Contour",
+            "detail": "For swales: mark the contour line at the elevation you want to harvest water. The swale will follow this line exactly — level, with no fall. For diversion drains: design a very slight grade (0.5-2%) so water moves slowly without eroding. For ponds: look for valley lines with enough catchment area above, and use contour lines to estimate storage volume. For Keyline plowing: cultivation lines run parallel to the keyline but with a slight grade toward ridges to redistribute water from wet valleys to dry ridges."
+          },
+          {
+            "step": 8,
+            "name": "Translate Map Lines to Physical Markers On-Site",
+            "detail": "The map analysis tells you where features should go, but you must verify and mark them on the ground. Use an A-frame, bunyip water level, or laser level to find the actual contour line at the elevation you identified on the map. Drive stakes or flags along this line. Walk it. Does it feel right? Adjust if the map data doesn't match reality (satellite-derived contours can be off by 1-3 meters vertically). The final design always respects what's actually on the ground."
+          },
+          {
+            "step": 9,
+            "name": "Estimate Flow Rate, Velocity & Volume from Topography",
+            "detail": "Once you understand WHERE water flows, you need to understand HOW MUCH, HOW FAST, and whether it will erode or safely infiltrate. Topography alone can't give exact flow rates (you need rainfall data and soil infiltration rates for that), but contour maps reveal the key variables that control flow behavior. Here are the principles for reading flow dynamics from contours:",
+            "principles": [
+              {
+                "name": "Slope Directly Controls Velocity",
+                "detail": "Water accelerates on steeper slopes. The relationship is roughly: velocity ∝ √slope. Doubling the slope (from 3% to 6%) increases flow velocity by about 40%. This is why the steep west-central zone on our exercise property (6%) will move water much faster than the gentle north plateau (1%). At 6%+ on bare soil, water gains enough energy to detach and transport soil particles — that's the erosion threshold. The critical insight: a swale at the top of a 6% slope catches water BEFORE it reaches destructive velocity. A swale at the bottom is trying to catch water that's already moving fast enough to jump the berm."
+              },
+              {
+                "name": "Contour Convergence = Flow Concentration",
+                "detail": "Where contour lines pinch together approaching a valley, the flow path narrows — the same volume of water is forced through a smaller cross-section. Flow depth and velocity both increase. This is visible on the map as contours that converge (get closer together) as they approach a valley bottom. You can estimate the concentration ratio: if contours are 50 m apart on a ridge but only 20 m apart where they enter a valley, flow is being concentrated by a factor of roughly 2.5×. This tells you where erosion risk is highest and where check dams or grade-stabilization structures are needed. In our exercise, the Central Valley collects runoff from both ridges — the flow arriving at the pond site represents water from 25-30 hectares, concentrated into a valley only 80-100 m wide."
+              },
+              {
+                "name": "Catchment Area Determines Volume",
+                "detail": "Every point on the landscape receives runoff from everything uphill of it. To estimate the catchment area for any point: trace the ridge lines that form the watershed boundary above that point, then measure the enclosed area on the map. The catchment area tells you how much water arrives during a storm. A rough Alberta rule of thumb: during a 25 mm (1-inch) rain event, each hectare of catchment produces about 250,000 liters of runoff (assuming 100% runoff on frozen or saturated ground — spring conditions). If your pond catchment is 25 hectares, that's 6.25 million liters arriving in a single event — far more than a 2,000 m³ pond can hold. This is why spillways are essential and why you design for the 1-in-50-year storm, not the average rain."
+              },
+              {
+                "name": "Sheet Flow vs. Channel Flow — The Transition Point",
+                "detail": "Water doesn't start as a stream — it begins as 'sheet flow,' a thin film moving evenly across the surface. At some point downhill, sheet flow concentrates into rills, then gullies, then defined channels. The contour map tells you where this transition happens: it's roughly where the catchment area above a point reaches about 2-5 hectares (varies with soil and vegetation). Above this threshold, you need designed channels (swales, diversion drains) with calculated capacity. Below it, dispersed sheet flow can be managed with vegetation and soil cover alone. In the exercise, the upper slopes of Ridge 1 (above 694 m) mostly experience sheet flow — manageable with pasture and contour planting. Below 690 m, flow concentration demands engineered swales with proper overflow design."
+              },
+              {
+                "name": "Contour Curvature — Where Flow Accelerates vs. Spreads",
+                "detail": "Straight, parallel contours produce uniform flow. But contour curvature changes the game. Convex contours (bulging downhill) spread water out like a fan — flow diverges, velocity decreases, and infiltration increases. These are natural 'spread zones' and good places for swales. Concave contours (indenting uphill) focus water like a funnel — flow converges, velocity increases, and erosion risk spikes. These are natural 'collect zones' and need reinforcement (rock armoring, dense vegetation, check dams). On the exercise map: the 694 m contour bulges south on Ridge 1 (convex — good swale location that spreads water). The 692 m contour indents north in the Central Valley (concave — needs armored overflow where the swale crosses the valley)."
+              },
+              {
+                "name": "The Stream Power Index — A Simple Map-Based Erosion Predictor",
+                "detail": "A useful concept from hydrology: Stream Power = slope × catchment area. High slope + large catchment = maximum erosion risk. Low slope + small catchment = minimal risk. You can estimate this visually from the map: points where steep slopes (tight contours) coincide with large contributing areas (big ridge/valley systems above) are your highest-risk zones. In the exercise: the Central Valley at 684-686 m has moderate slope (~4%) but enormous catchment (25+ ha) — high stream power. That's why the pond location is appropriate (it captures that energy in storage rather than letting it erode the valley). The east valley at 682-684 m has similar slope but a much smaller catchment (only 5-8 ha) — lower stream power, lower erosion risk, but also less water to fill a pond."
+              }
+            ]
+          }
+        ],
+        "summary": "The map gives you the big-pattern intelligence: water flow direction, slope severity, keypoint location, catchment areas, and microclimate zones. The flow-rate principles extend this further: slope controls velocity, contour convergence controls concentration, catchment area controls volume, and together they predict where erosion will occur and how much water your earthworks must handle. The on-ground verification gives you the detail: exact contour locations, soil infiltration rates, and any surprises the map missed. Together, they transform abstract elevation data into a complete water-management plan for every major element on the property."
+      },
+      "relatedPrinciples": ["design-from-patterns-to-details", "catch-and-store-energy", "observe-and-interact"],
+      "relatedDrivers": ["water-management", "landform-topography", "microclimates-zones-sectors"],
+      "category": "measurement",
+      "exerciseUrl": "/learn/exercises/contour-analysis/"
+    },
+    {
+      "id": "keyline-design",
+      "name": "Keyline Design",
+      "icon": "🔑",
+      "short": "A comprehensive water-harvesting and soil-building framework based on landform geometry.",
+      "description": "Developed by Australian farmer P.A. Yeomans, Keyline design uses the natural 'keyline' (the contour line through the keypoint where slope transitions from convex to concave) to guide water distribution, cultivation patterns, and dam placement across broadacre landscapes.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "catch-and-store-energy", "use-and-value-renewable-resources"],
+      "relatedDrivers": ["water-management", "landform-topography", "soil-fertility"],
+      "category": "planning"
+    },
+    {
+      "id": "functional-analysis",
+      "name": "Functional Analysis",
+      "icon": "🔄",
+      "short": "A method for analyzing what each element needs and produces, then connecting elements so waste becomes resource.",
+      "description": "List every element in the system (chickens, greenhouse, pond, compost pile, fruit trees) and analyze: what does it need? What does it produce? What are its intrinsic characteristics? Then arrange elements so the outputs of one meet the needs of another, minimizing external inputs and waste.",
+      "relatedPrinciples": ["integrate-rather-than-segregate", "produce-no-waste"],
+      "relatedDrivers": ["vegetation-food-systems", "animals-livestock"],
+      "category": "planning"
+    },
+    {
+      "id": "stacking-functions",
+      "name": "Stacking Functions",
+      "icon": "📚",
+      "short": "Every element should serve multiple purposes. A pond isn't just water storage — it's also habitat, microclimate, recreation, fire protection.",
+      "description": "The principle of stacking functions ensures that every design element earns its place by performing multiple roles. A well-designed element typically serves 3-7 functions. This creates resilient redundancy — if one function is temporarily impaired, others keep the element valuable.",
+      "relatedPrinciples": ["integrate-rather-than-segregate", "use-and-value-diversity", "obtain-a-yield"],
+      "relatedDrivers": ["water-management", "vegetation-food-systems"],
+      "category": "design-thinking"
+    },
+    {
+      "id": "observation-journal",
+      "name": "Observation Journaling",
+      "icon": "📓",
+      "short": "Systematic documentation of what you see on the land — patterns, changes, surprises — across all seasons.",
+      "description": "A structured approach to site observation: recording weather, wildlife sightings, plant growth stages, soil moisture, frost dates, bird activity. Over time, patterns emerge that guide design decisions. Digital tools (photos with GPS tags, weather station data) complement traditional field notebooks.",
+      "relatedPrinciples": ["observe-and-interact", "apply-self-regulation-and-accept-feedback"],
+      "relatedDrivers": ["microclimates-zones-sectors", "climate-energy-flows"],
+      "category": "observation"
+    },
+    {
+      "id": "soil-testing",
+      "name": "Soil Testing & Assessment",
+      "icon": "🧪",
+      "short": "Laboratory and field tests to understand soil texture, chemistry, organic matter, and biology.",
+      "description": "Comprehensive soil assessment includes: jar tests for texture, lab analysis for mineral balance and organic matter, infiltration tests, earthworm counts, and biological assays. Results guide amendment strategies, plant selection, and management practices.",
+      "relatedPrinciples": ["observe-and-interact", "apply-self-regulation-and-accept-feedback"],
+      "relatedDrivers": ["soil-fertility", "vegetation-food-systems"],
+      "category": "assessment"
+    },
+    {
+      "id": "guild-design",
+      "name": "Guild Design",
+      "icon": "🤝",
+      "short": "Assembling plant communities where each species supports the others — the permaculture version of companion planting at ecosystem scale.",
+      "description": "A guild is a deliberately assembled community of plants, animals, and fungi that support each other through nutrient cycling, pest management, physical support, microclimate creation, and soil building. Classic guilds include the 'three sisters' (corn, beans, squash) and the fruit tree guild.",
+      "relatedPrinciples": ["integrate-rather-than-segregate", "use-and-value-diversity", "use-edges-and-value-the-marginal"],
+      "relatedDrivers": ["vegetation-food-systems", "soil-fertility"],
+      "category": "planting"
+    },
+    {
+      "id": "sun-path-analysis",
+      "name": "Sun Path Analysis",
+      "icon": "☀️",
+      "short": "Mapping solar exposure throughout the year to optimize building placement, garden layout, and microclimate design.",
+      "description": "Using sun path diagrams, solar angle calculators, and on-site observation to understand where the sun will be at any hour of any day. Critical for passive solar building design, greenhouse placement, and understanding which areas will be shaded in winter vs. summer.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "catch-and-store-energy"],
+      "relatedDrivers": ["climate-energy-flows", "structures-shelter", "microclimates-zones-sectors"],
+      "category": "observation"
+    },
+    {
+      "id": "scale-of-permanence",
+      "name": "Scale of Permanence",
+      "icon": "📏",
+      "short": "A design sequence framework: start with the hardest-to-change elements and work toward the easiest.",
+      "description": "P.A. Yeomans' Scale of Permanence provides a logical design sequence: climate → landform → water supply → roads/access → trees → structures → subdivision → soil. By designing the most permanent (hardest to change) elements first, you avoid expensive rework.",
+      "relatedPrinciples": ["design-from-patterns-to-details", "apply-self-regulation-and-accept-feedback"],
+      "relatedDrivers": ["climate-energy-flows", "landform-topography", "water-management", "access-circulation"],
+      "category": "planning"
+    },
+    {
+      "id": "swale-layout",
+      "name": "Swale Layout & Design",
+      "icon": "〰️",
+      "short": "Practical methods for finding contour lines and laying out water-harvesting swales accurately.",
+      "description": "Tools and techniques for swale design: using A-frames, bunyip levels, and laser levels to mark contour; calculating swale spacing based on slope and rainfall; determining berm height and width; designing overflow spillways; and integrating swales with access and plantings.",
+      "relatedPrinciples": ["catch-and-store-energy", "design-from-patterns-to-details"],
+      "relatedDrivers": ["water-management", "landform-topography"],
+      "category": "earthworks"
+    }
+  ]
+}

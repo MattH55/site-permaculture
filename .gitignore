@@ -30,7 +30,13 @@ vercel-build/
 *.mdb
 *.sqlite
 *.geojson
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
 data/
+site-design/data/
 
 # Temporary inspection/debug files
 tmp_*.py

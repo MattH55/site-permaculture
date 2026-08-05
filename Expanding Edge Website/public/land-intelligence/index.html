@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Land Intelligence — Map Your Land | By Expanding Edge Permaculture</title>
-  <meta name="description" content="Draw your parcel on a satellite map near Stony Plain, Alberta. Get instant analysis: topography, water, wind, solar, soil, flood risk, hardiness zone, and planting recommendations. Free by Expanding Edge Permaculture.">
-  <meta name="keywords" content="alberta land mapping, permaculture site design, draw your property, land analysis alberta, contour mapping, shelterbelt design, food forest planning">
+  <title>Land Intelligence — Understand Any Alberta Property in Minutes</title>
+  <meta name="description" content="Generate a free AI-powered land report for any Alberta property. Analyze water, terrain, wetlands, climate, vegetation, solar potential, groundwater, and development opportunities before you buy, build, or invest.">
+  <meta name="keywords" content="alberta land report, property analysis alberta, land intelligence, free property report, alberta wetlands, groundwater alberta, solar potential alberta, flood risk alberta">
   <meta name="author" content="Expanding Edge Permaculture">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="Land Intelligence — Map Your Land">
-  <meta property="og:description" content="Draw your parcel on a satellite map. Get instant analysis: topography, water, wind, solar, soil, and planting recommendations.">
+  <meta property="og:title" content="Land Intelligence — Understand Any Alberta Property in Minutes">
+  <meta property="og:description" content="Generate a free AI-powered land report that analyzes water, terrain, wetlands, climate, vegetation, solar potential, groundwater, and development opportunities.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://landintelligence.online">
   <meta property="og:image" content="https://landintelligence.online/land-intelligence-logo.png">
@@ -22,6 +22,16 @@
   <link rel="icon" type="image/png" href="../favicon.ico">
 
   <link rel="stylesheet" href="styles.css">
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-6R4T97S61M"></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-6R4T97S61M');
+  </script>
 </head>
 <body>
 
@@ -35,7 +45,8 @@
       <div class="nav-links">
         <a href="#features">Features</a>
         <a href="#how-it-works">How It Works</a>
-        <a href="https://site-permaculture.onrender.com/" class="btn-nav" target="_blank" rel="noopener">Map Your Land</a>
+        <a href="#example-report">Example Report</a>
+        <a href="https://site-permaculture.onrender.com/" class="btn-nav" target="_blank" rel="noopener">Generate Report</a>
       </div>
     </div>
   </nav>
@@ -45,98 +56,73 @@
     <div class="hero-container">
       <div class="hero-content">
         <img src="land-intelligence-logo.png" alt="Land Intelligence Logo" class="hero-logo">
-        <h1>Draw Your Parcel.<br>Know Your Land.</h1>
-        <p class="hero-subtitle">Outline your property on a satellite map. We query Alberta geospatial data and elevation models, then show you the facts about your land — slope, water, wind, solar, soil, flood risk, hardiness zone, and what to plant.</p>
+        <h1>Understand Any Alberta Property in Minutes</h1>
+        <p class="hero-subtitle">Generate a free AI-powered report that analyzes water, terrain, wetlands, climate, vegetation, solar potential, groundwater, and development opportunities.</p>
         <div class="hero-actions">
-          <a href="https://site-permaculture.onrender.com/" class="btn btn-primary" target="_blank" rel="noopener">Start Mapping Free →</a>
+          <a href="https://site-permaculture.onrender.com/" class="btn btn-primary" target="_blank" rel="noopener">Generate My Free Land Report</a>
+          <a href="#example-report" class="btn btn-secondary">View Example Report</a>
         </div>
-        <p class="hero-note">Built by <a href="https://www.expandingedge.ca" target="_blank" rel="noopener">Expanding Edge Permaculture</a> · Near Stony Plain, Alberta</p>
+        <p class="hero-note">No subscription. No credit card. Just draw your property and get your report.</p>
       </div>
     </div>
   </header>
 
-  <!-- Features Section -->
-  <section class="features" id="features">
-    <div class="features-container">
-      <h2 class="section-title">What You Get</h2>
-      <p class="section-subtitle">Draw a rectangle or freeform shape around your property. The app returns real Alberta data — not generic estimates.</p>
-
-      <div class="feature-grid">
-        <div class="feature-card">
-          <h3>Your Parcel Location</h3>
-          <p>Find your land by address, place name, or coordinates. See it snapped to the Alberta Township System quarter-section.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Slope & Elevation</h3>
-          <p>Mean elevation, relief, slope percentage, and a 3D terrain view showing pond sites, catchment areas, and swale positions derived from HRDEM elevation data.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Water & Wells</h3>
-          <p>Predicted well depth based on nearby pump tests, static water level, aquifer completion, well yield from regional data, and proximity to surface water.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Solar & Wind</h3>
-          <p>NRCan solar incidence data for your municipality with monthly profiles. NASA wind rose showing primary and secondary wind directions with shelterbelt orientation recommendations.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Climate & Hardiness</h3>
-          <p>Hardiness zone (NRCAN), frost-free days, temperature extremes, annual heat units (GDD), and a full monthly temperature profile from ERA5 reanalysis data.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Flood & Regulatory</h3>
-          <p>FHIP flood hazard mapping status, regulated wetland flags, zoning links to county/municipality portals, and Water Act compliance notes for earthworks.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Wildlife & Biodiversity</h3>
-          <p>iNaturalist observations near your parcel, deer pressure assessment, regional species richness screens, and nearby species that could fit your area.</p>
-        </div>
-
-        <div class="feature-card">
-          <h3>Planting Recommendations</h3>
-          <p>Species ranked by site fit with layered polyculture design. Includes food forest builds, shelterbelt design, and water features tailored to your zone.</p>
-        </div>
+  <!-- Free Value Proposition -->
+  <section class="free-value">
+    <div class="free-value-container">
+      <div class="value-item">
+        <h3>Free Property Reports</h3>
+        <p>Every report is completely free to generate. No hidden costs, no sign-up walls.</p>
+      </div>
+      <div class="value-item">
+        <h3>No Subscription Required</h3>
+        <p>Generate as many reports as you need. There's nothing to subscribe to.</p>
+      </div>
+      <div class="value-item">
+        <h3>No Credit Card</h3>
+        <p>Simply draw your property boundary and receive your analysis instantly.</p>
       </div>
     </div>
   </section>
 
-  <!-- How It Works -->
+  <!-- How It Works (4 Steps) -->
   <section class="how-it-works" id="how-it-works">
     <div class="how-container">
       <h2 class="section-title">How It Works</h2>
-      <div class="steps">
+      <p class="section-subtitle">Four simple steps to a complete understanding of your land.</p>
+      <div class="steps steps-four">
         <div class="step">
           <div class="step-number">1</div>
-          <h3>Find Your Location</h3>
-          <p>Enter an address, town name, or place name. Or jump to coordinates directly.</p>
+          <h3>Find Your Property</h3>
+          <p>Search by address, place name, or navigate directly on the map.</p>
         </div>
         <div class="step">
           <div class="step-number">2</div>
-          <h3>Draw Your Parcel</h3>
-          <p>Outline your property on the satellite map using the rectangle or freehand tool.</p>
+          <h3>Draw Your Boundary</h3>
+          <p>Outline your property using the rectangle or freehand drawing tool.</p>
         </div>
         <div class="step">
           <div class="step-number">3</div>
-          <h3>Get Your Report</h3>
-          <p>View evidence-based findings across land, water, climate, wildlife, energy, vegetation, and geology — with actionable recommendations.</p>
+          <h3>AI Analyzes Your Land</h3>
+          <p>Our system queries dozens of environmental datasets covering water, climate, terrain, and more.</p>
+        </div>
+        <div class="step">
+          <div class="step-number">4</div>
+          <h3>Receive Your Report</h3>
+          <p>Get a comprehensive, easy-to-read property report with actionable insights.</p>
         </div>
       </div>
       <div class="cta-center">
-        <a href="https://site-permaculture.onrender.com/" class="btn btn-primary" target="_blank" rel="noopener">Map Your Land Now →</a>
+        <a href="https://site-permaculture.onrender.com/" class="btn btn-primary" target="_blank" rel="noopener">Generate My Free Land Report</a>
       </div>
     </div>
   </section>
 
-  <!-- Report Preview Section -->
-  <section class="report-preview" id="report-preview">
+  <!-- Example Report Preview (moved higher) -->
+  <section class="report-preview" id="example-report">
     <div class="report-container">
       <h2 class="section-title">See What Your Report Looks Like</h2>
-      <p class="section-subtitle">Real data from real Alberta properties — not generic estimates.</p>
+      <p class="section-subtitle">Here's a sample of the insights you'll receive — real data from real Alberta properties.</p>
 
       <div class="report-grid">
         <!-- Water & Wells Card -->
@@ -145,9 +131,9 @@
             <span class="report-tag water">WATER STORAGE</span>
             <span class="report-tag compliance">COMPLIANCE & RISK</span>
           </div>
-          <h3>Groundwater well</h3>
-          <p>Groundwater option indicated by nearby well records (local completion depths vary).</p>
-          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Try it free →</a>
+          <h3>Groundwater Well Analysis</h3>
+          <p>Groundwater option indicated by nearby well records, including predicted well depth, static water level, and aquifer information.</p>
+          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Get Your Free Report →</a>
         </div>
 
         <!-- Solar & Wind Card -->
@@ -156,9 +142,9 @@
             <span class="report-tag energy">ENERGY</span>
             <span class="report-tag wind">WIND PROTECTION</span>
           </div>
-          <h3>Solar incidence & viability</h3>
-          <p>NRCan municipality averages with solar band rating.</p>
-          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Try it free →</a>
+          <h3>Solar Potential & Wind Exposure</h3>
+          <p>Solar incidence data with monthly profiles and wind direction analysis with shelterbelt orientation recommendations.</p>
+          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Get Your Free Report →</a>
         </div>
 
         <!-- Food Forest Design Card -->
@@ -168,9 +154,9 @@
             <span class="report-tag habitat">HABITAT / BIODIVERSITY</span>
             <span class="report-tag soil">SOIL BUILDING</span>
           </div>
-          <h3>Food forest design</h3>
-          <p>Soil-building phase complete enough for layered polyculture. Filter guild species to your hardiness zone and frost-free days.</p>
-          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Try it free →</a>
+          <h3>Food Forest & Planting Design</h3>
+          <p>Species ranked by site suitability with layered polyculture design, tailored to your hardiness zone and frost-free days.</p>
+          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Get Your Free Report →</a>
         </div>
 
         <!-- Biodiversity Card -->
@@ -179,20 +165,103 @@
             <span class="report-tag wildlife">WILDLIFE</span>
             <span class="report-tag biodiversity">BIODIVERSITY</span>
           </div>
-          <h3>Biodiversity — iNaturalist</h3>
-          <p>Analysis of observations within 1km (local) and 3km (landscape).</p>
-          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Try it free →</a>
+          <h3>Local Wildlife & Biodiversity</h3>
+          <p>Analysis of species observations near your property, deer pressure assessment, and regional biodiversity insights.</p>
+          <a href="https://site-permaculture.onrender.com/" class="btn btn-secondary btn-small" target="_blank">Get Your Free Report →</a>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- CTA Section -->
+  <!-- Features Section (rewritten with plain language) -->
+  <section class="features" id="features">
+    <div class="features-container">
+      <h2 class="section-title">What Your Report Covers</h2>
+      <p class="section-subtitle">Every report analyzes dozens of data points so you can make confident decisions about your land.</p>
+
+      <div class="feature-grid">
+        <div class="feature-card">
+          <h3>Water Availability</h3>
+          <p>Find your property on the map and see its location relative to surface water, predicted well depths, and regional water sources.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Terrain & Elevation</h3>
+          <p>Understand your land's elevation, slope, and relief — identifying ideal spots for ponds, catchment areas, and water management features.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Groundwater & Well Depth</h3>
+          <p>Get predicted well depths based on nearby pump tests, static water levels, aquifer data, and expected well yield from regional records.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Solar Potential</h3>
+          <p>See solar energy data for your area with monthly profiles, helping you plan solar installations and understand energy viability.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Climate & Growing Zone</h3>
+          <p>Know your hardiness zone, frost-free days, temperature patterns, and growing degree units — essential for planning what to grow.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Flood Risk & Wetlands</h3>
+          <p>Check flood hazard mapping status, regulated wetland flags, and Water Act compliance notes for earthworks on your property.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Tree Cover & Vegetation</h3>
+          <p>Analyze satellite imagery to understand existing vegetation, tree cover density, and land health indicators.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Wildlife & Biodiversity</h3>
+          <p>Discover species observed near your property, assess deer pressure, and understand the local ecosystem you'll be working with.</p>
+        </div>
+
+        <div class="feature-card">
+          <h3>Development Opportunities</h3>
+          <p>Get tailored planting recommendations, food forest designs, shelterbelt layouts, and water feature placements for your specific property.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Built on Trusted Data -->
+  <section class="trusted-data">
+    <div class="trusted-container">
+      <h2 class="section-title">Built on Trusted Data</h2>
+      <p class="section-subtitle">Our reports are powered by reliable public datasets from recognized sources.</p>
+      <div class="data-sources">
+        <div class="source-item">
+          <span class="source-name">Natural Resources Canada</span>
+        </div>
+        <div class="source-item">
+          <span class="source-name">Alberta Open Data</span>
+        </div>
+        <div class="source-item">
+          <span class="source-name">NASA POWER</span>
+        </div>
+        <div class="source-item">
+          <span class="source-name">Statistics Canada</span>
+        </div>
+        <div class="source-item">
+          <span class="source-name">Sentinel Satellite Imagery</span>
+        </div>
+        <div class="source-item">
+          <span class="source-name">iNaturalist</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Final CTA Section -->
   <section class="cta-section">
     <div class="cta-container">
-      <h2>Ready to Know Your Land?</h2>
-      <p class="cta-subtitle">Draw your parcel. Get the data. Make informed decisions.</p>
-      <a href="https://site-permaculture.onrender.com/" class="btn btn-primary btn-large" target="_blank" rel="noopener">Start Mapping Free →</a>
+      <h2>Ready to Understand Your Land?</h2>
+      <p class="cta-subtitle">Generate your free Land Intelligence report today and discover what your property can tell you. Make better decisions before you buy, build, invest, or design.</p>
+      <a href="https://site-permaculture.onrender.com/" class="btn btn-primary btn-large" target="_blank" rel="noopener">Generate My Free Land Report</a>
       <p class="cta-note">Built by <a href="https://www.expandingedge.ca" target="_blank" rel="noopener">Expanding Edge Permaculture</a> · Near Stony Plain, Alberta</p>
     </div>
   </section>
@@ -202,13 +271,14 @@
     <div class="footer-container">
       <div class="footer-brand">
         <img src="land-intelligence-logo.png" alt="Land Intelligence" class="footer-logo">
-        <p>Land Intelligence is a free site design tool by <a href="https://www.expandingedge.ca" target="_blank" rel="noopener">Expanding Edge Permaculture</a>, helping Alberta landowners understand their property through real geospatial data.</p>
+        <p>Land Intelligence helps Alberta landowners make better decisions about their property by generating free, data-driven reports from trusted public datasets.</p>
       </div>
       <div class="footer-links">
         <h4>Quick Links</h4>
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="https://site-permaculture.onrender.com/" target="_blank" rel="noopener">Generate Report</a>
         <a href="https://www.expandingedge.ca" target="_blank" rel="noopener">Expanding Edge Permaculture</a>
-        <a href="https://site-permaculture.onrender.com/" target="_blank" rel="noopener">Map Your Land</a>
-        <a href="https://www.expandingedge.ca/contact" target="_blank" rel="noopener">Book a Site Walk</a>
       </div>
       <div class="footer-info">
         <h4>Region</h4>

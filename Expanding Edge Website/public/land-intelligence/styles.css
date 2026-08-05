@@ -342,6 +342,36 @@ img {
   letter-spacing: 0.05em;
 }
 
+/* --- Free Value Proposition --- */
+.free-value {
+  padding: 3rem 2rem;
+  background: var(--green-pale);
+  border-top: 1px solid rgba(45, 106, 79, 0.1);
+  border-bottom: 1px solid rgba(45, 106, 79, 0.1);
+}
+
+.free-value-container {
+  max-width: 1000px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  text-align: center;
+}
+
+.value-item h3 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--green-dark);
+  margin-bottom: 0.5rem;
+}
+
+.value-item p {
+  font-size: 0.95rem;
+  color: var(--text-mid);
+  line-height: 1.6;
+}
+
 /* --- How It Works --- */
 .how-it-works {
   padding: 5rem 2rem;
@@ -349,7 +379,7 @@ img {
 }
 
 .how-container {
-  max-width: 900px;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -358,6 +388,10 @@ img {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 2.5rem;
   margin-bottom: 3rem;
+}
+
+.steps-four {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .step {
@@ -506,6 +540,52 @@ img {
   text-align: center;
   font-size: 0.85rem;
   color: rgba(255,255,255,0.5);
+}
+
+/* --- Trusted Data Section --- */
+.trusted-data {
+  padding: 5rem 2rem;
+  background: var(--green-dark);
+  color: var(--white);
+}
+
+.trusted-container {
+  max-width: 900px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.trusted-container .section-title {
+  color: var(--white);
+}
+
+.trusted-container .section-subtitle {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.data-sources {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
+.source-item {
+  padding: 1.5rem;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s;
+}
+
+.source-item:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.source-name {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--green-pale);
 }
 
 /* --- Report Preview Section --- */
@@ -825,6 +905,11 @@ img {
     flex-direction: column;
   }
 
+  .free-value-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
   .stats-container {
     grid-template-columns: 1fr;
     gap: 1.5rem;
@@ -837,6 +922,15 @@ img {
   .steps {
     grid-template-columns: 1fr;
     gap: 2rem;
+  }
+
+  .steps-four {
+    grid-template-columns: 1fr;
+  }
+
+  .data-sources {
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
   }
 
   .footer-container {
