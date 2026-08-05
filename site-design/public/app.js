@@ -2429,11 +2429,41 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     // Load satellite imagery for the parcel bbox
     const loadSatelliteTexture = () => {
       try {
-        // Calculate tile coordinates for the bbox center at appropriate zoom
-        const latCenter = (south + north) / 2;
-        const lngCenter = (west + east) / 2;
-        const parcelLatRange = north - south;
-        const parcelLngRange = east - west;
+        // Use the same parcel source as buildParcelBoundary for consistency
+        // Priority: state.paths (user-drawn) > report.geometry > report.site_map.parcel
+        let parcelRing = null;
+        if (Array.isArray(state.paths) && state.paths.length >= 3) {
+          parcelRing = state.paths;
+        } else {
+          parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
+        }
+        
+        // Calculate bbox from actual parcel ring (not report bbox which may differ)
+        let texWest = Infinity, texEast = -Infinity, texSouth = Infinity, texNorth = -Infinity;
+        if (parcelRing && parcelRing.length >= 3) {
+          for (const coord of parcelRing) {
+            const lng = Number(coord[0]);
+            const lat = Number(coord[1]);
+            if (!Number.isFinite(lng) || !Number.isFinite(lat)) continue;
+            if (lng < texWest) texWest = lng;
+            if (lng > texEast) texEast = lng;
+            if (lat < texSouth) texSouth = lat;
+            if (lat > texNorth) texNorth = lat;
+          }
+        }
+        // Fall back to report bbox if parcel ring didn't yield valid bounds
+        if (!isFinite(texWest) || !isFinite(texEast) || !isFinite(texSouth) || !isFinite(texNorth)) {
+          texWest = west; texEast = east; texSouth = south; texNorth = north;
+        }
+        
+        // Add small margin (2%) around parcel for texture coverage
+        const marginLng = (texEast - texWest) * 0.02;
+        const marginLat = (texNorth - texSouth) * 0.02;
+        texWest -= marginLng; texEast += marginLng;
+        texSouth -= marginLat; texNorth += marginLat;
+        
+        const parcelLatRange = texNorth - texSouth;
+        const parcelLngRange = texEast - texWest;
         
         // Choose zoom level based on parcel size (smaller parcels need higher zoom)
         const maxDim = Math.max(parcelLatRange, parcelLngRange);
@@ -2451,10 +2481,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         const lng2tile = (lng, z) => Math.floor(lng2tileExact(lng, z));
         
         // Get tile range that covers the entire parcel bbox
-        const tileXMin = lng2tile(west, zoom);
-        const tileXMax = lng2tile(east, zoom);
-        const tileYMin = lat2tile(north, zoom); // north has smaller tile Y
-        const tileYMax = lat2tile(south, zoom); // south has larger tile Y
+        const tileXMin = lng2tile(texWest, zoom);
+        const tileXMax = lng2tile(texEast, zoom);
+        const tileYMin = lat2tile(texNorth, zoom); // north has smaller tile Y
+        const tileYMax = lat2tile(texSouth, zoom); // south has larger tile Y
         
         // Add 1 tile padding on each side
         const startX = tileXMin - 1;
@@ -2508,28 +2538,22 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
                 const tileLngRange = tileEast - tileWest;
                 const tileLatRange = tileNorth - tileSouth;
                 
-                // UV coordinates for the parcel bbox within the tile area
-                // Three.js PlaneGeometry UV: (0,0) at top-left when viewed from above after rotateX(-PI/2)
-                // But actually after rotateX(-PI/2), UV (0,0) maps to corner (-meshW/2, 0, -meshD/2)
-                // and UV (1,1) maps to (meshW/2, 0, meshD/2)
-                // The texture image has (0,0) at top-left, so we need to match this
-                
-                // Parcel position within tile coverage (normalized 0-1)
+                // UV coordinates for the MESH bbox within the tile area
+                // The mesh spans from (west,south) to (east,north) in geo coords
+                // Map mesh corners to texture UVs so imagery aligns with terrain grid
                 const uMin = (west - tileWest) / tileLngRange;
                 const uMax = (east - tileWest) / tileLngRange;
                 // For V: texture top (v=1) is north, texture bottom (v=0) is south
-                // But canvas draws tiles top-to-bottom (startY=north at top)
-                // So v=1 corresponds to tileNorth, v=0 to tileSouth
-                const vMax = (tileNorth - north) / tileLatRange; // top of parcel
-                const vMin = (tileNorth - south) / tileLatRange; // bottom of parcel
+                const vMax = (tileNorth - north) / tileLatRange; // top of mesh (north)
+                const vMin = (tileNorth - south) / tileLatRange; // bottom of mesh (south)
                 
-                // Update UVs on geometry to map parcel area to texture
+                // Update UVs on geometry to map mesh area to texture
                 const uvs = geometry.attributes.uv;
                 if (uvs) {
                   const uvArray = uvs.array;
                   for (let i = 0; i < cols * rows; i++) {
                     // PlaneGeometry default UVs go 0-1 across the plane
-                    // We remap them to the parcel's portion of the texture
+                    // We remap them to the mesh's portion of the texture
                     const origU = uvArray[i * 2];
                     const origV = uvArray[i * 2 + 1];
                     uvArray[i * 2] = uMin + origU * (uMax - uMin);
