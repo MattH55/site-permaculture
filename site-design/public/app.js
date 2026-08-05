@@ -2576,8 +2576,15 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         c.material?.dispose();
       }
 
-      // Get parcel ring from report geometry
-      const parcelRing = report?.geometry?.coordinates?.[0] || report?.geometry?.coordinates;
+      // Get parcel ring - use same source as getParcelLatLngsFromReport for consistency
+      // Priority: state.paths (user-drawn) > report.geometry > report.site_map.parcel
+      let parcelRing = null;
+      if (Array.isArray(state.paths) && state.paths.length >= 3) {
+        // state.paths is [lng, lat] format from user drawing
+        parcelRing = state.paths;
+      } else {
+        parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
+      }
       if (!parcelRing || parcelRing.length < 3) return;
 
       // Convert parcel coords to local 3D coordinates, draping onto terrain
