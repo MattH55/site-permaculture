@@ -8628,16 +8628,17 @@ function pdfFilename(label) {
  */
 function pdfOpts(filename, opts = {}) {
   return {
-    margin: [14, 12, 14, 14],
+    margin: [12, 10, 12, 10],
     filename,
     image: { type: 'jpeg', quality: 0.92 },
     html2canvas: {
-      scale: 2,
+      scale: 1.5,
       useCORS: true,
       logging: false,
       letterRendering: true,
       allowTaint: false,
       scrollY: 0,
+      windowWidth: 1200,
       foreignObjectRendering: false,
     },
     jsPDF: {
@@ -8741,7 +8742,7 @@ function buildPdfDocument(reportEl) {
   doc.appendChild(tocPage);
 
   /* ── Report Body ── */
-  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;max-width:170mm;' });
+  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;width:100%;max-width:170mm;box-sizing:border-box;' });
 
   // Clone report content but strip interactive elements that don't render well in PDF
   const clone = reportEl.cloneNode(true);
@@ -8767,6 +8768,25 @@ function buildPdfDocument(reportEl) {
   // Remove empty containers left behind by stripping
   clone.querySelectorAll('div').forEach((d) => {
     if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
+  });
+
+  // Harden layout so nothing overflows the A4 page bounds
+  clone.querySelectorAll('div, section, table, .report-block, .panel, .card, .el, .summary-grid, .prox-grid').forEach((el) => {
+    el.style.maxWidth = '100%';
+    el.style.boxSizing = 'border-box';
+  });
+  clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a').forEach((el) => {
+    el.style.overflowWrap = 'break-word';
+    el.style.wordWrap = 'break-word';
+    el.style.maxWidth = '100%';
+  });
+  clone.querySelectorAll('img, svg, canvas').forEach((el) => {
+    el.style.maxWidth = '100%';
+    el.style.height = 'auto';
+  });
+  // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
+  clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
+    el.style.overflow = 'hidden';
   });
 
   // Add section breaks before each report-block
@@ -8966,6 +8986,25 @@ async function downloadSectionPdf(sectionEl, label) {
     // Remove empty containers left behind by stripping
     clone.querySelectorAll('div').forEach((d) => {
       if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
+    });
+
+    // Harden layout so nothing overflows the A4 page bounds
+    clone.querySelectorAll('div, section, table, .report-block, .panel, .card, .el, .summary-grid, .prox-grid').forEach((el) => {
+      el.style.maxWidth = '100%';
+      el.style.boxSizing = 'border-box';
+    });
+    clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a').forEach((el) => {
+      el.style.overflowWrap = 'break-word';
+      el.style.wordWrap = 'break-word';
+      el.style.maxWidth = '100%';
+    });
+    clone.querySelectorAll('img, svg, canvas').forEach((el) => {
+      el.style.maxWidth = '100%';
+      el.style.height = 'auto';
+    });
+    // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
+    clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
+      el.style.overflow = 'hidden';
     });
 
     // Wrap with a title block for the PDF
