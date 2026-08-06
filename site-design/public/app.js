@@ -2078,6 +2078,11 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
           Trees
         </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <span>Exag</span>
+          <input type="range" min="0.5" max="6" step="0.1" value="1" data-terrain-exag="${esc(id)}" style="width:90px;vertical-align:middle" />
+          <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
+        </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
       <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
@@ -2333,7 +2338,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   // Height scaling: normalize elevation to scene units
   // True scale (exaggerate=1): max height difference = relief * 0.05 scene units
   const heightScale = 0.05;
-  const exaggerate = 1.0;
+  let exaggerate = 1.0;
 
   // Build heightmap array
   const heightValues = new Float32Array(rows * cols);
@@ -2862,7 +2867,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
 
       const cGeom = new THREE.BufferGeometry().setFromPoints(pts);
-      const cMat = new THREE.LineBasicMaterial({ color: 0x444444, linewidth: 1, transparent: true, opacity: 0.6 });
+      const cMat = new THREE.LineBasicMaterial({ color: 0xe8e0ff, linewidth: 2, transparent: true, opacity: 0.9 });
       contourLinesGroup.add(new THREE.LineSegments(cGeom, cMat));
     };
     buildContours();
@@ -2885,12 +2890,16 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     };
     window.addEventListener('resize', onResize);
 
+    // Semantic feature objects (mapped features overlay)
+    let semanticObjects = null;
+
     // Disposal
     el._eeTerrain = {
       dispose() {
         if (animationId) cancelAnimationFrame(animationId);
         window.removeEventListener('resize', onResize);
         controls.dispose();
+        semanticObjects?.dispose();
         scene.traverse((obj) => {
           obj.geometry?.dispose();
           if (obj.material) {
@@ -2904,66 +2913,82 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       source,
     };
 
+    // --- Exaggerate slider ---
+    const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
+    const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
+    if (exagInput) {
+      exagInput.addEventListener('input', () => {
+        exaggerate = Number(exagInput.value) || 2.0;
+        if (exagVal) exagVal.textContent = `${exaggerate.toFixed(1)}×`;
+        if (terrainMesh && geometry) {
+          const pos = geometry.attributes.position.array;
+          for (let i = 0; i < cols * rows; i++) {
+            pos[i * 3 + 1] = elevToLocalY(heightValues[i] ?? zMean, exaggerate);
+          }
+          geometry.attributes.position.needsUpdate = true;
+          geometry.computeVertexNormals();
+        }
+        buildContours();
+      });
+    }
+
+    // --- Layer toggles (contours, catchment, pond, swale, trees) ---
+    document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+      cb.addEventListener('change', () => {
+        const layer = cb.getAttribute('data-layer');
+        if (layer === 'contours' && contourLinesGroup) {
+          contourLinesGroup.visible = !!cb.checked;
+        } else if (layer === 'catchment') {
+          groupCatchment.visible = !!cb.checked;
+        } else if (layer === 'pond') {
+          groupPond.visible = !!cb.checked;
+        } else if (layer === 'swale') {
+          groupSwale.visible = !!cb.checked;
+        } else if (layer === 'trees') {
+          groupTrees.visible = !!cb.checked;
+        }
+      });
+    });
+
+    // --- Semantic feature toggles (mapped features from semantic terrain) ---
+    const semanticPayload = report?.semantic_terrain;
+    if (semanticPayload?.features?.length) {
+      semanticObjects = mountSemanticTerrainObjects(scene, semanticPayload, {
+        bbox: [west, south, east, north],
+        meshW, meshD, cols, rows, elevations, zMean, relief,
+        exaggerate: () => exaggerate,
+      });
+      document.querySelectorAll(`[data-semantic-toggle="${hostId}"]`).forEach((cb) => {
+        cb.addEventListener('change', () => {
+          const layer = cb.getAttribute('data-semantic-layer');
+          if (semanticObjects) semanticObjects.setVisible(layer, !!cb.checked);
+        });
+      });
+    }
+
+    // --- Reset view ---
+    const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        camera.position.set(meshW * 0.6, relief * heightScale * exaggerate * 3 + 3, meshD * 0.8);
+        controls.target.set(0, relief * heightScale * exaggerate * 0.3, 0);
+        controls.update();
+      });
+    }
+
+    // --- Info badge ---
+    const badge = document.createElement('div');
+    badge.className = 'fine';
+    badge.style.cssText = 'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;z-index:1000;max-width:90%';
+    badge.textContent = `${cols}×${rows} · relief ${relief.toFixed(1)}m · ${source}`;
+    el.style.position = 'relative';
+    el.appendChild(badge);
+
   } catch (err) {
     console.error('3D terrain viewer failed:', err);
     el.innerHTML = `<p class="fine" style="padding:1rem">3D terrain viewer unavailable: ${esc(err.message)}. Use the 2D map for this parcel.</p>`;
     return;
   }
-
-  // --- Exaggerate slider ---
-  const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
-  const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
-  if (exagInput) {
-    exagInput.addEventListener('input', () => {
-      exaggerate = Number(exagInput.value) || 2.0;
-      if (exagVal) exagVal.textContent = `${exaggerate.toFixed(1)}×`;
-      if (terrainMesh && geometry) {
-        const pos = geometry.attributes.position.array;
-        for (let i = 0; i < cols * rows; i++) {
-          pos[i * 3 + 1] = elevToLocalY(heightValues[i] ?? zMean, exaggerate);
-        }
-        geometry.attributes.position.needsUpdate = true;
-        geometry.computeVertexNormals();
-      }
-      buildContours();
-    });
-  }
-
-  // --- Layer toggles (contours, catchment, pond, swale, trees) ---
-  document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
-    cb.addEventListener('change', () => {
-      const layer = cb.getAttribute('data-layer');
-      if (layer === 'contours' && contourLinesGroup) {
-        contourLinesGroup.visible = !!cb.checked;
-      } else if (layer === 'catchment') {
-        groupCatchment.visible = !!cb.checked;
-      } else if (layer === 'pond') {
-        groupPond.visible = !!cb.checked;
-      } else if (layer === 'swale') {
-        groupSwale.visible = !!cb.checked;
-      } else if (layer === 'trees') {
-        groupTrees.visible = !!cb.checked;
-      }
-    });
-  });
-
-  // --- Reset view ---
-  const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
-  if (resetBtn) {
-    resetBtn.addEventListener('click', () => {
-      camera.position.set(meshW * 0.6, relief * heightScale * exaggerate * 3 + 3, meshD * 0.8);
-      controls.target.set(0, relief * heightScale * exaggerate * 0.3, 0);
-      controls.update();
-    });
-  }
-
-  // --- Info badge ---
-  const badge = document.createElement('div');
-  badge.className = 'fine';
-  badge.style.cssText = 'position:absolute;left:0.5rem;bottom:0.5rem;padding:0.2rem 0.45rem;background:rgba(0,0,0,0.55);color:#e8efe6;border-radius:4px;font-size:0.7rem;pointer-events:none;z-index:1000;max-width:90%';
-  badge.textContent = `${cols}×${rows} · relief ${relief.toFixed(1)}m · ${source}`;
-  el.style.position = 'relative';
-  el.appendChild(badge);
 }
 
 /**

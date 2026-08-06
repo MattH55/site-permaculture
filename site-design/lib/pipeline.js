@@ -41,6 +41,7 @@ import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
+import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 
 const cache = new Map();
@@ -64,7 +65,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -111,6 +112,10 @@ export async function generateSiteReport(input = {}) {
       error: e.message,
     })),
     assessBiodiversity(centre).catch((e) => ({
+      available: false,
+      error: e.message,
+    })),
+    sampleHrdemTerrain(bbox, { size: 64, prefer: 'dtm' }).catch((e) => ({
       available: false,
       error: e.message,
     })),
@@ -374,6 +379,7 @@ export async function generateSiteReport(input = {}) {
   record.tree_sample_grid = generateTreeSampleGrid(bbox);
   record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
   record.semantic_terrain = semantic_terrain;
+  record.hrdem_terrain = hrdem_terrain;
 
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
