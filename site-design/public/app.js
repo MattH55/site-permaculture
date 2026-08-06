@@ -2317,11 +2317,16 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
   }
 
   // --- Scene dimensions ---
-  // Map parcel bbox to a local scene centered at origin
+  // Map parcel bbox to a local scene centered at origin.
+  // Use ground-distance aspect (km per degree) so the terrain is not
+  // distorted at high latitudes (1° lng ≈ cos(lat) × 1° lat).
   const meshSize = 10;
   const lngRange = east - west || 0.001;
   const latRange = north - south || 0.001;
-  const aspect = lngRange / latRange;
+  const latMid = (north + south) / 2;
+  const kmPerDegLng = 111.32 * Math.cos(latMid * Math.PI / 180);
+  const kmPerDegLat = 111.32;
+  const aspect = (lngRange * kmPerDegLng) / (latRange * kmPerDegLat);
   const meshW = meshSize * Math.min(aspect, 1);
   const meshD = meshSize / Math.max(aspect, 1);
 
@@ -2543,9 +2548,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
                 // Map mesh corners to texture UVs so imagery aligns with terrain grid
                 const uMin = (west - tileWest) / tileLngRange;
                 const uMax = (east - tileWest) / tileLngRange;
-                // For V: texture top (v=1) is north, texture bottom (v=0) is south
-                const vMax = (tileNorth - north) / tileLatRange; // top of mesh (north)
-                const vMin = (tileNorth - south) / tileLatRange; // bottom of mesh (south)
+                // For V: texture top (v=1) is north, texture bottom (v=0) is south.
+                // The mesh's north edge (origV=1 in PlaneGeometry after rotateX)
+                // must map to the texture's north (high V); south edge (origV=0) → low V.
+                const vNorth = 1 - (tileNorth - north) / tileLatRange; // mesh north → high V
+                const vSouth = 1 - (tileNorth - south) / tileLatRange; // mesh south → low V
                 
                 // Update UVs on geometry to map mesh area to texture
                 const uvs = geometry.attributes.uv;
@@ -2557,8 +2564,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
                     const origU = uvArray[i * 2];
                     const origV = uvArray[i * 2 + 1];
                     uvArray[i * 2] = uMin + origU * (uMax - uMin);
-                    // Flip V because PlaneGeometry has V=0 at bottom but texture has V=0 at bottom (south)
-                    uvArray[i * 2 + 1] = vMin + (1 - origV) * (vMax - vMin);
+                    // origV=0 is the mesh's south edge → vSouth; origV=1 is north → vNorth
+                    uvArray[i * 2 + 1] = vSouth + origV * (vNorth - vSouth);
                   }
                   uvs.needsUpdate = true;
                 }
@@ -8596,9 +8603,9 @@ function pdfFilename(label) {
  */
 function pdfOpts(filename, opts = {}) {
   return {
-    margin: [12, 10, 12, 10],
+    margin: [14, 12, 14, 14],
     filename,
-    image: { type: 'jpeg', quality: 0.95 },
+    image: { type: 'jpeg', quality: 0.92 },
     html2canvas: {
       scale: 2,
       useCORS: true,
@@ -8606,13 +8613,17 @@ function pdfOpts(filename, opts = {}) {
       letterRendering: true,
       allowTaint: false,
       scrollY: 0,
+      foreignObjectRendering: false,
     },
     jsPDF: {
       unit: 'mm',
       format: 'a4',
       orientation: 'portrait',
     },
-    pagebreak: { mode: ['css', 'legacy'] },
+    pagebreak: {
+      mode: ['avoid', 'css', 'legacy'],
+      avoid: ['.summary-grid', '.well-range-card', '.rec-card', '.prox-card', '.pkg-card', '.intervention-card', '.econ-table', '.findings-accordion', '.flag', 'table'],
+    },
     ...opts,
   };
 }
@@ -8629,7 +8640,7 @@ function buildPdfDocument(reportEl) {
 
   /* ── Title Page ── */
   const titlePage = el('div', null, {
-    cssText: 'text-align:center;padding:50px 30px 30px;page-break-after:always;min-height:270mm;display:flex;flex-direction:column;justify-content:center;',
+    cssText: 'text-align:center;padding:50px 30px 30px;page-break-after:always;min-height:265mm;display:flex;flex-direction:column;justify-content:center;',
   });
 
   const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
@@ -8705,11 +8716,33 @@ function buildPdfDocument(reportEl) {
   doc.appendChild(tocPage);
 
   /* ── Report Body ── */
-  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;' });
+  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;max-width:170mm;' });
 
   // Clone report content but strip interactive elements that don't render well in PDF
   const clone = reportEl.cloneNode(true);
-  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container').forEach((el) => el.remove());
+  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
+
+  // Ensure all tables and wide elements fit within A4 bounds
+  clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
+    t.style.maxWidth = '100%';
+    t.style.overflowX = 'auto';
+  });
+  clone.querySelectorAll('.econ-table').forEach((t) => {
+    t.style.width = '100%';
+    t.style.maxWidth = '100%';
+    t.style.tableLayout = 'auto';
+    t.style.fontSize = '8pt';
+  });
+  // Open any collapsed details so content is included
+  clone.querySelectorAll('details').forEach((d) => { d.open = true; });
+  // Remove interactive iframes (crime map, etc.)
+  clone.querySelectorAll('iframe').forEach((f) => f.remove());
+  // Remove buttons/inputs/selects that serve no purpose in a static PDF
+  clone.querySelectorAll('button, input, select, textarea').forEach((el) => el.remove());
+  // Remove empty containers left behind by stripping
+  clone.querySelectorAll('div').forEach((d) => {
+    if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
+  });
 
   // Add section breaks before each report-block
   const blocks = clone.querySelectorAll(':scope > .report-block');
@@ -8723,7 +8756,7 @@ function buildPdfDocument(reportEl) {
     if (h2) {
       const sectionLabel = h2.textContent.trim();
       const headerBar = el('div', null, {
-        cssText: 'display:flex;align-items:center;gap:8px;margin:-1.8rem -1.4rem 1.2rem;padding:6px 16px;background:#f7f8f3;border-bottom:1px solid #c8cec1;',
+        cssText: 'display:flex;align-items:center;gap:8px;margin:0 0 1rem;padding:6px 8px;background:#f7f8f3;border-bottom:1px solid #c8cec1;',
       });
       headerBar.appendChild(el('span', null, {
         textContent: `${i + 1}.`,
@@ -8884,6 +8917,31 @@ async function downloadSectionPdf(sectionEl, label) {
     const clone = sectionEl.cloneNode(true);
     // Remove the PDF button from the clone
     clone.querySelectorAll('.btn-pdf-section').forEach((b) => b.remove());
+
+    // Strip interactive elements that don't render well in PDF (same list as buildPdfDocument)
+    clone.querySelectorAll('.minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
+
+    // Ensure tables and wide elements fit within A4 bounds
+    clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
+      t.style.maxWidth = '100%';
+      t.style.overflowX = 'auto';
+    });
+    clone.querySelectorAll('.econ-table').forEach((t) => {
+      t.style.width = '100%';
+      t.style.maxWidth = '100%';
+      t.style.tableLayout = 'auto';
+      t.style.fontSize = '8pt';
+    });
+    // Open any collapsed details so content is included
+    clone.querySelectorAll('details').forEach((d) => { d.open = true; });
+    // Remove interactive iframes (crime map, etc.)
+    clone.querySelectorAll('iframe').forEach((f) => f.remove());
+    // Remove buttons/inputs/selects that serve no purpose in a static PDF
+    clone.querySelectorAll('button, input, select, textarea').forEach((el) => el.remove());
+    // Remove empty containers left behind by stripping
+    clone.querySelectorAll('div').forEach((d) => {
+      if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
+    });
 
     // Wrap with a title block for the PDF
     const wrapper = document.createElement('div');
@@ -9917,16 +9975,19 @@ function initCesiumViewer() {
     setTimeout(() => {
       if (cesiumViewer) {
         cesiumViewer.resize();
-        // Fly to Alberta
-        cesiumViewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(-113.5, 53.55, 8000),
-          orientation: {
-            heading: Cesium.Math.toRadians(0),
-            pitch: Cesium.Math.toRadians(-60),
-            roll: 0,
-          },
-          duration: 2,
-        });
+        // If a parcel is drawn, addParcelToCesium already flew the camera to it.
+        // Only fly to the Alberta overview when no parcel exists.
+        if (!(state.paths && state.paths.length >= 3)) {
+          cesiumViewer.camera.flyTo({
+            destination: Cesium.Cartesian3.fromDegrees(-113.5, 53.55, 8000),
+            orientation: {
+              heading: Cesium.Math.toRadians(0),
+              pitch: Cesium.Math.toRadians(-60),
+              roll: 0,
+            },
+            duration: 2,
+          });
+        }
       }
     }, 300);
 
@@ -9958,26 +10019,34 @@ function addParcelToCesium(paths) {
     Cesium.Cartesian3.fromDegrees(lng, lat)
   );
 
+  // Close the polygon ring if not already closed
+  const closed =
+    positions.length >= 4 &&
+    positions[0].x === positions[positions.length - 1].x &&
+    positions[0].y === positions[positions.length - 1].y &&
+    positions[0].z === positions[positions.length - 1].z;
+  const hierarchy = closed ? positions : [...positions, positions[0]];
+
   cesiumViewer.entities.add({
-    parcel: {
-      polygon: {
-        hierarchy: positions,
-        material: Cesium.Color.PURPLE.withAlpha(0.3),
-        outline: true,
-        outlineColor: Cesium.Color.PURPLE,
-        outlineWidth: 2,
-        clampToGround: true,
-      },
+    id: 'parcel',
+    polygon: {
+      hierarchy: new Cesium.PolygonHierarchy(hierarchy),
+      material: Cesium.Color.PURPLE.withAlpha(0.3),
+      outline: true,
+      outlineColor: Cesium.Color.PURPLE,
+      outlineWidth: 2,
+      clampToGround: true,
     },
   });
 
-  // Fit camera to the parcel
+  // Fit camera to the parcel — scale range to parcel size so it's framed well
   const boundingSphere = Cesium.BoundingSphere.fromPoints(positions);
+  const range = Math.max(boundingSphere.radius * 2.5, 250);
   cesiumViewer.camera.flyToBoundingSphere(boundingSphere, {
     offset: new Cesium.HeadingPitchRange(
       0,
       Cesium.Math.toRadians(-60),
-      5000
+      range
     ),
   });
 }
