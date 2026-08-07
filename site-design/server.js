@@ -448,7 +448,7 @@ async function sendViaResend({ to, replyTo, subject, text, html }) {
   const fallback =
     process.env.RESEND_FALLBACK_TO ||
     process.env.RESEND_OWNER_EMAIL ||
-    null;
+    'matt.halma@gmail.com';
 
   const result = await resendSendOnce({
     resendKey,

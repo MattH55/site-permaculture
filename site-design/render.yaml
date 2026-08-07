@@ -31,7 +31,7 @@ services:
         sync: false
       # Delivery inbox (Gmail / forwarding address until domain verified)
       - key: INQUIRY_TO
-        sync: false
+        value: matt.halma@gmail.com
       - key: INQUIRY_PUBLIC_TO
         value: info@expandingedge.ca
       - key: RESEND_FALLBACK_TO

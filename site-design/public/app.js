@@ -2955,7 +2955,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     if (semanticPayload?.features?.length) {
       semanticObjects = mountSemanticTerrainObjects(scene, semanticPayload, {
         bbox: [west, south, east, north],
-        meshW, meshD, cols, rows, elevations, zMean, relief,
+        meshW, meshD, cols, rows, elevations, zMean, relief, zMin, heightScale,
         exaggerate: () => exaggerate,
       });
       document.querySelectorAll(`[data-semantic-toggle="${hostId}"]`).forEach((cb) => {
@@ -3017,17 +3017,20 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
   const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
   const point = ([lng, lat], lift = 0.6) => {
     const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
-    const z = ((lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9) - 0.5) * opts.meshD;
+    // Terrain mesh (PlaneGeometry rotated -90° about X) places north at z=-meshD/2
+    // and south at z=+meshD/2 — mirror latitude so features align with the parcel.
+    const z = (0.5 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * opts.meshD;
     const col = Math.max(0, Math.min(opts.cols - 1, Math.round((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) * (opts.cols - 1))));
     const row = Math.max(0, Math.min(opts.rows - 1, Math.round((1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1))));
     const elev = Number(opts.elevations[row * opts.cols + col]);
-    const y = Number.isFinite(elev) ? (elev - opts.zMean) * (opts.meshW * 0.08 * opts.exaggerate()) / opts.relief + lift : lift;
+    // Match the terrain mesh elevation scale: (z - zMin) * heightScale * exag
+    const y = Number.isFinite(elev) ? (elev - opts.zMin) * opts.heightScale * opts.exaggerate() + lift : lift;
     return new THREE.Vector3(x, y, z);
   };
   const polygonMesh = (ring, type) => {
-    const base = ring.map((c) => point(c, 0.45));
+    const base = ring.map((c) => point(c, 0.35));
     const height = type === 'building' ? 4 : 0.35;
-    const top = ring.map((c) => point(c, height));
+    const top = ring.map((c) => point(c, 0.35 + height));
     const vertices = [];
     const pushTri = (a, b, c) => vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     for (let i = 1; i < base.length - 2; i++) pushTri(top[0], top[i], top[i + 1]);
