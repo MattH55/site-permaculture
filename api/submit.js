@@ -13,10 +13,28 @@ export default async function handler(req, res) {
   const { email } = req.body || {};
   if (!/^\S+@\S+\.\S+$/.test(email || '')) return res.status(400).json({ error: 'bad email' });
 
+  // Require Resend so the UI never claims "sent" when nothing will arrive.
+  if (!process.env.RESEND_API_KEY) {
+    console.error('RESEND_API_KEY missing — cannot send report');
+    return res.status(503).json({
+      error: 'email_not_configured',
+      message: 'Report email is temporarily unavailable. Email info@expandingedge.ca and we will send your score manually.'
+    });
+  }
+
   const { lead, s } = buildLead(req.body);
 
   try { await store(lead); } catch (e) { console.error('store failed', e.message); }
-  try { await sendReport(lead, s); } catch (e) { console.error('email failed', e.message); }
+
+  try {
+    await sendReport(lead, s);
+  } catch (e) {
+    console.error('email failed', e.message);
+    return res.status(502).json({
+      error: 'email_failed',
+      message: "We couldn't send the report just now. Try again, or email info@expandingedge.ca."
+    });
+  }
 
   res.status(200).json({ ok: true });
 }

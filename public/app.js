@@ -163,11 +163,17 @@ function results() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, name, answers: state.answers, profile: state.profile })
       });
-      if (!r.ok) throw new Error();
+      let data = {};
+      try { data = await r.json(); } catch { /* non-JSON error body */ }
+      if (!r.ok) {
+        throw new Error(data.message || data.error || 'send failed');
+      }
       thanks(name, email, s);
-    } catch {
+    } catch (ex) {
       e.target.disabled = false; e.target.textContent = 'Send my report';
-      err.textContent = "That didn't go through. Try once more, or email info@expandingedge.ca and we'll send it manually.";
+      err.textContent = (ex && ex.message && ex.message.length < 160)
+        ? ex.message
+        : "That didn't go through. Try once more, or email info@expandingedge.ca and we'll send it manually.";
       err.hidden = false;
     }
   };
