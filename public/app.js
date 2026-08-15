@@ -8,7 +8,7 @@ const DIM_KEYS = Object.keys(DIMENSIONS).sort((a, b) => DIMENSIONS[a].order - DI
 const state = { i: -1, answers: {}, profile: {} };
 
 // --- persistence, so abandoners can come back ---
-const KEY = 'ee-resilience-v1';
+const KEY = 'alberta-resilience-v1';
 try { Object.assign(state, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch {}
 const save = () => { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch {} };
 
@@ -37,7 +37,7 @@ function intro() {
   stage.innerHTML = `
     <div class="panel fade">
       <span class="mono eyebrow">Land resilience · Treaty 6 · North Saskatchewan watershed</span>
-      <h1>The Resilience Quiz for Edmonton</h1>
+      <h1>The Resilience Quiz for Alberta</h1>
       <p class="lede">Twenty-four questions about your water, your soil, your winter and your pantry.
       Three minutes. At the end you get a number, and — more useful — the one thing capping everything else.</p>
       <div class="actions">
@@ -184,8 +184,8 @@ function thanks(name, email, s) {
     <div class="panel fade">
       <span class="mono eyebrow">Sent</span>
       <h1>On its way${name ? ', ' + esc(name) : ''}.</h1>
-      <p class="lede">Your report is heading to ${esc(email)}. If it hasn't landed in ten minutes, check
-      your promotions tab — that's where it usually hides.</p>
+      <p class="lede">Your report has been sent. If it hasn't landed in ten minutes, check your
+      promotions tab — that's where it usually hides.</p>
       <div class="callout">
         <h3>Start with ${esc(s.limiting.name.toLowerCase())}</h3>
         <p>It's the constraint on everything else you'd do this season. The report explains what that

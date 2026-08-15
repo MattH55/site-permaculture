@@ -15,7 +15,7 @@ export const DIMENSIONS = {
   storage:   { name: 'Storage',          weight: 1.0,  order: 6,
     note: 'Growing food and keeping food are different skills.' },
   heat:      { name: 'Energy & heat',    weight: 1.5,  order: 7,
-    note: 'No chinooks here. A cold snap stays.' },
+    note: 'A cold snap can stay in Alberta.' },
   people:    { name: 'People & design',  weight: 1.25, order: 8,
     note: 'No amount of gear compensates for a site that was never designed.' }
 };
@@ -26,12 +26,11 @@ export const QUESTIONS = [
   // ---- profiling (unscored) ----
   { id: 'region', type: 'profile', text: 'Where is your land?',
     options: [
-      { label: 'Edmonton (city)' },
-      { label: 'Parkland County · Stony Plain · Spruce Grove' },
-      { label: 'Sturgeon County · St. Albert · Morinville' },
-      { label: 'Strathcona County · Sherwood Park · Fort Saskatchewan' },
-      { label: 'Leduc County · Beaumont · Devon' },
-      { label: 'Lac Ste. Anne · Westlock · further out' },
+      { label: 'Central Alberta' },
+      { label: 'Northern Alberta' },
+      { label: 'Southern Alberta' },
+      { label: 'Foothills' },
+      { label: 'Peace Country' },
       { label: 'Elsewhere in Alberta' }
     ] },
   { id: 'size', type: 'profile', text: 'How much of it are you working with?',
@@ -64,7 +63,7 @@ export const QUESTIONS = [
       'Generator backup for the pump',
       'Gravity-fed, hand pump, or solar — it runs without the grid') },
   { id: 'w3', dim: 'water', text: 'How much of the rain and snowmelt landing on your property do you keep?',
-    help: 'The Edmonton region gets about 450 mm a year, most of it June through August.',
+    help: 'Across Alberta, most rain and snowmelt arrives between late spring and summer.',
     options: opts(
       "None — it runs off, or I don't know",
       'Roof water into barrels',
@@ -164,7 +163,7 @@ export const QUESTIONS = [
 
   // ---- heat ----
   { id: 'h1', dim: 'heat', text: 'Gas and power go out in January. How do you heat your home?',
-    help: "Unlike Calgary, there's no chinook coming. A −35 °C stretch here stays.",
+    help: 'Across Alberta, a −35 °C stretch can stay.',
     options: opts(
       "I couldn't",
       'A fireplace or space heater, short term',
@@ -222,7 +221,7 @@ export const ARCHETYPES = [
 // Plain-language fixes, keyed by dimension, used in the results and the report.
 export const REMEDIES = {
   water:     'Storage and earthworks come first, before anything else gets planted. Note that a dugout for irrigation or livestock may need registration under the Water Act, and county setbacks vary — worth checking before you dig.',
-  annuals:   'Season extension buys you six to eight weeks at both ends. A high tunnel is the highest-return structure on most Edmonton-area sites.',
+  annuals:   'Season extension buys you six to eight weeks at both ends. A high tunnel is the highest-return structure on most Alberta sites.',
   perennial: 'This is the one that punishes waiting. Hardy stock — haskap, saskatoon, sour cherry, apples on Ottawa 3 — planted this spring is producing while everything else is still a plan.',
   animals:   'Feed autonomy matters more than headcount. Pasture and stored forage turn animals from a liability into a fertility engine.',
   soil:      'Every dollar of imported fertility is a subscription. Nitrogen fixers, chop-and-drop and animal integration cancel it.',
