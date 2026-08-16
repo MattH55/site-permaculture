@@ -459,7 +459,7 @@ export async function generateSiteReport(input = {}) {
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
-      source_name: 'Expanding Edge rate engine (2024 rate sheet, +8% est.) applied to fired design_elements',
+      source_name: 'Land Intelligence rate engine (2024 rate sheet, +8% est.) applied to fired design_elements',
       source_date: new Date().toISOString().slice(0, 10),
       source_url: null,
     });

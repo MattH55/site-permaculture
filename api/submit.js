@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     console.error('RESEND_API_KEY missing — cannot send report');
     return res.status(503).json({
       error: 'email_not_configured',
-      message: 'Report email is temporarily unavailable. Email info@expandingedge.ca and we will send your score manually.'
+      message: 'Report email is temporarily unavailable. Please use the contact form and we will send your score manually.'
     });
   }
 
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     console.error('email failed', e.message);
     return res.status(502).json({
       error: 'email_failed',
-      message: "We couldn't send the report just now. Try again, or email info@expandingedge.ca."
+      message: "We couldn't send the report just now. Try again, or use the contact form."
     });
   }
 

@@ -17,7 +17,7 @@ export const RCMP_CRIME_MAP_PAGE =
   'https://www.ruralcrimewatch.ab.ca/resources/RCMP-area-crime-map';
 export const RCMP_CRIME_MAP_VIEWER_BASE =
   'https://rcmp-k-div.maps.arcgis.com/apps/webappviewer/index.html?id=f648d78dbfb143d0b3bdf47d8eb2bbee';
-export const RCMP_REPORT_SUSPICIOUS = 'tel:3107267';
+export const RCMP_REPORT_SUSPICIOUS = '#';
 
 /**
  * Embed / open URL for the RCMP Area Crime Map, optionally centred near the parcel.
@@ -50,12 +50,12 @@ export function ruralCrimeWatchContext(centre) {
     source_url: RCMP_CRIME_MAP_PAGE,
     map_url: mapUrl,
     fullscreen_url: mapUrl,
-    report_suspicious_tel: '310-RCMP (7267)',
+    report_suspicious_tel: 'local authorities',
     report_suspicious_href: RCMP_REPORT_SUSPICIOUS,
     note:
       'Province-wide Alberta RCMP crime map used by Rural Crime Watch associations. ' +
       'Shows approximate recent incidents for community awareness — not a parcel risk score. ' +
-      'Report suspicious activity: 310-RCMP (7267). Emergencies: 911.',
+      'Report suspicious activity: local authorities. For emergencies, contact emergency services.',
     disclaimer:
       'Incident locations and categories are published by the RCMP for public awareness and may be approximate or delayed. ' +
       'This is situational awareness only — not a safety rating, insurance product, or police clearance for your property.',

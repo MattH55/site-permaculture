@@ -49,8 +49,6 @@ const app = express();
 /** Origins allowed to call the embed recommendation API (phase 3). */
 const EMBED_ORIGINS = new Set(
   [
-    'https://www.expandingedge.ca',
-    'https://expandingedge.ca',
     'http://localhost:3040',
     'http://127.0.0.1:3040',
     process.env.PUBLIC_BASE_URL,
@@ -94,8 +92,8 @@ app.get('/api/config', (_req, res) => {
     region: 'Alberta',
     brand: {
       name: 'Land Intelligence',
-      url: 'https://www.expandingedge.ca/',
-      tagline: 'Earth · People · Future',
+      url: '/',
+      tagline: 'Know Your Land.',
     },
   });
 });
@@ -277,7 +275,7 @@ app.post('/api/lead', async (req, res) => {
 });
 
 /**
- * Inquiry: selected interventions + report summary → info@expandingedge.ca
+ * Inquiry: selected interventions + report summary → mhalma@opensourcemed.info
  * Body: {
  *   email, name?, phone?, message?,
  *   selected_items: [{ id, label, price_cad? }],
@@ -370,10 +368,10 @@ app.post('/api/inquiry', async (req, res) => {
       mailto: sent ? null : mailto,
       emailed: !!sent,
       message: sent
-        ? 'Inquiry sent to Expanding Edge. We will reply at your email.'
+        ? 'Inquiry sent to Land Intelligence. We will reply at your email.'
         : sendError
           ? `Could not email automatically (${sendError}). A draft will open so you can still send.`
-          : 'Inquiry saved. Open the email draft to send to Expanding Edge, or we will follow up from your details.',
+          : 'Inquiry saved. Open the email draft to send to Land Intelligence, or we will follow up from your details.',
     });
   } catch (e) {
     console.error('inquiry failed', e);
@@ -401,19 +399,19 @@ function inquiryDeliveryAddress() {
   return (
     process.env.INQUIRY_TO ||
     process.env.RESEND_FALLBACK_TO ||
-    'matt.halma@gmail.com'
+    'mhalma@opensourcemed.info'
   );
 }
 
-/** Public EE address shown in the body for human forwarding (optional). */
+/** Public Land Intelligence address shown in the body for human forwarding (optional). */
 function inquiryPublicAddress() {
-  return process.env.INQUIRY_PUBLIC_TO || 'info@expandingedge.ca';
+  return process.env.INQUIRY_PUBLIC_TO || 'mhalma@opensourcemed.info';
 }
 
 /**
  * Send email via Resend (https://resend.com).
  * Requires RESEND_API_KEY. Prefer a verified domain From address:
- *   INQUIRY_FROM="Expanding Edge <noreply@expandingedge.ca>"
+ *   INQUIRY_FROM="Land Intelligence <noreply@your-verified-domain>"
  *
  * Until a domain is verified, Resend only allows `onboarding@resend.dev`
  * and only delivers to the account owner email. We fall back to
@@ -443,12 +441,12 @@ async function sendViaResend({ to, replyTo, subject, text, html }) {
 
   const from =
     process.env.INQUIRY_FROM ||
-    'Expanding Edge Site Design <onboarding@resend.dev>';
+    'Land Intelligence Site Design <onboarding@resend.dev>';
   const intended = (Array.isArray(to) ? to : [to]).filter(Boolean);
   const fallback =
     process.env.RESEND_FALLBACK_TO ||
     process.env.RESEND_OWNER_EMAIL ||
-    'matt.halma@gmail.com';
+    'mhalma@opensourcemed.info';
 
   const result = await resendSendOnce({
     resendKey,
@@ -475,7 +473,7 @@ async function sendViaResend({ to, replyTo, subject, text, html }) {
     const note =
       `\n\n---\nIntended recipient: ${intended.join(', ')}\n` +
       `(Resend domain not verified yet — delivered to fallback inbox ${fallback}. ` +
-      `Verify expandingedge.ca at resend.com/domains and set INQUIRY_FROM to that domain.)\n`;
+      `Verify your sending domain at resend.com/domains and set INQUIRY_FROM to that domain.)\n`;
     const fb = await resendSendOnce({
       resendKey,
       from,
@@ -565,7 +563,7 @@ app.get('/healthz', (_req, res) => res.send('ok'));
 
 /**
  * Phase 3 — embed / partner API
- * Value taxonomy + EE services + Alberta presets (no site run).
+ * Value taxonomy + Land Intelligence services + Alberta presets (no site run).
  */
 app.get('/api/v1/taxonomy', (_req, res) => {
   res.json(getTaxonomyPayload());
@@ -594,7 +592,7 @@ app.get('/embed', (_req, res) => {
 const port = Number(process.env.PORT) || 3040;
 // Bind 0.0.0.0 so Render (and other hosts) can reach the process
 app.listen(port, '0.0.0.0', () => {
-  console.log(`Expanding Edge site design (Alberta map→report) on :${port}`);
+  console.log(`Land Intelligence site design (Alberta map→report) on :${port}`);
   console.log(`Embed: /embed · API: /api/v1/taxonomy · POST /api/v1/recommendations`);
   if (!process.env.GOOGLE_MAPS_API_KEY) {
     console.log('Note: set GOOGLE_MAPS_API_KEY for Google Maps. Fallback map UI works without it.');

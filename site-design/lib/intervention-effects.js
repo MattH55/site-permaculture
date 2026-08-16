@@ -1,5 +1,5 @@
 /**
- * Expanding Edge — Intervention Effects Registry
+ * Land Intelligence — Intervention Effects Registry
  *
  * Defines how each design intervention (swale, pond, foodforest, shelterbelt)
  * affects the 6 fecundity levers. Every effect is a *delta* on the baseline

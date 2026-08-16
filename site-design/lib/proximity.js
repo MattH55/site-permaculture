@@ -242,7 +242,7 @@ out center tags 60;
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           Accept: 'application/json',
-          'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture site report)',
+          'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture site report)',
         },
       });
       if (!res.ok) throw new Error(`Overpass ${res.status}`);

@@ -13,7 +13,7 @@
 
 const POWER_HOURLY =
   'https://power.larc.nasa.gov/api/temporal/hourly/point';
-const UA = 'ExpandingEdgeAlberta/1.0 (site-design; research)';
+const UA = 'LandIntelligenceAlberta/1.0 (site-design; research)';
 const FETCH_MS = 90_000;
 
 const DIRS16 = [

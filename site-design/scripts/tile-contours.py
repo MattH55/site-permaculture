@@ -2,7 +2,7 @@
 import json, math, os
 import shapefile
 
-SHP = r'c:\Users\matth\OneDrive\Documents\Sovereign Policy Institute\Permaculture\Expanding Edge\site-design\data\contours\ContoursIntermittent.shp'
+SHP = r'c:\Users\matth\OneDrive\Documents\Sovereign Policy Institute\Permaculture\Land Intelligence\site-design\data\contours\ContoursIntermittent.shp'
 OUT = os.path.join(os.path.dirname(SHP), '..', 'contours-tiles')
 
 # ---- Projection constants (10TM AEP Forest, NAD83 CSRS) ----

@@ -25,7 +25,7 @@ async function main() {
   console.log(`Downloading ${PFAF_DOWNLOAD_URL}`);
   console.log(`→ ${PFAF_DB_PATH}`);
   const res = await fetch(PFAF_DOWNLOAD_URL, {
-    headers: { 'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (PFAF offline mirror download)' },
+    headers: { 'User-Agent': 'LandIntelligenceSiteDesign/1.0 (PFAF offline mirror download)' },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());

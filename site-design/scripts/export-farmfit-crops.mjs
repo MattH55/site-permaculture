@@ -95,7 +95,7 @@ for (const c of crops) {
 }
 
 const cropPayload = {
-  source: 'farmfit CropData export for Expanding Edge site-design',
+  source: 'farmfit CropData export for Land Intelligence site-design',
   growing_guide: guideRoot,
   exported_at: new Date().toISOString(),
   filter: keepAll ? 'all' : 'cold_climate_and_alberta_relevant',

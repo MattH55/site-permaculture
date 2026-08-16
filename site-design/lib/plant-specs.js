@@ -20,7 +20,7 @@ const PERMA_BASE = 'https://permapeople.org/api';
 const PERENUAL_BASE = 'https://perenual.com/api';
 
 const UA =
-  'ExpandingEdgeSiteDesign/1.0 (Alberta permaculture site design; plant-spec enrichment; +https://www.expandingedge.ca)';
+  'LandIntelligenceSiteDesign/1.0 (Alberta permaculture site design; plant-spec enrichment; +https://www.LandIntelligence.ca)';
 
 let cache = null;
 

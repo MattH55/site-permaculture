@@ -736,9 +736,9 @@ function defaultProvenance(input) {
   if (input._preset_id) {
     rows.push({
       field: 'climate, hydrology.annual_precipitation_mm',
-      source_name: `Expanding Edge Alberta preset: ${input._preset_id}`,
+      source_name: `Land Intelligence Alberta preset: ${input._preset_id}`,
       source_date: new Date().toISOString().slice(0, 10),
-      source_url: 'https://www.expandingedge.ca/',
+      source_url: 'https://www.LandIntelligence.ca/',
     });
   }
   rows.push({

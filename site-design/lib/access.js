@@ -111,7 +111,7 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 async function osrmNearest(lat, lng) {
   const headers = {
     Accept: 'application/json',
-    'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture access)',
+    'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture access)',
   };
 
   let lastErr;
@@ -176,7 +176,7 @@ async function nominatimNameAt(lat, lng) {
       signal: ctrl.signal,
       headers: {
         Accept: 'application/json',
-        'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture; expandingedge.ca)',
+        'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture; LandIntelligence.ca)',
       },
     });
     if (!res.ok) return null;
@@ -204,7 +204,7 @@ async function overpassQuery(query, timeoutMs = 12_000) {
   const headers = {
     'Content-Type': 'application/x-www-form-urlencoded',
     Accept: 'application/json',
-    'User-Agent': 'ExpandingEdgeSiteDesign/1.0 (permaculture access)',
+    'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture access)',
   };
   const tryOne = async (url) => {
     const ctrl = new AbortController();

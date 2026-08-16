@@ -1,5 +1,5 @@
 /**
- * Expanding Edge — map-first Alberta site design
+ * Land Intelligence — map-first Alberta site design
  * Draw parcel on topo map → POST /api/report → design report
  */
 
@@ -69,47 +69,47 @@ const EE_SERVICE_META = {
   water_earthworks_consult: {
     label: 'Water & earthworks consult',
     cta: 'Talk earthworks',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   well_drilling: {
     label: 'Groundwater well',
     cta: 'Plan a well',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   shelterbelt_design: {
     label: 'Shelterbelt design',
     cta: 'Design a shelterbelt',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   food_forest_design: {
     label: 'Food forest design',
     cta: 'Plan a food forest',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   soil_carbon_building: {
     label: 'Soil carbon building',
     cta: 'Build soil carbon',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   kitchen_garden_design: {
     label: 'Kitchen garden design',
     cta: 'Design Zone 1',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   solar_energy_package: {
     label: 'Solar + generator',
     cta: 'View energy packages',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   off_grid_garage: {
     label: 'Off-grid garage ($250k)',
     cta: 'Reserve garage package',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   full_site_design: {
     label: 'Full site design',
     cta: 'Book full design',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
 };
 
@@ -1117,7 +1117,7 @@ function drawFallback() {
   ctx.fillRect(8, r.height - 22, 210, 16);
   ctx.fillStyle = '#46584c';
   ctx.font = '11px sans-serif';
-  ctx.fillText('© OpenStreetMap · EE fallback map', 12, r.height - 10);
+        ctx.fillText('© OpenStreetMap · Land Intelligence fallback map', 12, r.height - 10);
 }
 
 /* ---------- parcel meta ---------- */
@@ -1408,7 +1408,7 @@ function renderReport(r) {
       ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
         Planning guidance for Land Intelligence — not engineered drawings.
-        (780) 236-3630 · info@expandingedge.ca
+        mhalma@opensourcemed.info
       </p>
     </div>`;
     }
@@ -2439,13 +2439,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     // Load satellite imagery for the parcel bbox
     const loadSatelliteTexture = () => {
       try {
-        // Use the same parcel source as buildParcelBoundary for consistency
-        // Priority: state.paths (user-drawn) > report.geometry > report.site_map.parcel
-        let parcelRing = null;
-        if (Array.isArray(state.paths) && state.paths.length >= 3) {
+        // Use the same parcel source as getParcelLatLngsFromReport for consistency
+        // Priority: report.geometry > report.site_map.parcel > state.paths (user-drawn)
+        let parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
+        if (!parcelRing && Array.isArray(state.paths) && state.paths.length >= 3) {
           parcelRing = state.paths;
-        } else {
-          parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
         }
         
         // Calculate bbox from actual parcel ring (not report bbox which may differ)
@@ -2613,13 +2611,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
       }
 
       // Get parcel ring - use same source as getParcelLatLngsFromReport for consistency
-      // Priority: state.paths (user-drawn) > report.geometry > report.site_map.parcel
-      let parcelRing = null;
-      if (Array.isArray(state.paths) && state.paths.length >= 3) {
+      // Priority: report.geometry > report.site_map.parcel > state.paths (user-drawn)
+      let parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
+      if (!parcelRing && Array.isArray(state.paths) && state.paths.length >= 3) {
         // state.paths is [lng, lat] format from user drawing
         parcelRing = state.paths;
-      } else {
-        parcelRing = report?.geometry?.coordinates?.[0] || report?.site_map?.parcel?.coordinates?.[0];
       }
       if (!parcelRing || parcelRing.length < 3) return;
 
@@ -3508,8 +3504,8 @@ function rcmpCrimeMapSection(centre) {
         <a class="rec-service-link" href="${esc(mapUrl)}" target="_blank" rel="noopener">Open map fullscreen →</a>
         ·
         <a href="${esc(RCMP_CRIME_MAP_PAGE)}" target="_blank" rel="noopener">Rural Crime Watch resource page</a>
-        · Report suspicious activity: <a href="tel:3107267">310-RCMP (7267)</a>
-        · Emergencies: 911
+        · Report suspicious activity: <a href="#">local authorities</a>
+        · For emergencies, contact emergency services
       </p>
       <div class="flag" data-severity="caution" style="margin-top:0.65rem">
         <strong>Important caveat</strong>
@@ -4779,8 +4775,7 @@ function servicesCtaSection(services) {
           .join('')}
       </div>
       <p class="fine ee-services-foot">
-        Or call <a href="tel:+17802363630">(780) 236-3630</a>
-        · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a>
+        Email <a href="mailto:mhalma@opensourcemed.info">mhalma@opensourcemed.info</a>
       </p>
     </div>`;
 }
@@ -7964,7 +7959,7 @@ function landSalesMinimap(lv, centre) {
 
 /**
  * Value-first conversion step: choose interventions → email for full report →
- * itemized estimate → inquiry to info@expandingedge.ca
+ * itemized estimate → inquiry to mhalma@opensourcemed.info
  */
 function nextStepsSection(r, idSuffix = 'main') {
   const menu = r?.action_menu;
@@ -8056,7 +8051,7 @@ function nextStepsSection(r, idSuffix = 'main') {
       <span class="mono eyebrow">Next step · receive more value</span>
       <h2>Build your plan</h2>
       <p class="fine" style="margin-top:-0.25rem">
-        You’ve seen what the land can support. Now choose the interventions you want Expanding Edge to price and discuss.
+        You’ve seen what the land can support. Now choose the interventions you want Land Intelligence to price and discuss.
         Select or unselect freely — nothing is a commitment.
       </p>
       <div class="flow-steps">${flow}</div>
@@ -8101,7 +8096,7 @@ function nextStepsSection(r, idSuffix = 'main') {
         <h3>Make an inquiry</h3>
         <p class="fine">
           Send your selected interventions and site report summary to
-          <strong>info@expandingedge.ca</strong>. We’ll follow up to schedule a site walk.
+          <strong>mhalma@opensourcemed.info</strong>. We’ll follow up to schedule a site walk.
         </p>
         <div class="inquiry-form">
           <label>
@@ -8111,10 +8106,6 @@ function nextStepsSection(r, idSuffix = 'main') {
           <label>
             <span class="mono">Email</span>
             <input type="email" class="report-email-input" data-inquiry-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" autocomplete="email" />
-          </label>
-          <label>
-            <span class="mono">Phone (optional)</span>
-            <input type="tel" class="report-email-input" data-inquiry-phone placeholder="(780) …" autocomplete="tel" />
           </label>
           <label class="inquiry-message-label">
             <span class="mono">Message (optional)</span>
@@ -8364,7 +8355,6 @@ function bindNextStepsInteractions(r) {
         root.querySelector('[data-inquiry-email]')?.value || state.reportEmail || ''
       ).trim();
       const name = String(root.querySelector('[data-inquiry-name]')?.value || '').trim();
-      const phone = String(root.querySelector('[data-inquiry-phone]')?.value || '').trim();
       const message = String(root.querySelector('[data-inquiry-message]')?.value || '').trim();
       const selectedIds = new Set(state.selectedInterventions || []);
       const selectedItems = items
@@ -8423,7 +8413,6 @@ function bindNextStepsInteractions(r) {
           body: JSON.stringify({
             email,
             name,
-            phone,
             message,
             selected_items: selectedItems,
             estimate_subtotal_cad: subtotal,
@@ -8674,7 +8663,7 @@ function buildPdfDocument(reportEl) {
 
   const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
   brandBlock.appendChild(el('div', null, {
-    textContent: 'EXPANDING EDGE',
+    textContent: 'LAND INTELLIGENCE',
     cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:#5b3a73;text-transform:uppercase;',
   }));
   brandBlock.appendChild(el('div', null, {
@@ -8704,7 +8693,7 @@ function buildPdfDocument(reportEl) {
   }));
 
   titlePage.appendChild(el('p', null, {
-    textContent: 'expandingedge.ca · (780) 236-3630',
+    textContent: 'Land Intelligence',
     cssText: 'font-size:10px;color:#aaa;margin-top:4px;',
   }));
 
@@ -8792,8 +8781,10 @@ function buildPdfDocument(reportEl) {
     el.style.overflow = 'hidden';
   });
 
-  // Add section breaks before each report-block
-  const blocks = clone.querySelectorAll(':scope > .report-block');
+  // Report blocks are rendered inside the report's outer `.panel` wrapper.
+  // Do not restrict this query to direct children: that would silently omit
+  // every section from the full export and leave only the title shell.
+  const blocks = clone.querySelectorAll('.report-block');
   blocks.forEach((block, i) => {
     if (i > 0) {
       // Insert page break before sections after the first
@@ -8828,7 +8819,7 @@ function buildPdfDocument(reportEl) {
   if (lastBlock) {
     lastBlock.appendChild(el('div', null, {
       cssText: 'margin-top:2rem;padding-top:12px;border-top:1px solid #c8cec1;text-align:center;',
-    })).textContent = '© Expanding Edge · expandingedge.ca · (780) 236-3630';
+    })).textContent = '© Land Intelligence';
   }
 
   return doc;
@@ -9020,7 +9011,7 @@ async function downloadSectionPdf(sectionEl, label) {
     hdr.innerHTML = `
       <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Land Intelligence</div>
       <div style="font-size:14px;font-weight:700;margin-top:2px">${esc(state.report?.site_name || 'Site report')} — ${esc(label)}</div>
-      <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · expandingedge.ca</div>
+      <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · Land Intelligence</div>
     `;
     wrapper.appendChild(hdr);
     wrapper.appendChild(clone);

@@ -66,7 +66,7 @@ async function fetchINaturalist(bbox) {
       const t = setTimeout(() => ctrl.abort(), 18_000);
       const res = await fetch(url, {
         signal: ctrl.signal,
-        headers: { Accept: 'application/json', 'User-Agent': 'ExpandingEdgePermaculture/1.0' },
+        headers: { Accept: 'application/json', 'User-Agent': 'LandIntelligencePermaculture/1.0' },
       });
       clearTimeout(t);
       if (!res.ok) continue;

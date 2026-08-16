@@ -1,5 +1,5 @@
 /**
- * Value-first recommendation framing for Expanding Edge.
+ * Value-first recommendation framing for Land Intelligence.
  *
  * If→then rules stay in rules.js; this module maps techniques → client outcomes
  * (water storage, wind protection, food, etc.) and builds value headlines.
@@ -7,7 +7,7 @@
 
 import { shelterbeltValueHeadline } from './shelterbelt-palette.js';
 
-/** Stable value taxonomy for schema, UI chips, and EE marketing filters. */
+/** Stable value taxonomy for schema, UI chips, and Land Intelligence filters. */
 export const VALUE_TAXONOMY = {
   water_storage: {
     id: 'water_storage',
@@ -304,15 +304,15 @@ export function buildValueHeadline(elementType, primaryValue, site = {}, ctx = {
 }
 
 /**
- * Expanding Edge service catalog for CTAs (phase 2 recommendation engine).
- * Tags on elements map here; URLs point at public EE pages.
+ * Land Intelligence service catalog for CTAs (phase 2 recommendation engine).
+ * Tags on elements map here; links use the public Land Intelligence contact.
  */
 export const EE_SERVICES = {
   water_earthworks_consult: {
     id: 'water_earthworks_consult',
     label: 'Water & earthworks consult',
     blurb: 'Swales, ponds, keyline, and diversion sized for Alberta storms and Water Act reality.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Talk earthworks',
     pillar: 'water',
   },
@@ -320,7 +320,7 @@ export const EE_SERVICES = {
     id: 'well_drilling',
     label: 'Groundwater well',
     blurb: 'Hydrology-based completion depth from nearby well records; licensed drill + pump package.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Plan a well',
     pillar: 'water',
   },
@@ -328,7 +328,7 @@ export const EE_SERVICES = {
     id: 'shelterbelt_design',
     label: 'Shelterbelt design',
     blurb: 'Multi-row wind and snow belts placed for your exposure and chinook risk.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Design a shelterbelt',
     pillar: 'shelter',
   },
@@ -336,7 +336,7 @@ export const EE_SERVICES = {
     id: 'food_forest_design',
     label: 'Food forest design',
     blurb: 'Layered perennial polyculture sequenced after soil-building phases.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Plan a food forest',
     pillar: 'food',
   },
@@ -344,7 +344,7 @@ export const EE_SERVICES = {
     id: 'soil_carbon_building',
     label: 'Soil carbon building',
     blurb: 'Hügelkultur, cover crops, compost, and N-fixers — interventions only; lab for SOC claims.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Build soil carbon',
     pillar: 'food',
   },
@@ -352,7 +352,7 @@ export const EE_SERVICES = {
     id: 'kitchen_garden_design',
     label: 'Kitchen garden design',
     blurb: 'Zone 1 intensive beds, herb spirals, and daily-use layouts.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Design Zone 1',
     pillar: 'food',
   },
@@ -360,7 +360,7 @@ export const EE_SERVICES = {
     id: 'solar_energy_package',
     label: 'Solar + generator package',
     blurb: 'Off-grid solar tiers sized to parcel load with optional propane generator backup.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'View energy packages',
     pillar: 'energy',
   },
@@ -368,7 +368,7 @@ export const EE_SERVICES = {
     id: 'off_grid_garage',
     label: 'Off-grid garage ($250k)',
     blurb: 'Fixed-price insulated garage / workshop shell ready for solar and well gear.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Reserve garage package',
     pillar: 'shelter',
   },
@@ -376,7 +376,7 @@ export const EE_SERVICES = {
     id: 'full_site_design',
     label: 'Full site design',
     blurb: 'Whole-property plan across Food, Water, Energy, and Shelter pillars.',
-    href: 'https://www.expandingedge.ca/services-landing',
+    href: 'mailto:mhalma@opensourcemed.info',
     cta: 'Book full design',
     pillar: 'shelter',
   },
@@ -445,7 +445,7 @@ export function valueCounts(elements = []) {
 }
 
 /**
- * Unique EE services implied by recommendation set, ranked by how often tagged
+ * Unique Land Intelligence services implied by recommendation set, ranked by how often tagged
  * and by element priority (earlier outcomes first).
  * @param {object[]} elements
  * @returns {object[]} service catalog rows with hit_count

@@ -1,5 +1,5 @@
 /**
- * Expanding Edge Permaculture — Fecundity Assessment
+ * Land Intelligence — Fecundity Assessment
  * Scores a property (0-100 per category) across 6 productivity levers.
  * Soil biology absorbs former nutrient-cycling indicators (pH, organic inputs).
  * Every indicator is OPTIONAL — missing data drops out rather than penalizing.

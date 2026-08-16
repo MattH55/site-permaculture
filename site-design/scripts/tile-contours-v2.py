@@ -1,7 +1,7 @@
 """Tile Parkland County contours: NAD83 CSRS 10TM AEP → WGS84 GeoJSON tiles."""
 import sys, os, json, struct, math
 
-DATA = r'c:\Users\matth\OneDrive\Documents\Sovereign Policy Institute\Permaculture\Expanding Edge\site-design\data\contours'
+DATA = r'c:\Users\matth\OneDrive\Documents\Sovereign Policy Institute\Permaculture\Land Intelligence\site-design\data\contours'
 OUT = os.path.join(DATA, '..', 'contours-tiles')
 SHP = os.path.join(DATA, 'ContoursIntermittent.shp')
 SHX = os.path.join(DATA, 'ContoursIntermittent.shx')

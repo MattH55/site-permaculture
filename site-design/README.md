@@ -1,6 +1,6 @@
 # Alberta Site Design — Map → Report
 
-**Expanding Edge Permaculture** · [expandingedge.ca](https://www.expandingedge.ca/)
+**Land Intelligence** · [LandIntelligence.ca](https://www.LandIntelligence.ca/)
 
 Draw your parcel on a topographic map. The server queries live Alberta / national
 geospatial sources, derives slope and aspect, runs the if→then placement ruleset,
@@ -24,7 +24,7 @@ npm test
 
 Placement and plants share one outcome taxonomy (water harvest, wind protection,
 food, soil building, N-fix, etc.). If→then rules still gate *eligibility*;
-values reframe and rank the product for Expanding Edge.
+values reframe and rank the product for Land Intelligence.
 
 | Surface | URL |
 |---------|-----|
@@ -35,14 +35,14 @@ values reframe and rank the product for Expanding Edge.
 | Slim recommendations | `POST /api/v1/recommendations` |
 | Full geospatial report | `POST /api/report` |
 
-### Embed on expandingedge.ca
+### Embed on LandIntelligence.ca
 
 **Iframe**
 
 ```html
 <iframe
   src="https://site-permaculture.onrender.com/embed?preset=sturgeon&autorun=1"
-  title="Expanding Edge recommendations"
+  title="Land Intelligence recommendations"
   style="width:100%;max-width:560px;height:720px;border:1px solid #d9cfc4;border-radius:10px"
 ></iframe>
 ```
@@ -67,7 +67,7 @@ Or mark any container:
 <script src="https://site-permaculture.onrender.com/widget.js" async></script>
 ```
 
-**API** (CORS allowed for `expandingedge.ca`; add more via `EMBED_ORIGINS` or `EMBED_CORS_OPEN=1`)
+**API** (CORS allowed for `LandIntelligence.ca`; add more via `EMBED_ORIGINS` or `EMBED_CORS_OPEN=1`)
 
 ```bash
 curl -s -X POST https://site-permaculture.onrender.com/api/v1/recommendations \
@@ -77,13 +77,13 @@ curl -s -X POST https://site-permaculture.onrender.com/api/v1/recommendations \
 
 ## Deploy on Render
 
-Repo root is **Expanding Edge** (the folder that contains `site-design/`).
+Repo root is **Land Intelligence** (the folder that contains `site-design/`).
 
 ### Option A — Dashboard (simplest)
 
 1. Push this repo to GitHub/GitLab/Bitbucket (if it isn’t already).
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Web Service**.
-3. Connect the **Expanding Edge** repo.
+3. Connect the **Land Intelligence** repo.
 4. Settings:
    - **Name:** `ee-site-design` (or whatever you like)
    - **Root Directory:** `site-design`
@@ -99,7 +99,7 @@ Repo root is **Expanding Edge** (the folder that contains `site-design/`).
 ### Option B — Blueprint (`render.yaml`)
 
 1. Render → **New** → **Blueprint**.
-2. Select the Expanding Edge repo.
+2. Select the Land Intelligence repo.
 3. If asked for blueprint path, use `site-design/render.yaml`.
 4. Fill in `GOOGLE_MAPS_API_KEY` when prompted (`sync: false`).
 5. Apply.
@@ -111,10 +111,10 @@ Repo root is **Expanding Edge** (the folder that contains `site-design/`).
 1. **Google Cloud Console** → your Maps API key → **Application restrictions** → HTTP referrers:
    - `https://ee-site-design.onrender.com/*` (use your real service hostname)
    - `http://localhost:3040/*` (local dev)
-   - later: `https://design.expandingedge.ca/*`
+   - later: `https://design.LandIntelligence.ca/*`
 2. Enable **Maps JavaScript API** on the project (billing must be enabled).
 3. Optional custom domain: Render → service → **Settings** → **Custom Domains** →  
-   `design.expandingedge.ca` → CNAME to the host Render shows you.
+   `design.LandIntelligence.ca` → CNAME to the host Render shows you.
 
 ### Free tier constraints (reminder)
 
@@ -172,5 +172,5 @@ polygon → bbox
 
 ## Branding
 
-Expanding Edge: parkland soil palette, saskatoon-berry accent, Earth · People · Future.  
-Contact: (780) 236-3630 · info@expandingedge.ca
+Land Intelligence: parkland soil palette, saskatoon-berry accent, Earth · People · Future.
+Contact: contact via the inquiry form · info@LandIntelligence.ca

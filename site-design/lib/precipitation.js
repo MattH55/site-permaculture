@@ -13,7 +13,7 @@
 const POWER_MONTHLY = 'https://power.larc.nasa.gov/api/temporal/monthly/point';
 const POWER_CLIMATOLOGY = 'https://power.larc.nasa.gov/api/temporal/climatology/point';
 const PPS_BASE = 'https://arthurhouhttps.pps.eosdis.nasa.gov';
-const UA = 'ExpandingEdgeAlberta/1.0 (site-design; research)';
+const UA = 'LandIntelligenceAlberta/1.0 (site-design; research)';
 const FETCH_MS = 18_000;
 
 /**

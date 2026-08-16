@@ -1,5 +1,5 @@
 /**
- * Expanding Edge — Fecundity Report Generator
+ * Land Intelligence — Fecundity Report Generator
  * Infers missing indicators from pipeline data, runs assessment,
  * produces a client-facing report with provenance tags.
  * Optionally merges satellite vegetation indices (Sentinel-2) and

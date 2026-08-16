@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://opensourcemed.info/schemas/permaculture-crop.schema.json",
   "title": "Permaculture Crop & Supply Schema (Alberta-first)",
-  "description": "Crop suitability, economics, and supply links (seeds, saplings, fertilizer) for Expanding Edge site planting plans. Compatible with farmfit CropData exports and the site-design planting scorer.",
+  "description": "Crop suitability, economics, and supply links (seeds, saplings, fertilizer) for Land Intelligence site planting plans. Compatible with farmfit CropData exports and the site-design planting scorer.",
   "type": "object",
   "required": ["id", "common_name"],
   "properties": {

@@ -18,7 +18,7 @@ const OUT_LISTINGS = path.join(ROOT, 'data', 'crops', 'vendor-listings.json');
 const OUT_CATALOG = path.join(ROOT, 'data', 'crops', 'vendor-catalog.json');
 
 const UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 ExpandingEdgeCatalog/1.0 (+https://www.expandingedge.ca; plant catalog research)';
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 LandIntelligenceCatalog/1.0 (+https://www.LandIntelligence.ca; plant catalog research)';
 
 const args = process.argv.slice(2);
 const onlyArg = args.find((a) => a.startsWith('--vendors='))?.split('=')[1];
@@ -72,7 +72,7 @@ async function main() {
   const results = {
     scraped_at: new Date().toISOString(),
     disclaimer:
-      'Product catalogs scraped for Expanding Edge planting planning. Names and stock change; verify on vendor site before ordering. Not affiliated with vendors.',
+      'Product catalogs scraped for Land Intelligence planting planning. Names and stock change; verify on vendor site before ordering. Not affiliated with vendors.',
     vendors: {},
     products: [],
   };
@@ -490,7 +490,7 @@ function buildCropCatalog(products) {
 
   return {
     source:
-      'Vendor-scraped plant varieties for Expanding Edge planting plans (merged product catalogs)',
+      'Vendor-scraped plant varieties for Land Intelligence planting plans (merged product catalogs)',
     scraped_at: new Date().toISOString(),
     crop_count: crops.length,
     notes:

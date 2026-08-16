@@ -1,5 +1,5 @@
 /**
- * Phase 3 — slim recommendation payload for expandingedge.ca embed / API.
+ * Phase 3 — slim recommendation payload for Land Intelligence embed / API.
  *
  * Full map→geospatial pipeline remains POST /api/report.
  * This path accepts site fields or an Alberta preset and returns
@@ -44,11 +44,9 @@ export function buildEmbedRecommendations(body = {}) {
   return {
     engine: 'ee-recommendation-embed-v1',
     brand: {
-      name: 'Expanding Edge Permaculture',
-      url: 'https://www.expandingedge.ca/',
-      services_url: 'https://www.expandingedge.ca/services-landing',
-      phone: '(780) 236-3630',
-      email: 'info@expandingedge.ca',
+      name: 'Land Intelligence',
+      url: '/',
+      email: 'mhalma@opensourcemed.info',
     },
     site: {
       site_id: record.site_id,
@@ -126,9 +124,8 @@ export function getTaxonomyPayload() {
       plant_hardiness_zone: p.climate?.plant_hardiness_zone,
     })),
     brand: {
-      name: 'Expanding Edge Permaculture',
-      url: 'https://www.expandingedge.ca/',
-      services_url: 'https://www.expandingedge.ca/services-landing',
+      name: 'Land Intelligence',
+      url: '/',
     },
   };
 }
@@ -138,7 +135,7 @@ function mergeSiteInput(body, preset) {
   return {
     site_name:
       body.site_name ||
-      (preset ? `${preset.label} parcel` : 'Expanding Edge site'),
+      (preset ? `${preset.label} parcel` : 'Land Intelligence site'),
     location: {
       latitude: body.location?.latitude ?? p.latitude ?? 53.55,
       longitude: body.location?.longitude ?? p.longitude ?? -113.5,

@@ -1,5 +1,5 @@
 /**
- * Expanding Edge embed UI — value-first recommendations for iframe /embed.
+ * Land Intelligence embed UI — value-first recommendations for iframe /embed.
  */
 const VALUE_LABELS = {
   water_storage: 'Water storage',
@@ -94,7 +94,7 @@ async function onSubmit(ev) {
     state.plantFilter = 'all';
     renderResults(data);
     showStatus('');
-    // Notify parent page (expandingedge.ca widget)
+    // Notify the parent page when recommendations are ready.
     try {
       parent.postMessage(
         { type: 'ee-recommendations', summary: data.summary_sentence, count: data.design_elements?.length },
@@ -153,7 +153,7 @@ function renderResults(data) {
     ${
       services.length
         ? `
-      <div class="ee-section-title">Expanding Edge services</div>
+      <div class="ee-section-title">Land Intelligence services</div>
       <div class="ee-services">
         ${services
           .slice(0, 3)

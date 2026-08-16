@@ -13,11 +13,11 @@ auto-populate the `design_elements` array.
 **Value framing (recommendation engine):** Eligibility stays if→then. Each
 matched element is then annotated with `primary_value`, `secondary_values`,
 and a parcel-specific `value_headline` (water harvest, wind protection, food,
-soil building, compliance, etc.) so the Expanding Edge product leads with
+soil building, compliance, etc.) so the Land Intelligence product leads with
 client outcomes, not technique jargon. See `lib/recommendation-values.js`.
 The API also returns a `recommendations` envelope: `summary_sentence`,
 `priority_ordered`, `by_value`, plus Phase 2 `value_counts` (filter chips)
-and `related_services` (Expanding Edge CTAs: water/earthworks, shelterbelt,
+and `related_services` (Land Intelligence CTAs: water/earthworks, shelterbelt,
 food forest, kitchen garden, full site design).
 
 | # | Condition (on schema fields) | → Recommended element | Notes |

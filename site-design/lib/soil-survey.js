@@ -380,7 +380,7 @@ async function querySoilSurvey(lat, lng, opts = {}) {
 }
 
 /**
- * Site-specific recommended laboratory / field soil tests (Expanding Edge toolbox).
+ * Site-specific recommended laboratory / field soil tests (Land Intelligence toolbox).
  * Remote models screen texture/pH/SOC; lab tests are the high-confidence path.
  */
 function recommendedLabSoilTests(ctx = {}) {
@@ -463,7 +463,7 @@ function recommendedLabSoilTests(ctx = {}) {
     title: 'Recommended soil tests',
     intro:
       'Remote soil maps (AGRASID + SoilGrids) screen texture, pH, and carbon context. ' +
-      'These laboratory and field tests restore the high-confidence baseline used in Expanding Edge design.',
+      'These laboratory and field tests restore the high-confidence baseline used in Land Intelligence design.',
     sample_protocol:
       'Composite 8–12 cores from the management unit (e.g. Zone 1 garden, pasture, food-forest row). ' +
       'Keep A-horizon separate from subsoil if digging swales or planting deep-rooted trees. Avoid recent manure piles.',

@@ -36,7 +36,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 function intro() {
   stage.innerHTML = `
     <div class="panel fade">
-      <span class="mono eyebrow">Expanding Edge Permaculture · Treaty 6 · North Saskatchewan watershed</span>
+      <span class="mono eyebrow">Land resilience · Treaty 6 · North Saskatchewan watershed</span>
       <h1>The Resilience Quiz for Edmonton</h1>
       <p class="lede">Twenty-four questions about your water, your soil, your winter and your pantry.
       Three minutes. At the end you get a number, and — more useful — the one thing capping everything else.</p>
@@ -173,7 +173,7 @@ function results() {
       e.target.disabled = false; e.target.textContent = 'Send my report';
       err.textContent = (ex && ex.message && ex.message.length < 160)
         ? ex.message
-        : "That didn't go through. Try once more, or email info@expandingedge.ca and we'll send it manually.";
+        : "That didn't go through. Try once more, or use the contact form and we'll send it manually.";
       err.hidden = false;
     }
   };
@@ -192,7 +192,7 @@ function thanks(name, email, s) {
         looks like on a site your size, and we're happy to walk it with you.</p>
       </div>
       <div class="actions">
-        <a class="btn" href="https://www.expandingedge.ca/contact">Book a site walk</a>
+        <a class="btn" href="/contact">Contact us</a>
       </div>
     </div>`;
   paintCore();

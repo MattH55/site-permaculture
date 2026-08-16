@@ -10,7 +10,7 @@ services:
       - key: RESEND_API_KEY
         sync: false
       - key: MAIL_FROM
-        value: Expanding Edge <info@expandingedge.ca>
+        value: Land resilience assessment <onboarding@resend.dev>
       - key: MAIL_BCC
         sync: false
       - key: ADMIN_KEY

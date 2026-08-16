@@ -1,5 +1,5 @@
 /**
- * Expanding Edge recommendation widget — drop-in for expandingedge.ca
+ * Land Intelligence recommendation widget.
  *
  * Usage:
  *   <div id="ee-rec-widget"></div>
@@ -54,7 +54,7 @@
 
     var iframe = document.createElement('iframe');
     iframe.src = base.replace(/\/$/, '') + '/embed?' + qs.toString();
-    iframe.title = 'Expanding Edge site recommendations';
+  iframe.title = 'Land Intelligence site recommendations';
     iframe.loading = 'lazy';
     iframe.style.cssText =
       'width:100%;max-width:560px;height:' +
@@ -82,7 +82,9 @@
     foot.style.cssText =
       'font-family:system-ui,sans-serif;font-size:0.75rem;color:#5c5048;text-align:center;margin:0.5rem 0 0';
     foot.innerHTML =
-      'Powered by <a href="https://www.expandingedge.ca/" target="_blank" rel="noopener" style="color:#5b3a73">Expanding Edge</a> · ' +
+      'Powered by <a href="' +
+      base.replace(/\/$/, '') +
+      '/" target="_blank" rel="noopener" style="color:#5b3a73">Land Intelligence</a> · ' +
       '<a href="' +
       base.replace(/\/$/, '') +
       '/" target="_blank" rel="noopener" style="color:#5b3a73">Full map tool</a>';
@@ -120,7 +122,7 @@
     });
 
     // Global helper for WP / custom pages
-    window.ExpandingEdgeRecommendations = {
+    window.LandIntelligenceRecommendations = {
       mount: mount,
       baseUrl: baseUrl,
     };

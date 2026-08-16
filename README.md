@@ -1,6 +1,6 @@
 # The Resilience Quiz for Edmonton
 
-Lead-generation quiz for Expanding Edge Permaculture. One Node service does everything:
+Lead-generation resilience quiz. One Node service does everything:
 serves the quiz, rescores submissions server-side, stores the lead, emails the report.
 
 ## Files
@@ -34,7 +34,7 @@ useful while you're testing the flow.
 
 ## Email deliverability
 
-Verify `expandingedge.ca` in Resend and add the DKIM and SPF records to your DNS before
+Verify the sending domain configured for your deployment in Resend and add the DKIM and SPF records to your DNS before
 going live. Sending from an unverified domain lands you in spam, which quietly destroys
 the entire funnel — you'd see submissions and no replies, with no obvious cause.
 
@@ -56,7 +56,7 @@ personal email within 48 hours, not the drip sequence.
 
 ## Putting it on the Squarespace site
 
-Best: point a subdomain — `quiz.expandingedge.ca` — at the Render service with a CNAME.
+Best: point a subdomain at the Render service with a CNAME.
 Full-page experience, clean URL, and it keeps its own title and meta description, which
 is what makes "resilience quiz Edmonton" rank.
 

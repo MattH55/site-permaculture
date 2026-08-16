@@ -383,7 +383,7 @@ async function fetchClimate(centre) {
     precipitation_normals_years: normals?.years || null,
     seasonal_distribution: 'summer_peak',
     preset_id: preset?.id || null,
-    source_name: 'Open-Meteo 30-year normals + Expanding Edge Alberta climate presets',
+    source_name: 'Open-Meteo 30-year normals + Land Intelligence Alberta climate presets',
     source_url: 'https://open-meteo.com/',
   };
 }

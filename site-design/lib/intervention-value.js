@@ -1,5 +1,5 @@
 /**
- * Expanding Edge — Intervention Value Estimation Engine
+ * Land Intelligence — Intervention Value Estimation Engine
  *
  * Takes baseline fecundity scores + site context, applies selected interventions,
  * calculates before/after score deltas, translates to physical outcomes, and

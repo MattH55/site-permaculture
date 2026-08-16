@@ -1,9 +1,9 @@
-# Expanding Edge — Alberta site design (map → report)
+# Land Intelligence — Alberta site design (map → report)
 #
 # Deploy either:
 #   A) Dashboard → New → Web Service → Root Directory: site-design
 #      (this file is optional then; use the same build/start commands)
-#   B) Blueprint with path site-design/render.yaml from the Expanding Edge repo
+#   B) Blueprint with path site-design/render.yaml from the repository
 #      When Root Directory is already "site-design", do not also set rootDir here.
 #
 # https://dashboard.render.com
@@ -13,7 +13,7 @@ services:
     name: ee-site-design
     runtime: node
     # free = spins down after 15m idle (~1 min cold start)
-    # Change to "starter" for always-on production (design.expandingedge.ca)
+  # Change to "starter" for always-on production deployment
     plan: free
     region: oregon
     buildCommand: npm install
@@ -31,12 +31,12 @@ services:
         sync: false
       # Delivery inbox (Gmail / forwarding address until domain verified)
       - key: INQUIRY_TO
-        value: matt.halma@gmail.com
+        value: mhalma@opensourcemed.info
       - key: INQUIRY_PUBLIC_TO
-        value: info@expandingedge.ca
+        value: mhalma@opensourcemed.info
       - key: RESEND_FALLBACK_TO
         sync: false
-      # After verifying domain: Expanding Edge <noreply@expandingedge.ca>
+      # After verifying a sending domain: Land Intelligence <noreply@your-domain>
       - key: INQUIRY_FROM
         sync: false
       # NASA GPM PPS (email as username + password)

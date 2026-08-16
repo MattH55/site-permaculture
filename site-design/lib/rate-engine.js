@@ -1,5 +1,5 @@
 /**
- * Expanding Edge Permaculture — Rate Engine
+ * Land Intelligence — Rate Engine
  * -------------------------------------------------------------
  * Pure calculation module, no DOM/UI dependencies. Turns a set of
  * design_elements (from rules.js) into a rough field-cost estimate.

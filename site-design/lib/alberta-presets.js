@@ -48,7 +48,7 @@ export const ALBERTA_PRESETS = [
       seasonal_distribution: 'summer_peak',
       watershed: 'North Saskatchewan River',
     },
-    notes: 'Treaty 6. Core Expanding Edge service area — acreage & rural residential.',
+    notes: 'Treaty 6. Core Land Intelligence service area — acreage & rural residential.',
   },
   {
     id: 'red-deer',

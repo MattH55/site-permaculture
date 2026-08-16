@@ -1,6 +1,6 @@
 /**
  * Biodiversity reporting module.
- * Logic derived from Expanding Edge Biodiversity Report PDF.
+ * Logic derived from Land Intelligence Biodiversity Report PDF.
  *
  * Implements:
  * 1. Two-zone concentric analysis (1km inner, 3km outer)

@@ -148,7 +148,7 @@ function fallbackProfile(centre) {
   if (preset?.climate) {
     return {
       available: true,
-      source_name: 'Expanding Edge Alberta climate presets (30-year normals)',
+      source_name: 'Land Intelligence Alberta climate presets (30-year normals)',
       source_url: null,
       annual: {
         mean_c: preset.climate.mean_temp_c || null,

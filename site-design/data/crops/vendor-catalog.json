@@ -1,5 +1,5 @@
 {
-  "source": "Vendor-scraped plant varieties for Expanding Edge planting plans (merged product catalogs)",
+  "source": "Vendor-scraped plant varieties for Land Intelligence planting plans (merged product catalogs)",
   "scraped_at": "2026-07-25T01:15:04.539Z",
   "crop_count": 4995,
   "notes": "Hardiness and site traits are inferred when vendors do not publish full EcoCrop fields. Prefer TreeTime zone data when present. Always verify cultivar hardiness before planting.",
@@ -163597,7 +163597,7 @@
       ],
       "chinook_sensitive": false,
       "alberta_native": false,
-      "notes": "Listed by OSC Seeds. Peaches &amp; Cream Sweet Corn Seeds (&#8216;SE&#8217; Bi-Colour Type) 1560. Hybrid. Approximately 100-125 seeds per packet (6 seeds per gram) A limited supply of Treated Peaches &amp; Cream sweet corn is available. Please call 1-800-465-5849 to order treated sweet corn seed. Th",
+      "notes": "Listed by OSC Seeds. Peaches &amp; Cream Sweet Corn Seeds (&#8216;SE&#8217; Bi-Colour Type) 1560. Hybrid. Approximately 100-125 seeds per packet (6 seeds per gram) A limited supply of Treated Peaches &amp; Cream sweet corn is available. Please call the vendor contact listed on its website to order treated sweet corn seed. Th",
       "source_vendors": [
         "oscseeds"
       ],

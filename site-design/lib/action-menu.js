@@ -258,7 +258,7 @@ export function buildActionMenu(ctx = {}) {
     summary: buildMenuSummary(items, waterOnSite, wellOnSite),
     disclaimer:
       'Planning-level options only. Select what you want priced; final scope is confirmed on a site walk before any firm quote.',
-    inquiry_email: 'info@expandingedge.ca',
+    inquiry_email: 'mhalma@opensourcemed.info',
   };
 }
 
