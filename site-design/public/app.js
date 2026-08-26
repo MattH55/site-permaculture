@@ -1969,6 +1969,9 @@ function topologySection(topo, a) {
   const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
   const report = state.report || {};
   const hostId = `${terrain3dId}-mesh`;
+  // Controls in terrain3dBlock() are keyed by `terrain3dId`; the 3D host
+  // element gets `${terrain3dId}-mesh`, so listeners must query the control id.
+  const ctrlId = terrain3dId;
   // This section is built as a string before the report HTML is inserted into
   // the DOM, so a fixed delay can fire before the host element exists. Poll
   // until the host is present, then mount the Three.js viewer.
@@ -2910,8 +2913,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     };
 
     // --- Exaggerate slider ---
-    const exagInput = document.querySelector(`[data-terrain-exag="${hostId}"]`);
-    const exagVal = document.querySelector(`[data-terrain-exag-val="${hostId}"]`);
+    const exagInput = document.querySelector(`[data-terrain-exag="${ctrlId}"]`);
+    const exagVal = document.querySelector(`[data-terrain-exag-val="${ctrlId}"]`);
     if (exagInput) {
       exagInput.addEventListener('input', () => {
         exaggerate = Number(exagInput.value) || 2.0;
@@ -2924,12 +2927,16 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
           geometry.attributes.position.needsUpdate = true;
           geometry.computeVertexNormals();
         }
+        // Rebuild all draping overlays so they follow the new terrain height
         buildContours();
+        buildParcelBoundary();
+        buildZoneOverlays();
+        buildTrees();
       });
     }
 
     // --- Layer toggles (contours, catchment, pond, swale, trees) ---
-    document.querySelectorAll(`[data-terrain-toggle="${hostId}"]`).forEach((cb) => {
+    document.querySelectorAll(`[data-terrain-toggle="${ctrlId}"]`).forEach((cb) => {
       cb.addEventListener('change', () => {
         const layer = cb.getAttribute('data-layer');
         if (layer === 'contours' && contourLinesGroup) {
@@ -2954,7 +2961,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
         meshW, meshD, cols, rows, elevations, zMean, relief, zMin, heightScale,
         exaggerate: () => exaggerate,
       });
-      document.querySelectorAll(`[data-semantic-toggle="${hostId}"]`).forEach((cb) => {
+      document.querySelectorAll(`[data-semantic-toggle="${ctrlId}"]`).forEach((cb) => {
         cb.addEventListener('change', () => {
           const layer = cb.getAttribute('data-semantic-layer');
           if (semanticObjects) semanticObjects.setVisible(layer, !!cb.checked);
@@ -2963,7 +2970,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis) {
     }
 
     // --- Reset view ---
-    const resetBtn = document.querySelector(`[data-terrain-reset="${hostId}"]`);
+    const resetBtn = document.querySelector(`[data-terrain-reset="${ctrlId}"]`);
     if (resetBtn) {
       resetBtn.addEventListener('click', () => {
         camera.position.set(meshW * 0.6, relief * heightScale * exaggerate * 3 + 3, meshD * 0.8);
