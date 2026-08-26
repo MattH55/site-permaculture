@@ -8570,7 +8570,10 @@ function pdfOpts(filename, opts = {}) {
       letterRendering: true,
       allowTaint: false,
       scrollY: 0,
-      windowWidth: 1200,
+      // Match the A4 content width (210mm − 10mm − 10mm = 190mm ≈ 718px @96dpi).
+      // A larger window lets the layout reflow wider than the page and the
+      // right edge gets sliced off the PDF.
+      windowWidth: 718,
       foreignObjectRendering: false,
     },
     jsPDF: {
@@ -8592,15 +8595,53 @@ function pdfOpts(filename, opts = {}) {
 }
 
 /**
+ * Hardened PDF layout CSS injected into the capture container.
+ *
+ * Critical: the cloned report is a DETACHED element, so percentage widths
+ * (max-width:100%) have no containing block to resolve against and html2canvas
+ * can rasterize it wider than the A4 page — slicing the right edge off every
+ * page. This stylesheet pins the clone to the A4 content width (210mm − 20mm
+ * page margins = 190mm) and forces every element to compress to fit.
+ */
+const PDF_PAGE_CSS = `
+  *, *::before, *::after {
+    box-sizing: border-box;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  table { width: 100% !important; max-width: 100% !important; table-layout: auto !important; }
+  img, svg, canvas { max-width: 100% !important; }
+  p, span, li, td, th, h1, h2, h3, h4, a, code, pre, .fine, .mono, .step-row,
+  .plant-chip, .gate-chip, .chip, .badge {
+    overflow-wrap: anywhere !important;
+    word-wrap: break-word !important;
+    white-space: normal !important;
+  }
+  [class*="table-wrap"], .econ-table-wrap, .json-box, .crime-table-wrap {
+    overflow: hidden !important;
+  }
+`;
+
+/**
  * Harden a cloned (detached) node so nothing overflows the A4 page width when
  * html2canvas rasterizes it and nothing gets sliced at page breaks.
  * Shared by the full-report export and single-section exports.
  */
 function preparePdfClone(clone) {
-  // Ensure all tables and wide elements fit within A4 bounds
+  // Inject the page-width clamp stylesheet (covers every child, even those
+  // with inline styles we don't touch here).
+  const styleEl = document.createElement('style');
+  styleEl.textContent = PDF_PAGE_CSS;
+  clone.appendChild(styleEl);
+
+  // Ensure all tables and wide elements fit within A4 bounds. overflow stays
+  // hidden (never auto): html2canvas does not scroll, so an auto scrollable
+  // table would be clipped mid-column; hidden lets the auto-layout table
+  // shrink and wrap its cells instead.
   clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
     t.style.maxWidth = '100%';
-    t.style.overflowX = 'auto';
+    t.style.overflowX = 'hidden';
+    t.style.overflow = 'hidden';
   });
   clone.querySelectorAll('.econ-table').forEach((t) => {
     t.style.width = '100%';
@@ -8624,6 +8665,28 @@ function preparePdfClone(clone) {
     el.style.maxWidth = '100%';
     if (el.style.minWidth) el.style.minWidth = '';
   });
+
+  // Fixed / non-shrinking flex and grid tracks are the usual culprits: a
+  // flex child with flex-shrink:0 or a fixed min-width (e.g. step chips)
+  // forces the row wider than the page. Neutralize them.
+  clone.querySelectorAll('*').forEach((el) => {
+    el.style.flexShrink = '';
+    if (el.style.flexBasis && !el.style.flexBasis.includes('%')) {
+      el.style.flexBasis = 'auto';
+    }
+  });
+  // Grid/flex containers with fixed tracks (rem/px columns, multi-column
+  // layouts) would not compress — collapse them to a single fluid column.
+  clone.querySelectorAll('*').forEach((el) => {
+    const display = getComputedStyle(el).display;
+    if (display === 'grid') {
+      el.style.gridTemplateColumns = '1fr';
+      el.style.gridTemplateRows = 'auto';
+    } else if (display === 'flex') {
+      el.style.flexWrap = 'wrap';
+    }
+  });
+
   // Let long tokens/URLs wrap instead of forcing horizontal overflow
   clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a, .step-row').forEach((el) => {
     el.style.overflowWrap = 'break-word';
@@ -8631,11 +8694,13 @@ function preparePdfClone(clone) {
     el.style.whiteSpace = 'normal';
   });
   clone.querySelectorAll('img, svg, canvas').forEach((el) => {
+    el.style.maxWidth = '100%';
     el.style.height = 'auto';
   });
   // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
-  clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
+  clone.querySelectorAll('.econ-table-wrap, .table-wrap, .json-box, .crime-table-wrap, [class*="table-wrap"]').forEach((el) => {
     el.style.overflow = 'hidden';
+    el.style.overflowX = 'hidden';
   });
   // html2canvas renders absolute/fixed/sticky elements at odd offsets (or
   // drops them from the capture) — pin everything in normal flow so it stays
@@ -8656,6 +8721,49 @@ function preparePdfClone(clone) {
 }
 
 /**
+ * Pin the detached PDF root to the exact A4 content width so every
+ * percentage width inside resolves correctly before html2canvas rasterizes.
+ *
+ * A detached element has no containing-block width, so max-width:100% does
+ * nothing and html2canvas renders the element at its intrinsic (overflowing)
+ * width — the right edge of the PDF gets sliced. Attaching it inside a
+ * fixed-width off-screen container gives it a real 190mm content width
+ * (A4 210mm − 10mm+10mm page margins) to fit within.
+ *
+ * @param {HTMLElement} doc - the detached PDF root (full report or section wrapper)
+ * @param {number} [widthPx=718] - content width in px (~190mm at 96dpi)
+ * @returns {() => void} cleanup function (removes container + restores margins)
+ */
+function clampPdfToWidth(doc, widthPx = 718) {
+  const host = document.createElement('div');
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText =
+    `position:fixed;left:-10000px;top:0;width:${widthPx}px;` +
+    'margin:0;padding:0;border:0;overflow:visible;pointer-events:none;';
+  doc.style.width = '100%';
+  doc.style.maxWidth = 'none';
+  doc.style.margin = '0';
+  doc.style.padding = '0';
+  doc.style.overflow = 'hidden';
+  const body = document.body || document.documentElement;
+  body.appendChild(host);
+  host.appendChild(doc);
+
+  const prevBody = body.style.margin;
+  const prevHtml = document.documentElement.style.margin;
+  body.style.margin = '0';
+  document.documentElement.style.margin = '0';
+
+  return function release() {
+    const r = document.documentElement.style.margin;
+    body.style.margin = prevBody;
+    document.documentElement.style.margin = prevHtml;
+    if (doc.parentNode) doc.parentNode.removeChild(doc);
+    if (host.parentNode) host.parentNode.removeChild(host);
+  };
+}
+
+/**
  * Build a print-ready PDF document from the report data.
  * Creates a detached DOM tree with professional layout, TOC, branded sections,
  * and footer with page number — then renders via html2pdf.
@@ -8666,8 +8774,10 @@ function buildPdfDocument(reportEl) {
   doc.style.cssText = 'font-family:"Source Serif 4",Georgia,serif;color:#16211b;background:#fff;font-size:10pt;line-height:1.5;';
 
   /* ── Title Page ── */
+  // min-height stays under the A4 content height (297mm − 24mm margins =
+  // 273mm) so the title page never pushes content off the first page.
   const titlePage = el('div', null, {
-    cssText: 'text-align:center;padding:50px 30px 30px;page-break-after:always;min-height:265mm;display:flex;flex-direction:column;justify-content:center;',
+    cssText: 'text-align:center;padding:40px 30px 30px;page-break-after:always;min-height:255mm;max-height:270mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;',
   });
 
   const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
@@ -8950,7 +9060,14 @@ async function downloadSectionPdf(sectionEl, label) {
     wrapper.appendChild(clone);
 
     const fname = pdfFilename(label);
-    await html2pdf().set(pdfOpts(fname)).from(wrapper).save();
+    // Pin the wrapper to the A4 content width so nothing renders wider than
+    // the page (a detached clone has no width to resolve 100% against).
+    const release = clampPdfToWidth(wrapper);
+    try {
+      await html2pdf().set(pdfOpts(fname)).from(wrapper).save();
+    } finally {
+      release();
+    }
   } catch (err) {
     console.error('PDF generation failed:', err);
     setError(`PDF failed: ${err.message}`);
@@ -8981,10 +9098,17 @@ async function downloadFullPdf() {
     const site = (r.site_name || 'site-report').replace(/[^\w.-]+/g, '_').substring(0, 40);
     const fname = `${site}_full_report.pdf`;
 
-    await html2pdf()
-      .set(pdfOpts(fname))
-      .from(doc)
-      .save();
+    // Pin the detached document to the A4 content width so every percentage
+    // width inside resolves against the real page width before capture.
+    const release = clampPdfToWidth(doc);
+    try {
+      await html2pdf()
+        .set(pdfOpts(fname))
+        .from(doc)
+        .save();
+    } finally {
+      release();
+    }
   } catch (err) {
     console.error('Full PDF generation failed:', err);
     setError(`PDF failed: ${err.message}`);
