@@ -102,7 +102,7 @@ const EE_SERVICE_META = {
     href: 'mailto:mhalma@opensourcemed.info',
   },
   off_grid_garage: {
-    label: 'Off-grid garage ($250k)',
+    label: 'Off-grid garage',
     cta: 'Reserve garage package',
     href: 'mailto:mhalma@opensourcemed.info',
   },
@@ -6093,22 +6093,7 @@ function wellDepthSection(w, centre) {
   const high = w.estimated_depth_range_m?.high_m;
   const swl = w.estimated_static_water_level_m;
   const aquiferTop = w.estimated_aquifer_top_m;
-  // Mid-value drill cost: ≈ 92×D_ft + 4600 CAD (+15% formula), min ~$11,500
   const depthFt = depth != null ? Math.round(depth * 3.28084 * 10) / 10 : null;
-  const wellCostMid =
-    depthFt != null ? Math.max(11500, Math.round(92 * depthFt + 4600)) : null;
-  const wellCostLow =
-    low != null
-      ? Math.max(11500, Math.round(92 * (low * 3.28084) + 4600))
-      : wellCostMid != null
-        ? Math.round(wellCostMid * 0.88)
-        : null;
-  const wellCostHigh =
-    high != null
-      ? Math.max(11500, Math.round(92 * (high * 3.28084) + 4600))
-      : wellCostMid != null
-        ? Math.round(wellCostMid * 1.22)
-        : null;
   const confLabel = {
     well_control_dense: 'Dense nearby well control',
     well_control_sparse: 'Sparse nearby well control',
@@ -6222,22 +6207,12 @@ function wellDepthSection(w, centre) {
           ${swl != null ? ` · static water level ~${fmt(swl, 'm')} bgs` : ''}
           · ${esc(w.nearby_well_count ?? 0)} wells within ${fmt(w.nearby_well_search_radius_km, 'km')}
         </p>
-        ${
-          wellCostMid != null
-            ? `<p class="fine" style="margin-top:0.45rem">
-                <strong>Planning drill cost (mid):</strong> ${fmtCad(wellCostMid)}
-                ${wellCostLow != null && wellCostHigh != null ? ` · band ${fmtCad(wellCostLow)}–${fmtCad(wellCostHigh)}` : ''}
-                <br/>Formula: ≈ 92 × depth(ft) + 4,600 CAD (+15% mid; min ~$11,500). Ballpark only — geology, access, and scope change the quote.
-              </p>`
-            : ''
-        }
         <p class="fine" style="margin-top:0.35rem">${basisLine}</p>
       </div>
 
       <div class="summary-grid">
         <div class="stat"><span class="k">Completion depth</span><strong>${fmt(depth, 'm')}</strong></div>
         <div class="stat"><span class="k">Depth (ft)</span><strong>${depthFt != null ? esc(depthFt) : '—'}</strong></div>
-        <div class="stat"><span class="k">Drill cost (mid)</span><strong>${wellCostMid != null ? fmtCad(wellCostMid) : '—'}</strong></div>
         <div class="stat"><span class="k">Static water level</span><strong>${fmt(swl, 'm')}</strong></div>
       </div>
 
@@ -7959,7 +7934,7 @@ function landSalesMinimap(lv, centre) {
 
 /**
  * Value-first conversion step: choose interventions → email for full report →
- * itemized estimate → inquiry to mhalma@opensourcemed.info
+ * inquiry to mhalma@opensourcemed.info
  */
 function nextStepsSection(r, idSuffix = 'main') {
   const menu = r?.action_menu;
@@ -7993,7 +7968,6 @@ function nextStepsSection(r, idSuffix = 'main') {
       const cards = list
         .map((it) => {
           const on = selected.has(it.id);
-          const price = it.price?.amount_cad != null ? fmtCad(it.price.amount_cad) : 'Quote on walk';
           const plants =
             it.plant_highlights?.length
               ? `<p class="fine">Species fit: ${it.plant_highlights.map(esc).join(', ')}</p>`
@@ -8005,7 +7979,6 @@ function nextStepsSection(r, idSuffix = 'main') {
               <div class="intervention-card-top">
                 <span class="mono intervention-cat">${esc(it.category || g.id)}</span>
                 ${it.optional ? '<span class="pkg-badge">Optional</span>' : ''}
-                <span class="intervention-price mono">${price}</span>
               </div>
               <strong class="intervention-label">${esc(it.label)}</strong>
               <p class="fine">${esc(it.blurb || '')}</p>
@@ -8027,7 +8000,7 @@ function nextStepsSection(r, idSuffix = 'main') {
     { step: 1, label: 'Your site insights', description: 'Free analysis' },
     { step: 2, label: 'Choose interventions', description: 'Select what you want' },
     { step: 3, label: 'Full report', description: 'Download with email' },
-    { step: 4, label: 'Estimate & inquire', description: 'Talk to Land Intelligence' },
+    { step: 4, label: 'Inquire', description: 'Talk to Land Intelligence' },
   ])
     .map(
       (s, i) => `
@@ -8051,7 +8024,7 @@ function nextStepsSection(r, idSuffix = 'main') {
       <span class="mono eyebrow">Next step · receive more value</span>
       <h2>Build your plan</h2>
       <p class="fine" style="margin-top:-0.25rem">
-        You’ve seen what the land can support. Now choose the interventions you want Land Intelligence to price and discuss.
+        You’ve seen what the land can support. Now choose the interventions you want Land Intelligence to scope and discuss.
         Select or unselect freely — nothing is a commitment.
       </p>
       <div class="flow-steps">${flow}</div>
@@ -8082,13 +8055,6 @@ function nextStepsSection(r, idSuffix = 'main') {
         <p class="fine report-unlock-status" ${unlocked ? '' : 'hidden'}>
           ${unlocked ? `Unlocked for ${esc(state.reportEmail)}. Download anytime.` : ''}
         </p>
-      </div>
-
-      <!-- Step: live estimate from selection -->
-      <div class="next-step-panel estimate-panel">
-        <h3>Itemized planning estimate</h3>
-        <p class="fine">Updates as you select options. Planning-level only — not a firm quote.</p>
-        <div class="live-estimate" data-live-estimate>${renderLiveEstimateHtml(items, selected)}</div>
       </div>
 
       <!-- Step: inquiry -->
@@ -8142,76 +8108,6 @@ function buildClientActionMenuFallback(r) {
     }));
 }
 
-function renderLiveEstimateHtml(items, selectedSet) {
-  const chosen = items.filter((i) => selectedSet.has(i.id));
-  if (!chosen.length) {
-    return `<p class="fine">Select at least one option above to see a planning estimate.</p>`;
-  }
-  let subtotal = 0;
-  let rangeLow = 0;
-  let rangeHigh = 0;
-  const blocks = chosen
-    .map((it) => {
-      const p = it.price || {};
-      const mid = p.amount_cad || 0;
-      subtotal += mid;
-      rangeLow += p.range_low_cad ?? mid;
-      rangeHigh += p.range_high_cad ?? mid;
-      const lines = (p.line_items || [])
-        .map(
-          (l) => `
-        <div class="quote-line">
-          <span>${esc(l.label)}</span>
-          <span class="mono">${fmtCad(l.cost_cad ?? l.cost)}</span>
-        </div>`
-        )
-        .join('');
-      return `
-      <div class="quote-item">
-        <div class="quote-item-head">
-          <span class="quote-item-name">${esc(it.label)}</span>
-          <span class="quote-item-size mono">${
-            it.size != null ? `${esc(it.size)} ${esc(it.unit || '')}` : 'package'
-          }</span>
-        </div>
-        <div class="quote-item-lines">
-          ${lines || `<div class="quote-line"><span>${esc(p.label || 'Planning estimate')}</span><span class="mono">${fmtCad(mid)}</span></div>`}
-          ${
-            p.materials_cost_cad
-              ? `<div class="quote-line quote-line-sub"><span>Materials &amp; contingency${
-                  p.materials_pct != null ? ` (${Math.round(p.materials_pct * 100)}%)` : ''
-                }</span><span class="mono">${fmtCad(p.materials_cost_cad)}</span></div>`
-              : ''
-          }
-          ${
-            p.travel_cost_cad
-              ? `<div class="quote-line quote-line-sub"><span>Mobilization / demobilization + travel</span><span class="mono">${fmtCad(p.travel_cost_cad)}</span></div>`
-              : ''
-          }
-        </div>
-        <div class="quote-item-total">
-          <span>Subtotal</span>
-          <span class="mono">${fmtCad(mid)}</span>
-        </div>
-        <p class="fine quote-item-range">likely range ${fmtCad(p.range_low_cad ?? mid)} – ${fmtCad(p.range_high_cad ?? mid)}${
-          p.field_days ? ` · ≈ ${esc(p.field_days)} field day${p.field_days === 1 ? '' : 's'}` : ''
-        }</p>
-      </div>`;
-    })
-    .join('');
-
-  return `
-    <div class="quote-items">${blocks}</div>
-    <div class="quote-total-card">
-      <span class="mono">Estimated total (${chosen.length} item${chosen.length === 1 ? '' : 's'})</span>
-      <div class="quote-total-value">${fmtCad(subtotal)}</div>
-      <p class="fine">likely range ${fmtCad(rangeLow)} – ${fmtCad(rangeHigh)}</p>
-    </div>
-    <p class="fine" style="margin-top:0.65rem">
-      Planning-level estimate only. Final scope, site conditions, and materials are confirmed on a site walk before quoting.
-    </p>`;
-}
-
 function bindNextStepsInteractions(r) {
   const roots = document.querySelectorAll('[data-next-steps]');
   if (!roots.length) return;
@@ -8221,8 +8117,6 @@ function bindNextStepsInteractions(r) {
   const refreshAllEstimates = () => {
     const selected = new Set(state.selectedInterventions || []);
     document.querySelectorAll('[data-next-steps]').forEach((root) => {
-      const host = root.querySelector('[data-live-estimate]');
-      if (host) host.innerHTML = renderLiveEstimateHtml(items, selected);
       root.querySelectorAll('.intervention-card').forEach((card) => {
         const id = card.getAttribute('data-intervention-id');
         card.classList.toggle('is-selected', selected.has(id));
@@ -8362,7 +8256,6 @@ function bindNextStepsInteractions(r) {
         .map((i) => ({
           id: i.id,
           label: i.label,
-          price_cad: i.price?.amount_cad ?? null,
           category: i.category,
         }));
       if (!selectedItems.length) {
@@ -8379,7 +8272,6 @@ function bindNextStepsInteractions(r) {
         }
         return;
       }
-      const subtotal = selectedItems.reduce((s, i) => s + (i.price_cad || 0), 0);
       const btn = root.querySelector('[data-send-inquiry]');
       if (btn) {
         btn.disabled = true;
@@ -8405,7 +8297,6 @@ function bindNextStepsInteractions(r) {
             .map((p) => p.common_name)
             .filter(Boolean),
           selected: selectedItems,
-          estimate_subtotal_cad: subtotal,
         };
         const res = await fetch('/api/inquiry', {
           method: 'POST',
@@ -8415,7 +8306,6 @@ function bindNextStepsInteractions(r) {
             name,
             message,
             selected_items: selectedItems,
-            estimate_subtotal_cad: subtotal,
             site_name: r.site_name,
             location: r.location?.nearest_town || r.location?.municipality,
             area_ha: r.geometry?.area_ha,
@@ -8454,15 +8344,6 @@ function servicePackagesSection(sp) {
     // Garage not featured
     const cards = list
       .map((p) => {
-        const price = p.price;
-        const priceLine =
-          price?.amount_cad != null
-            ? `<div class="pkg-price">${fmtCad(price.amount_cad)}${
-                price.range_low_cad != null && price.range_high_cad != null
-                  ? `<span class="fine"> · ${fmtCad(price.range_low_cad)}–${fmtCad(price.range_high_cad)}</span>`
-                  : ''
-              }</div>`
-            : '<div class="pkg-price fine">Quote on site walk</div>';
         return `
           <article class="pkg-card${p.id === 'off_grid_garage' ? '' : p.featured ? ' pkg-card-featured' : ''}" data-category="${esc(p.category)}">
             <div class="pkg-card-top">
@@ -8471,9 +8352,8 @@ function servicePackagesSection(sp) {
             </div>
             <h3>${esc(p.label)}</h3>
             <p class="fine">${esc(p.blurb)}</p>
-            ${priceLine}
             <p class="fine pkg-reason"><strong>Why here:</strong> ${esc(p.reason || '')}</p>
-            <p class="fine" style="margin-top:0.45rem">Select this in <strong>Your plan</strong> to include it in your estimate and inquiry.</p>
+            <p class="fine" style="margin-top:0.45rem">Select this in <strong>Your plan</strong> to include it in your inquiry.</p>
           </article>`;
       })
       .join('');
@@ -8491,7 +8371,7 @@ function servicePackagesSection(sp) {
     <section class="report-block service-packages-block">
       <h2>Matching packages</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Context for this pillar. Use <strong>Your plan</strong> to select options, price them, and inquire.
+        Context for this pillar. Use <strong>Your plan</strong> to select options and inquire.
         ${sp.summary_sentence ? esc(sp.summary_sentence) : ''}
       </p>
       ${pillars}
@@ -8499,6 +8379,9 @@ function servicePackagesSection(sp) {
 }
 
 function quoteSection(q, packages) {
+  // Price estimates temporarily removed — section is hidden.
+  void q; void packages;
+  return '';
   const pkgItems =
     packages?.packages
       ?.filter((p) => p.price?.amount_cad != null && p.featured)
@@ -8640,10 +8523,79 @@ function pdfOpts(filename, opts = {}) {
     },
     pagebreak: {
       mode: ['avoid', 'css', 'legacy'],
-      avoid: ['.summary-grid', '.well-range-card', '.rec-card', '.prox-card', '.pkg-card', '.intervention-card', '.econ-table', '.findings-accordion', '.flag', 'table'],
+      avoid: [
+        'h2', 'h3', 'h4',
+        '.summary-grid', '.well-range-card', '.rec-card', '.prox-card', '.pkg-card',
+        '.intervention-card', '.econ-table', '.findings-accordion', '.flag', 'table',
+        'tr', '.quote-item', '.quote-total-card', '.stat', '.report-block > p',
+      ],
     },
     ...opts,
   };
+}
+
+/**
+ * Harden a cloned (detached) node so nothing overflows the A4 page width when
+ * html2canvas rasterizes it and nothing gets sliced at page breaks.
+ * Shared by the full-report export and single-section exports.
+ */
+function preparePdfClone(clone) {
+  // Ensure all tables and wide elements fit within A4 bounds
+  clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
+    t.style.maxWidth = '100%';
+    t.style.overflowX = 'auto';
+  });
+  clone.querySelectorAll('.econ-table').forEach((t) => {
+    t.style.width = '100%';
+    t.style.maxWidth = '100%';
+    t.style.tableLayout = 'auto';
+    t.style.fontSize = '8pt';
+  });
+  // Open any collapsed details so content is included
+  clone.querySelectorAll('details').forEach((d) => { d.open = true; });
+  // Remove interactive iframes (crime map, etc.)
+  clone.querySelectorAll('iframe').forEach((f) => f.remove());
+  // Remove buttons/inputs/selects that serve no purpose in a static PDF
+  clone.querySelectorAll('button, input, select, textarea').forEach((b) => b.remove());
+  // Remove empty containers left behind by stripping
+  clone.querySelectorAll('div').forEach((d) => {
+    if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
+  });
+
+  // Clamp intrinsic sizes so no element is wider than the canvas
+  clone.querySelectorAll('*').forEach((el) => {
+    el.style.maxWidth = '100%';
+    if (el.style.minWidth) el.style.minWidth = '';
+  });
+  // Let long tokens/URLs wrap instead of forcing horizontal overflow
+  clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a, .step-row').forEach((el) => {
+    el.style.overflowWrap = 'break-word';
+    el.style.wordWrap = 'break-word';
+    el.style.whiteSpace = 'normal';
+  });
+  clone.querySelectorAll('img, svg, canvas').forEach((el) => {
+    el.style.height = 'auto';
+  });
+  // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
+  clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
+    el.style.overflow = 'hidden';
+  });
+  // html2canvas renders absolute/fixed/sticky elements at odd offsets (or
+  // drops them from the capture) — pin everything in normal flow so it stays
+  // on the page.
+  clone.querySelectorAll('section, article, header, footer, nav, aside, div').forEach((el) => {
+    if (getComputedStyle(el).position === 'sticky' || getComputedStyle(el).position === 'absolute' || getComputedStyle(el).position === 'fixed') {
+      el.style.position = 'static';
+    }
+  });
+  // Keep atomic units together so no heading, table row, or card is sliced
+  // across a page boundary.
+  clone.querySelectorAll('h2, h3, h4').forEach((el) => { el.style.pageBreakAfter = 'avoid'; el.style.breakAfter = 'avoid-page'; });
+  clone.querySelectorAll('tr').forEach((el) => { el.style.pageBreakInside = 'avoid'; el.style.breakInside = 'avoid'; });
+  clone.querySelectorAll('.summary-grid, .well-range-card, .rec-card, .prox-card, .pkg-card, .intervention-card, .econ-table, .findings-accordion, .flag, table, .quote-item, .quote-total-card, .stat').forEach((el) => {
+    el.style.pageBreakInside = 'avoid';
+    el.style.breakInside = 'avoid';
+  });
 }
 
 /**
@@ -8740,46 +8692,8 @@ function buildPdfDocument(reportEl) {
   const clone = reportEl.cloneNode(true);
   clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
 
-  // Ensure all tables and wide elements fit within A4 bounds
-  clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
-    t.style.maxWidth = '100%';
-    t.style.overflowX = 'auto';
-  });
-  clone.querySelectorAll('.econ-table').forEach((t) => {
-    t.style.width = '100%';
-    t.style.maxWidth = '100%';
-    t.style.tableLayout = 'auto';
-    t.style.fontSize = '8pt';
-  });
-  // Open any collapsed details so content is included
-  clone.querySelectorAll('details').forEach((d) => { d.open = true; });
-  // Remove interactive iframes (crime map, etc.)
-  clone.querySelectorAll('iframe').forEach((f) => f.remove());
-  // Remove buttons/inputs/selects that serve no purpose in a static PDF
-  clone.querySelectorAll('button, input, select, textarea').forEach((el) => el.remove());
-  // Remove empty containers left behind by stripping
-  clone.querySelectorAll('div').forEach((d) => {
-    if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
-  });
-
-  // Harden layout so nothing overflows the A4 page bounds
-  clone.querySelectorAll('div, section, table, .report-block, .panel, .card, .el, .summary-grid, .prox-grid').forEach((el) => {
-    el.style.maxWidth = '100%';
-    el.style.boxSizing = 'border-box';
-  });
-  clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a').forEach((el) => {
-    el.style.overflowWrap = 'break-word';
-    el.style.wordWrap = 'break-word';
-    el.style.maxWidth = '100%';
-  });
-  clone.querySelectorAll('img, svg, canvas').forEach((el) => {
-    el.style.maxWidth = '100%';
-    el.style.height = 'auto';
-  });
-  // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
-  clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
-    el.style.overflow = 'hidden';
-  });
+  // Harden layout: clip overflow, keep cards/rows unsplit, nothing wider than A4
+  preparePdfClone(clone);
 
   // Report blocks are rendered inside the report's outer `.panel` wrapper.
   // Do not restrict this query to direct children: that would silently omit
@@ -8960,46 +8874,8 @@ async function downloadSectionPdf(sectionEl, label) {
     // Strip interactive elements that don't render well in PDF (same list as buildPdfDocument)
     clone.querySelectorAll('.minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
 
-    // Ensure tables and wide elements fit within A4 bounds
-    clone.querySelectorAll('table, .econ-table-wrap').forEach((t) => {
-      t.style.maxWidth = '100%';
-      t.style.overflowX = 'auto';
-    });
-    clone.querySelectorAll('.econ-table').forEach((t) => {
-      t.style.width = '100%';
-      t.style.maxWidth = '100%';
-      t.style.tableLayout = 'auto';
-      t.style.fontSize = '8pt';
-    });
-    // Open any collapsed details so content is included
-    clone.querySelectorAll('details').forEach((d) => { d.open = true; });
-    // Remove interactive iframes (crime map, etc.)
-    clone.querySelectorAll('iframe').forEach((f) => f.remove());
-    // Remove buttons/inputs/selects that serve no purpose in a static PDF
-    clone.querySelectorAll('button, input, select, textarea').forEach((el) => el.remove());
-    // Remove empty containers left behind by stripping
-    clone.querySelectorAll('div').forEach((d) => {
-      if (!d.textContent.trim() && !d.querySelector('img, svg, table')) d.remove();
-    });
-
-    // Harden layout so nothing overflows the A4 page bounds
-    clone.querySelectorAll('div, section, table, .report-block, .panel, .card, .el, .summary-grid, .prox-grid').forEach((el) => {
-      el.style.maxWidth = '100%';
-      el.style.boxSizing = 'border-box';
-    });
-    clone.querySelectorAll('p, span, li, td, th, h1, h2, h3, h4, .fine, .mono, a').forEach((el) => {
-      el.style.overflowWrap = 'break-word';
-      el.style.wordWrap = 'break-word';
-      el.style.maxWidth = '100%';
-    });
-    clone.querySelectorAll('img, svg, canvas').forEach((el) => {
-      el.style.maxWidth = '100%';
-      el.style.height = 'auto';
-    });
-    // html2canvas clips overflow:auto content — switch to hidden so tables aren't cut mid-cell
-    clone.querySelectorAll('.econ-table-wrap, .table-wrap, [class*="table-wrap"]').forEach((el) => {
-      el.style.overflow = 'hidden';
-    });
+    // Harden layout: clip overflow, keep cards/rows unsplit, nothing wider than A4
+    preparePdfClone(clone);
 
     // Wrap with a title block for the PDF
     const wrapper = document.createElement('div');

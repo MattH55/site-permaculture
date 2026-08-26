@@ -1092,11 +1092,6 @@ h3 { font-size: 1.08rem; }
 .intervention-cat {
   color: var(--ink-soft);
 }
-.intervention-price {
-  margin-left: auto;
-  font-weight: 600;
-  color: var(--ink);
-}
 .intervention-label {
   display: block;
   font-family: 'Bricolage Grotesque', system-ui, sans-serif;
@@ -2200,12 +2195,6 @@ h3 { font-size: 1.08rem; }
   border-radius: 999px;
   white-space: nowrap;
 }
-.pkg-price {
-  font-family: 'Bricolage Grotesque', sans-serif;
-  font-weight: 800;
-  font-size: 1.35rem;
-  margin: 0.25rem 0;
-}
 .pkg-reason { margin: 0.2rem 0 0; }
 .pkg-card .btn,
 .pkg-card .btn-quiet {
@@ -2490,7 +2479,6 @@ textarea {
   .report-tabs .btn-quiet { font-size: 0.85rem; }
   .step-row { min-width: 4.75rem; max-width: 7.5rem; }
 
-  .pkg-price { font-size: 1.2rem; }
   .quote-total-value { font-size: clamp(1.4rem, 8vw, 2rem); }
 }
 
@@ -2506,4 +2494,97 @@ textarea {
 @media (max-width: 960px) and (min-width: 821px) {
   .flow-steps { grid-template-columns: 1fr 1fr; }
   .report-wrap { grid-template-columns: 160px 1fr; }
+}
+
+/* ── Print / PDF ────────────────────────────────────────────────────────
+   Keep everything on the page: no horizontal overflow, no sliced cards,
+   sticky/absolute chrome flattened into normal flow. */
+@media print {
+  @page { size: A4; margin: 12mm 10mm; }
+
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .site-header,
+  .site-footer,
+  .map-stage,
+  .loading,
+  .rail-actions,
+  .btn,
+  .btn-quiet,
+  .btn-pdf-section,
+  .draw-tools,
+  .next-step-panel,
+  .report-unlock-form,
+  .inquiry-form,
+  .report-unlock-panel,
+  .inquiry-panel,
+  .estimate-panel {
+    display: none !important;
+  }
+
+  /* Only the report column prints — collapse the two-pane layout */
+  .report-wrap, .report-wrap.report-dual {
+    display: block;
+  }
+  .rail, .map-card, .map-chrome {
+    display: none;
+  }
+  .report-panes {
+    display: block;
+    max-width: 100%;
+  }
+  .report-pane {
+    display: block !important;
+    min-height: 0;
+  }
+  [hidden] { display: none !important; }
+
+  /* Clamp every element to the page width */
+  *, *::before, *::after {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+  }
+  p, span, li, td, th, h1, h2, h3, h4, a, .fine, .mono, .step-row, code, pre {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+    white-space: normal !important;
+  }
+  img, svg, canvas {
+    max-width: 100% !important;
+    height: auto !important;
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Flatten position-based chrome so nothing floats off the page */
+  .rail, .rail-side-offerings, .core, .step-row, .core-stack, .horizon {
+    position: static !important;
+  }
+  .well-chart-wrap svg, .minimap, .report-map {
+    display: none;
+  }
+
+  /* Keep atomic units whole across page breaks */
+  .report-block {
+    page-break-before: always;
+    break-before: page;
+  }
+  .report-block:first-of-type {
+    page-break-before: auto;
+    break-before: auto;
+  }
+  h2, h3, h4 { page-break-after: avoid; break-after: avoid-page; }
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; break-inside: avoid; }
+  .summary-grid, .well-range-card, .rec-card, .prox-card, .pkg-card,
+  .intervention-card, .econ-table, .findings-accordion, .flag,
+  .quote-item, .quote-total-card, .stat, .quote-line {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
 }
