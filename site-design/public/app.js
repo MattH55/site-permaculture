@@ -2711,7 +2711,15 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
     scene.add(groupCatchment, groupPond, groupSwale, groupTrees);
 
-    // Build zone overlays from DEM classification
+    // Build zone overlays from DEM classification.
+    // For each zone class we render two layers into its group:
+    //   1. A per-cell instanced quad (semi-transparent) so the overlay is
+    //      always visible, even on flat parcels where only a few cells
+    //      trigger a class.
+    //   2. A point cloud on top of cells that DO fall into the class,
+    //      giving a denser, brighter signal.
+    // Both layers share the same group, so the existing visible toggles
+    // (data-layer="catchment|pond|swale") control both at once.
     const buildZoneOverlays = () => {
       // Clear existing
       [groupCatchment, groupPond, groupSwale].forEach(g => {
@@ -2724,41 +2732,80 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       });
 
       const { zones } = classifyTerrainZones(elevations, rows, cols, zMin, zMax, zMean);
-      
-      // Create colored point clouds for each zone type
-      const zoneColors = {
-        catchment: { color: 0x2a6f97, group: groupCatchment },
-        pond: { color: 0x1a9bb5, group: groupPond },
-        swale: { color: 0xc4a035, group: groupSwale },
+
+      const zoneMeta = {
+        catchment: { color: 0x2a6f97, group: groupCatchment, quad: 0.16 },
+        pond:      { color: 0x1a9bb5, group: groupPond,      quad: 0.18 },
+        swale:     { color: 0xc4a035, group: groupSwale,     quad: 0.16 },
       };
-      
-      const zonePoints = { catchment: [], pond: [], swale: [] };
-      
-      for (let r = 0; r < rows; r++) {
-        for (let c = 0; c < cols; c++) {
-          const i = r * cols + c;
-          const zone = zones[i];
-          if (zonePoints[zone]) {
+
+      // Pre-compute cell dimensions in local units
+      const cellW = meshW / (cols - 1 || 1);
+      const cellD = meshD / (rows - 1 || 1);
+      const quadW = Math.max(cellW * 1.25, 0.05);
+      const quadD = Math.max(cellD * 1.25, 0.05);
+      const quadGeo = new THREE.PlaneGeometry(quadW, quadD);
+      quadGeo.rotateX(-Math.PI / 2);
+
+      for (const [zoneName, meta] of Object.entries(zoneMeta)) {
+        // ---- Layer 1: per-cell quads (instanced) ----
+        const cells = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const i = r * cols + c;
+            if (zones[i] !== zoneName) continue;
             const x = gridToLocalX(c);
             const z = gridToLocalZ(r);
             const y = elevToLocalY(heightValues[i] ?? zMean, exaggerate) + 0.02;
-            zonePoints[zone].push(x, y, z);
+            cells.push({ x, y, z });
           }
         }
-      }
-      
-      for (const [zoneName, pts] of Object.entries(zonePoints)) {
-        if (pts.length === 0) continue;
+        if (cells.length > 0) {
+          const inst = new THREE.InstancedMesh(
+            quadGeo,
+            new THREE.MeshBasicMaterial({
+              color: meta.color,
+              transparent: true,
+              opacity: meta.quad,
+              depthWrite: false,
+              side: THREE.DoubleSide,
+            }),
+            cells.length
+          );
+          const m = new THREE.Matrix4();
+          const q = new THREE.Quaternion();
+          const v = new THREE.Vector3();
+          const s = new THREE.Vector3(1, 1, 1);
+          cells.forEach((p, idx) => {
+            v.set(p.x, p.y, p.z);
+            m.compose(v, q, s);
+            inst.setMatrixAt(idx, m);
+          });
+          inst.instanceMatrix.needsUpdate = true;
+          inst.userData.kind = 'zone-quads';
+          meta.group.add(inst);
+        }
+
+        // ---- Layer 2: point cloud on top of classified cells ----
+        if (cells.length === 0) continue;
+        const pts = new Float32Array(cells.length * 3);
+        cells.forEach((p, idx) => {
+          pts[idx * 3] = p.x;
+          pts[idx * 3 + 1] = p.y + 0.005;
+          pts[idx * 3 + 2] = p.z;
+        });
         const geom = new THREE.BufferGeometry();
-        geom.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
-        const mat = new THREE.PointsMaterial({ 
-          color: zoneColors[zoneName].color, 
+        geom.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+        const mat = new THREE.PointsMaterial({
+          color: meta.color,
           size: 0.08,
           transparent: true,
-          opacity: 0.7,
-          sizeAttenuation: true
+          opacity: 0.85,
+          sizeAttenuation: true,
         });
-        zoneColors[zoneName].group.add(new THREE.Points(geom, mat));
+        const ptsMesh = new THREE.Points(geom, mat);
+        ptsMesh.userData.kind = 'zone-points';
+        meta.group.add(ptsMesh);
       }
     };
     buildZoneOverlays();
