@@ -1969,16 +1969,16 @@ function topologySection(topo, a) {
   const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
   const report = state.report || {};
   const hostId = `${terrain3dId}-mesh`;
-  // Controls in terrain3dBlock() are keyed by `terrain3dId`; the 3D host
-  // element gets `${terrain3dId}-mesh`, so listeners must query the control id.
-  const ctrlId = terrain3dId;
+  // Controls in terrain3dBlock() are keyed by `terrain3dId`, while the 3D host
+  // element gets `${terrain3dId}-mesh` — so the viewer queries controls with
+  // the (shorter) `terrain3dId`, not the host id.
   // This section is built as a string before the report HTML is inserted into
   // the DOM, so a fixed delay can fire before the host element exists. Poll
   // until the host is present, then mount the Three.js viewer.
   const tryMount = (attempt) => {
     if (document.getElementById(hostId)) {
       try {
-        mountTerrain3dViewer(hostId, report, topo, a);
+        mountTerrain3dViewer(hostId, report, topo, a, terrain3dId);
       } catch (e) {
         console.warn('terrain 3D mount failed', e);
       }
@@ -2250,8 +2250,11 @@ function extractContourPolylines(elevations, rows, cols, levels) {
  * Mount 3D terrain viewer using Three.js — simple terrain mesh with contour lines.
  * Uses OrbitControls for mouse/touch interaction.
  */
-function mountTerrain3dViewer(hostId, report, topo, analysis) {
+function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
   const el = document.getElementById(hostId);
+  // Control data-* attributes are keyed by the section id (ctrlId); fall
+  // back to the host id for backwards compatibility with older callers.
+  if (!ctrlId) ctrlId = hostId;
   if (!el) return;
 
   // --- Extract elevation data ---
