@@ -2036,6 +2036,13 @@ function terrain3dBlock(id, report) {
   }, {}) || {};
   const mappedWaterCount = (surfaceWater?.water_bodies?.length || 0) + (surfaceWater?.predicted_streams?.length || 0);
   if (mappedWaterCount) semanticCounts.surface_water = mappedWaterCount;
+  const frostZones = report?.frost_pockets?.risk_zones || [];
+  if (frostZones.length) semanticCounts.frost_pocket = frostZones.length;
+  const keylineValleys = report?.keyline?.primary_valleys || [];
+  const keylineFeatureCount = keylineValleys.reduce(
+    (n, v) => n + (v.talweg ? 1 : 0) + (v.keyline ? 1 : 0) + (v.guide_lines?.length || 0), 0
+  );
+  if (keylineFeatureCount) semanticCounts.keyline = keylineFeatureCount;
   const semanticControls = Object.keys(semanticCounts).length
     ? Object.entries(semanticCounts).map(([type, count]) => `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
@@ -2106,6 +2113,13 @@ function terrain3dBlock(id, report) {
           : 'Built from design elevation samples.'}
         ${semantic?.available ? ` Mapped features: ${esc(semantic.feature_count)} · ${esc(semantic.source)}.` : ''}
         ${surfaceWater?.water_bodies?.length ? ` Confirmed surface water: ${esc(surfaceWater.water_bodies.length)} feature${surfaceWater.water_bodies.length === 1 ? '' : 's'} (${esc(surfaceWater.data_source || 'unknown source')}).` : ''}
+        ${report?.canopy?.available ? ` Canopy: ${esc(report.canopy.tree_count ?? (report.canopy.tree_instances || []).length)} detected tree${(report.canopy.tree_count ?? 0) === 1 ? '' : 's'}${report.canopy.canopy_cover_pct != null ? `, ${esc(report.canopy.canopy_cover_pct)}% cover` : ''} (${esc(report.canopy.data_source || 'unknown source')}${report.canopy.confidence === 'moderate_low' || report.canopy.confidence === 'moderate' ? ' — global remote-sensing estimate, lower confidence than local LiDAR' : ''}).` : ''}
+        ${frostZones.length ? ` Frost-pocket risk: ${esc(frostZones.length)} zone${frostZones.length === 1 ? '' : 's'} flagged (${esc(frostZones.filter((z) => z.risk_level === 'high').length)} high) — avoid frost-sensitive plantings there.` : ''}
+        ${keylineValleys.some((v) => v.keypoint?.status === 'resolved')
+          ? ' Keyline resolved for the primary valley — guide lines shown follow its bearing rather than raw contours.'
+          : keylineValleys.some((v) => v.keypoint?.status === 'ambiguous')
+            ? ' Keypoint ambiguous — flagged for manual placement rather than guessed.'
+            : ''}
       </p>
     </div>`;
 }
@@ -2815,6 +2829,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     buildZoneOverlays();
 
     // --- Trees from report data ---
+    // Ground-meters-to-scene-units factor (scene is undistorted, so this is
+    // the same along both axes — see the meshW/meshD derivation above).
+    const groundWidthM = lngRange * kmPerDegLng * 1000;
+    const metersPerSceneUnit = groundWidthM / meshW;
     const buildTrees = () => {
       while (groupTrees.children.length) {
         const c = groupTrees.children[0];
@@ -2823,10 +2841,54 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         c.material?.dispose();
       }
 
-      // Get tree locations from report - only use actual coordinate-bearing data
+      // Prefer real detected tree instances (canopy.js: HRDEM CHM local-maxima
+      // extraction, or the Meta/WRI GEE fallback) — height/crown-radius scale
+      // each instance to its actual measured size.
+      const canopyTrees = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
+      if (canopyTrees.length) {
+        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+        const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
+        for (const t of canopyTrees) {
+          // canopy.js tree instances are { x: lat, y: lng, height_m, crown_radius_m }
+          const lat = Number(t.x);
+          const lng = Number(t.y);
+          const heightM = Number(t.height_m) || 2;
+          const crownM = Number(t.crown_radius_m) || 0.6;
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          if (lng < west || lng > east || lat < south || lat > north) continue;
+
+          const gc = ((lng - west) / (east - west)) * (cols - 1);
+          const gr = ((north - lat) / (north - south)) * (rows - 1);
+          const x = gridToLocalX(gc);
+          const z = gridToLocalZ(gr);
+          const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
+
+          const heightU = Math.max(heightM / metersPerSceneUnit, 0.04);
+          const crownU = Math.max(crownM / metersPerSceneUnit, 0.03);
+          const trunkH = heightU * 0.35;
+          const canopyH = heightU * 0.65;
+
+          const trunk = new THREE.Mesh(
+            new THREE.CylinderGeometry(crownU * 0.12, crownU * 0.18, trunkH, 6),
+            trunkMat
+          );
+          trunk.position.set(x, y + trunkH / 2, z);
+
+          const canopy = new THREE.Mesh(
+            new THREE.ConeGeometry(crownU, canopyH, 8),
+            canopyMat
+          );
+          canopy.position.set(x, y + trunkH + canopyH / 2, z);
+          canopy.userData.treeInstance = t;
+
+          groupTrees.add(trunk, canopy);
+        }
+        return;
+      }
+
+      // Fallback: no detected canopy layer — use placeholder positions from
+      // semantic_terrain vegetation features or planted design elements.
       const treeFeatures = [];
-      
-      // Check semantic_terrain features for trees/vegetation
       const semFeatures = report?.semantic_terrain?.features || [];
       for (const f of semFeatures) {
         const layer = f.layer || f.priority_group || '';
@@ -2837,7 +2899,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           }
         }
       }
-      
+
       // Check design_elements for tree plantings with coordinates
       const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
       for (const el of designEls) {
@@ -2857,13 +2919,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       for (const f of treeFeatures) {
         const coords = f.geometry?.coordinates;
         if (!coords || coords.length < 2) continue;
-        
+
         const lng = Number(coords[0]);
         const lat = Number(coords[1]);
-        
+
         // Convert to local coordinates
         if (lng < west || lng > east || lat < south || lat > north) continue;
-        
+
         const gc = ((lng - west) / (east - west)) * (cols - 1);
         const gr = ((north - lat) / (north - south)) * (rows - 1);
         const x = gridToLocalX(gc);
@@ -2872,10 +2934,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
         const trunk = new THREE.Mesh(trunkGeo, trunkMat);
         trunk.position.set(x, y + 0.075, z);
-        
+
         const canopy = new THREE.Mesh(canopyGeo, canopyMat);
         canopy.position.set(x, y + 0.25, z);
-        
+
         groupTrees.add(trunk, canopy);
       }
     };
@@ -3018,9 +3080,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         layer: 'surface_water', attributes: { type: 'predicted_stream', data_source: 'WAM' },
       })),
     ];
+    const frostPocketFeatures = (report?.frost_pockets?.risk_zones || []).map((z, i) => ({
+      id: `frost-${i}`, geometry: z.geometry,
+      feature_type: z.risk_level === 'high' ? 'frost_pocket_high' : 'frost_pocket_moderate',
+      layer: 'frost_pocket', attributes: { risk_level: z.risk_level, basis: z.basis },
+    }));
+    const keylineFeatures = [];
+    for (const v of (report?.keyline?.primary_valleys || [])) {
+      if (v.talweg) keylineFeatures.push({
+        id: `${v.valley_id}-talweg`, geometry: v.talweg, feature_type: 'valley_talweg',
+        layer: 'keyline', attributes: { valley_id: v.valley_id },
+      });
+      if (v.keyline) keylineFeatures.push({
+        id: `${v.valley_id}-keyline`, geometry: v.keyline, feature_type: 'keyline_line',
+        layer: 'keyline', attributes: { valley_id: v.valley_id, keypoint: v.keypoint },
+      });
+      (v.guide_lines || []).forEach((g, i) => keylineFeatures.push({
+        id: `${v.valley_id}-guide-${i}`, geometry: g.geometry, feature_type: 'keyline_guide',
+        layer: 'keyline', attributes: { valley_id: v.valley_id, offset_m: g.offset_m },
+      }));
+    }
     const semanticPayload = {
       ...(report?.semantic_terrain || {}),
-      features: [...(report?.semantic_terrain?.features || []), ...surfaceWaterFeatures],
+      features: [
+        ...(report?.semantic_terrain?.features || []),
+        ...surfaceWaterFeatures,
+        ...frostPocketFeatures,
+        ...keylineFeatures,
+      ],
     };
     if (semanticPayload?.features?.length) {
       semanticObjects = mountSemanticTerrainObjects(scene, semanticPayload, {
@@ -3079,7 +3166,18 @@ function createLocalTerrainProvider(heights, rows, cols, bbox, zMin, zMax, zMean
 function mountSemanticTerrainObjects(scene, payload, opts) {
   const features = payload?.features || [];
   const groups = new Map();
-  const colors = { water: 0x2a9dc9, wetland: 0x38a68b, building: 0xd88c45, road: 0x777777, railway: 0xb4b4b4, forest: 0x2f8f4e, shrubland: 0x77a84e, cropland: 0xb1a447, grassland: 0x88b858, pipeline: 0xe36b35, power: 0xf0c64b, protected_area: 0x9b75c7 };
+  const colors = {
+    water: 0x2a9dc9, wetland: 0x38a68b, building: 0xd88c45, road: 0x777777, railway: 0xb4b4b4,
+    forest: 0x2f8f4e, shrubland: 0x77a84e, cropland: 0xb1a447, grassland: 0x88b858, pipeline: 0xe36b35,
+    power: 0xf0c64b, protected_area: 0x9b75c7,
+    // Frost-pocket risk (cold-air pooling) — indigo/lavender, distinct from
+    // water/vegetation, with a darker shade for the higher-risk zones.
+    frost_pocket_high: 0x4a3b8c, frost_pocket_moderate: 0x9186c9,
+    // Keyline reference geometry — the keyline itself in amber (the primary
+    // reference cultivation/swale lines should follow), the valley talweg in
+    // steel blue, guide lines a lighter amber tint.
+    valley_talweg: 0x3a6ea5, keyline_line: 0xffb300, keyline_guide: 0xffdd8a,
+  };
   const bbox = opts.bbox || (payload?.bbox
     ? [payload.bbox.west, payload.bbox.south, payload.bbox.east, payload.bbox.north]
     : null);
