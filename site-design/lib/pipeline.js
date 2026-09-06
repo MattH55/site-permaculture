@@ -44,6 +44,7 @@ import { fetchSemanticTerrain } from './semantic-terrain.js';
 import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { getSurfaceWaterLayer } from './surface-water.js';
 import { getSoilData } from './soil-data.js';
+import { deriveKeylineAndFrost } from './keyline-frost.js';
 import { sampleAbmiCanopyHeight } from './abmi-lidar.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 
@@ -138,6 +139,7 @@ export async function generateSiteReport(input = {}) {
   const wetlands = layers.wetlands || {};
   const watershed = layers.watershed || {};
   const wetAreas = layers.wetAreas || {};
+  const terrain_derivatives = deriveKeylineAndFrost(hrdem_terrain, bbox, layers.elevation);
 
   const topology = buildTopologyView(
     layers.elevation?.elevations || [],
@@ -233,7 +235,7 @@ export async function generateSiteReport(input = {}) {
       slope_percent: t.slope_percent,
       aspect: t.aspect || 'flat',
       landform_position: t.landform_position || 'mid_slope',
-      keypoint_present: !!t.keypoint_present,
+      keypoint_present: terrain_derivatives.keyline.primary_valleys.some((v) => v.keypoint.status === 'resolved'),
       erosion_risk,
     },
     hydrology: {
@@ -397,6 +399,8 @@ export async function generateSiteReport(input = {}) {
   record.abmi_canopy = abmi_canopy;
   record.surface_water = surface_water;
   record.soil_data = soil_data;
+  record.keyline = terrain_derivatives.keyline;
+  record.frost_pockets = terrain_derivatives.frost;
 
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
@@ -439,7 +443,7 @@ export async function generateSiteReport(input = {}) {
     landCoverClass: wetlands.present ? 'shrubland' : (layers.alberta?.land_cover || null),
     wildlifeObservations: wildlife?.sighting_species || [],
     windExposureHint: (layers.elevation?.tree_density_hint) || (treeCover?.tree_cover_pct > 40 ? 'sheltered' : treeCover?.tree_cover_pct > 15 ? 'partial' : 'open'),
-    frostPoolingHint: t.landform_position === 'depression' ? 'high' : t.landform_position === 'valley_floor' ? 'moderate' : 'low',
+    frostPoolingHint: terrain_derivatives.frost.risk_zones.some((z) => z.risk_level === 'high') ? 'high' : terrain_derivatives.frost.risk_zones.length ? 'moderate' : 'low',
     // Satellite vegetation indices + SOC
     satellite: satellite?.available ? satellite : null,
     ...fecunditySatPatch,
