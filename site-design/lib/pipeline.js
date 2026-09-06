@@ -45,7 +45,7 @@ import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { getSurfaceWaterLayer } from './surface-water.js';
 import { getSoilData } from './soil-data.js';
 import { deriveKeylineAndFrost } from './keyline-frost.js';
-import { sampleAbmiCanopyHeight } from './abmi-lidar.js';
+import { buildCanopyLayer } from './canopy.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 
 const cache = new Map();
@@ -69,7 +69,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, abmi_canopy, surface_water] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, canopy, surface_water] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -123,7 +123,7 @@ export async function generateSiteReport(input = {}) {
       available: false,
       error: e.message,
     })),
-    sampleAbmiCanopyHeight(bbox, { size: 64 }).catch((e) => ({
+    buildCanopyLayer(bbox, { size: 64, ring }).catch((e) => ({
       available: false,
       error: e.message,
     })),
@@ -299,7 +299,7 @@ export async function generateSiteReport(input = {}) {
       zoning,
       temperature,
       wildlife,
-      abmi_canopy
+      canopy
     ),
   };
 
@@ -396,7 +396,7 @@ export async function generateSiteReport(input = {}) {
   record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
   record.semantic_terrain = semantic_terrain;
   record.hrdem_terrain = hrdem_terrain;
-  record.abmi_canopy = abmi_canopy;
+  record.canopy = canopy;
   record.surface_water = surface_water;
   record.soil_data = soil_data;
   record.keyline = terrain_derivatives.keyline;
@@ -585,7 +585,7 @@ function inferDrainage(wetlands, soils, terrain) {
 }
 
 function buildProvenance(
-  layers, proximity, well, solar, nearest_crimes, land_value, hardiness, flood, zoning, temperature, wildlife, abmi_canopy
+  layers, proximity, well, solar, nearest_crimes, land_value, hardiness, flood, zoning, temperature, wildlife, canopy
 ) {
   const rows = [];
   if (layers.elevation) {
@@ -604,13 +604,14 @@ function buildProvenance(
       source_url: layers.hrdem.source_url,
     });
   }
-  if (abmi_canopy?.available) {
-    const ab = abmi_canopy;
+  if (canopy?.available) {
     rows.push({
-      field: 'abmi_canopy (canopy height)',
-      source_name: `ABMI LiDAR Canopy Height Model — ${ab.project_name || ab.project}`,
-      source_date: ab.project ? new Date().toISOString().slice(0, 10) : null,
-      source_url: ab.dataset_url,
+      field: 'canopy (tree instances, canopy height)',
+      source_name: canopy.data_source === 'NRCAN_HRDEM'
+        ? 'NRCan HRDEM Canopy Height Model (DSM − DTM)'
+        : 'Meta/WRI Global Canopy Height (GEE fallback)',
+      source_date: new Date().toISOString().slice(0, 10),
+      source_url: canopy.source_info?.dataset_url || null,
     });
   }
   if (layers.wetlands?.source_name) {

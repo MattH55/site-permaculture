@@ -20,6 +20,22 @@ import { fetchGeoOverlays } from './lib/geo-overlays.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// The pipeline fires many concurrent outbound fetch()+AbortController calls
+// against slow/flaky geodata services. On some Node versions, aborting a
+// fetch while its response body is still streaming trips an internal
+// undici assertion (`assert(!this.paused)`) that surfaces as an
+// *uncaught* exception outside any request's try/catch — killing the
+// whole process mid-request. To the browser that looks like an empty/
+// truncated response, which fails res.json() as "non-JSON response".
+// Log and keep serving rather than let one flaky upstream call take the
+// whole app down; this is a socket-cleanup fault, not corrupted app state.
+process.on('uncaughtException', (err) => {
+  console.error('uncaughtException (server kept alive):', err);
+});
+process.on('unhandledRejection', (err) => {
+  console.error('unhandledRejection (server kept alive):', err);
+});
+
 // Load .env from app root (GOOGLE_MAPS_API_KEY, PORT, …) without a dependency
 try {
   const envPath = path.join(__dirname, '.env');
@@ -78,7 +94,7 @@ function corsForEmbed(req, res, next) {
   next();
 }
 
-app.use(express.json({ limit: '512kb' }));
+app.use(express.json({ limit: '8mb' }));
 app.use(corsForEmbed);
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 app.use('/schema', express.static(path.join(__dirname, 'schema'), { maxAge: '1d' }));
@@ -587,6 +603,22 @@ app.post('/api/v1/recommendations', (req, res) => {
 /** Pretty path for iframe embed page */
 app.get('/embed', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'embed.html'));
+});
+
+// Always answer API errors as JSON — without this, body-parser errors
+// (malformed JSON, payload too large) fall through to Express's default
+// HTML error page and the client's `res.json()` parse fails with a
+// confusing "non-JSON response" instead of a readable message.
+app.use((err, req, res, _next) => {
+  console.error('unhandled request error', err);
+  if (res.headersSent) return;
+  const status = err.status || err.statusCode || 500;
+  const message = status === 413
+    ? 'Parcel drawing is too large/detailed — simplify it and try again'
+    : err.type === 'entity.parse.failed'
+      ? 'Malformed request body'
+      : err.message || 'Server error';
+  res.status(status).json({ error: message });
 });
 
 const port = Number(process.env.PORT) || 3040;
