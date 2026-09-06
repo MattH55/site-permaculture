@@ -42,6 +42,9 @@ import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
 import { sampleHrdemTerrain } from './hrdem-terrain.js';
+import { getSurfaceWaterLayer } from './surface-water.js';
+import { getSoilData } from './soil-data.js';
+import { sampleAbmiCanopyHeight } from './abmi-lidar.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 
 const cache = new Map();
@@ -65,7 +68,7 @@ export async function generateSiteReport(input = {}) {
 
   const centre = centroid(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain] = await Promise.all([
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, abmi_canopy, surface_water] = await Promise.all([
     gatherSiteLayers({
       ring,
       bbox,
@@ -119,11 +122,18 @@ export async function generateSiteReport(input = {}) {
       available: false,
       error: e.message,
     })),
+    sampleAbmiCanopyHeight(bbox, { size: 64 }).catch((e) => ({
+      available: false,
+      error: e.message,
+    })),
+    getSurfaceWaterLayer(bbox).catch((e) => ({ available: false, water_bodies: [], predicted_streams: [], error: e.message })),
   ]);
 
   const areaHa = polygonAreaHa(ring);
   const t = layers.terrain;
   const soils = layers.soils || {};
+  const soil_data = await getSoilData(bbox, soils).catch((e) => ({ soil_data_source: null, soil_units: [], error: e.message }));
+  const primarySoil = soil_data.soil_units?.[0] || {};
   const climate = layers.climate || {};
   const wetlands = layers.wetlands || {};
   const watershed = layers.watershed || {};
@@ -159,6 +169,7 @@ export async function generateSiteReport(input = {}) {
   );
 
   const waterDist =
+    surface_water.distance_to_nearest_water_m ??
     proximity.nearest_water_source?.distance_m ??
     (wetAreas.predicted_stream_count > 0 ? 50 : null);
 
@@ -231,14 +242,16 @@ export async function generateSiteReport(input = {}) {
       monthly_precipitation_mm: climate.monthly_precipitation_mm || null,
       precipitation_normals_years: climate.precipitation_normals_years || null,
       distance_to_nearest_watercourse_m: waterDist,
+      distance_to_nearest_water_m: surface_water.distance_to_nearest_water_m,
+      nearest_water_source_type: surface_water.nearest_water_source_type,
       watershed: watershed.watershed || layers.preset?.hydrology?.watershed || '',
       wetland_class: wetlands.present ? wetlands.wetland_class : null,
       water_table_depth_m: null,
       flood_risk_zone: floodRisk,
     },
     soil: {
-      soil_series: soils.soil_group || '',
-      texture: soils.texture || 'loam',
+      soil_series: soils.soil_group || primarySoil.soil_series || '',
+      texture: soils.texture || primarySoil.texture_class || 'loam',
       drainage_class,
       depth_to_bedrock_cm: null,
       cli_agricultural_capability_class: null,
@@ -283,7 +296,8 @@ export async function generateSiteReport(input = {}) {
       flood,
       zoning,
       temperature,
-      wildlife
+      wildlife,
+      abmi_canopy
     ),
   };
 
@@ -380,6 +394,9 @@ export async function generateSiteReport(input = {}) {
   record.wet_areas_mapping = { depth_to_water: depthToWater, predicted_streams: predictedStreams };
   record.semantic_terrain = semantic_terrain;
   record.hrdem_terrain = hrdem_terrain;
+  record.abmi_canopy = abmi_canopy;
+  record.surface_water = surface_water;
+  record.soil_data = soil_data;
 
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
@@ -413,6 +430,9 @@ export async function generateSiteReport(input = {}) {
     measured: {},  // no direct site measurements from remote report
     topoData: { avgSlopePercent: t.slope_percent },
     wetlandsPresent: !!wetlands.present,
+    surfaceWater: surface_water,
+    hasPondOrDugout: (surface_water.water_bodies || []).length > 0,
+    smallWaterNearestM: surface_water.distance_to_nearest_water_m,
     regionalSoilTexture: soils.texture || null,
     soil_survey: fecunditySoilSurvey,
     ndviCoverPct: treeCover?.tree_cover_pct != null ? Number(treeCover.tree_cover_pct) : undefined,
@@ -491,6 +511,7 @@ export async function generateSiteReport(input = {}) {
         counts: wetlands.counts || {},
       },
       wet_areas: wetAreas,
+      surface_water,
       watershed,
       soils: {
         group: soils.soil_group,
@@ -560,7 +581,7 @@ function inferDrainage(wetlands, soils, terrain) {
 }
 
 function buildProvenance(
-  layers, proximity, well, solar, nearest_crimes, land_value, hardiness, flood, zoning, temperature, wildlife
+  layers, proximity, well, solar, nearest_crimes, land_value, hardiness, flood, zoning, temperature, wildlife, abmi_canopy
 ) {
   const rows = [];
   if (layers.elevation) {
@@ -577,6 +598,15 @@ function buildProvenance(
       source_name: 'NRCan HRDEM STAC (hrdem-lidar)',
       source_date: new Date().toISOString().slice(0, 10),
       source_url: layers.hrdem.source_url,
+    });
+  }
+  if (abmi_canopy?.available) {
+    const ab = abmi_canopy;
+    rows.push({
+      field: 'abmi_canopy (canopy height)',
+      source_name: `ABMI LiDAR Canopy Height Model — ${ab.project_name || ab.project}`,
+      source_date: ab.project ? new Date().toISOString().slice(0, 10) : null,
+      source_url: ab.dataset_url,
     });
   }
   if (layers.wetlands?.source_name) {

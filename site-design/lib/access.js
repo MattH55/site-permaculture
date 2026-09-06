@@ -471,18 +471,47 @@ out body 6;
 }
 
 export async function assessAccess(centre, nearestCityDistanceKm) {
-  const road = await findNearestRoad(centre);
+  const [road, amenities] = await Promise.all([
+    findNearestRoad(centre),
+    findNearbyAmenities(centre),
+  ]);
   const distKm = nearestCityDistanceKm || null;
   const costs = distKm ? tripCostsForDistance(distKm) : [];
   return {
     available: true,
     nearest_road: road,
+    amenities,
     trip_costs_to_city: costs,
     nearest_city_distance_km: distKm,
     gas_price_cad_l: GAS_PRICE_CAD_L,
     methodology:
-      'OSRM nearest snap to OSM driving network (distance) + Nominatim name fill when needed; Overpass geometry fallback',
+      'Roads: OSRM/OSM; amenities: OpenStreetMap Overpass. Distances are straight-line except road snap distance.',
   };
+}
+
+/** Nearest commonly needed amenity of each type, from OSM geometry/points. */
+export async function findNearbyAmenities(centre, radiusM = 25_000) {
+  const { latitude, longitude } = centre;
+  const query = `[out:json][timeout:18];(
+    nwr["shop"~"supermarket|grocery"](around:${radiusM},${latitude},${longitude});
+    nwr["amenity"~"hospital|clinic|school|fire_station|fuel"](around:${radiusM},${latitude},${longitude});
+  );out center tags 80;`;
+  try {
+    const data = await overpassQuery(query, 20_000);
+    const best = new Map();
+    for (const el of data.elements || []) {
+      const lat = el.lat ?? el.center?.lat, lng = el.lon ?? el.center?.lon;
+      if (lat == null || lng == null) continue;
+      const tags = el.tags || {};
+      const type = tags.shop === 'supermarket' || tags.shop === 'grocery' ? 'grocery' : tags.amenity;
+      if (!type) continue;
+      const item = { type, name: tags.name || tags.brand || type.replace('_', ' '), distance_m: Math.round(haversineM(latitude, longitude, lat, lng)), data_source: 'OSM', confidence: 'moderate' };
+      if (!best.has(type) || item.distance_m < best.get(type).distance_m) best.set(type, item);
+    }
+    return [...best.values()].sort((a, b) => a.distance_m - b.distance_m);
+  } catch (e) {
+    return [];
+  }
 }
 
 export function assessAccessSync(centre, nearestCityDistanceKm) {

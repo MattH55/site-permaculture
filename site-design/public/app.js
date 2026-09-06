@@ -2028,11 +2028,14 @@ function terrain3dBlock(id, report) {
     (e) => e.element_type === 'swale' && (e.wetland_block || /wetland/i.test(e.condition_basis || ''))
   );
   const semantic = report?.semantic_terrain;
+  const surfaceWater = report?.surface_water;
   const semanticCounts = semantic?.features?.reduce((m, f) => {
     const key = f.layer || f.priority_group || f.feature_type;
     m[key] = (m[key] || 0) + 1;
     return m;
   }, {}) || {};
+  const mappedWaterCount = (surfaceWater?.water_bodies?.length || 0) + (surfaceWater?.predicted_streams?.length || 0);
+  if (mappedWaterCount) semanticCounts.surface_water = mappedWaterCount;
   const semanticControls = Object.keys(semanticCounts).length
     ? Object.entries(semanticCounts).map(([type, count]) => `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
@@ -2102,6 +2105,7 @@ function terrain3dBlock(id, report) {
           ? `Source: <a href="${esc(ht.dataset_url || 'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b') }" target="_blank" rel="noopener">NRCan HRDEM</a>.`
           : 'Built from design elevation samples.'}
         ${semantic?.available ? ` Mapped features: ${esc(semantic.feature_count)} · ${esc(semantic.source)}.` : ''}
+        ${surfaceWater?.water_bodies?.length ? ` Confirmed surface water: ${esc(surfaceWater.water_bodies.length)} feature${surfaceWater.water_bodies.length === 1 ? '' : 's'} (${esc(surfaceWater.data_source || 'unknown source')}).` : ''}
       </p>
     </div>`;
 }
@@ -3004,7 +3008,20 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     });
 
     // --- Semantic feature toggles (mapped features from semantic terrain) ---
-    const semanticPayload = report?.semantic_terrain;
+    const surfaceWaterFeatures = [
+      ...(report?.surface_water?.water_bodies || []).map((f, i) => ({
+        id: `surface-water-${i}`, geometry: f.geometry, feature_type: 'water',
+        layer: 'surface_water', attributes: { type: f.type, data_source: f.data_source },
+      })),
+      ...(report?.surface_water?.predicted_streams || []).map((f, i) => ({
+        id: `wam-stream-${i}`, geometry: f.geometry, feature_type: 'water',
+        layer: 'surface_water', attributes: { type: 'predicted_stream', data_source: 'WAM' },
+      })),
+    ];
+    const semanticPayload = {
+      ...(report?.semantic_terrain || {}),
+      features: [...(report?.semantic_terrain?.features || []), ...surfaceWaterFeatures],
+    };
     if (semanticPayload?.features?.length) {
       semanticObjects = mountSemanticTerrainObjects(scene, semanticPayload, {
         bbox: [west, south, east, north],

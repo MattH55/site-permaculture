@@ -166,3 +166,23 @@ export async function queryPredictedStreams(bbox) {
     return { available: false, count: null, error: e.message };
   }
 }
+
+/** Return WAM line geometry separately from confirmed mapped water. */
+export async function queryPredictedStreamFeatures(bbox) {
+  const url = `${PREDICTED_STREAMS_URL}/0/query`;
+  const params = new URLSearchParams({
+    geometry: esriEnvelope(bbox), geometryType: 'esriGeometryEnvelope', inSR: '4326',
+    spatialRel: 'esriSpatialRelIntersects', outFields: '*', returnGeometry: 'true', outSR: '4326', f: 'geojson',
+  });
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 18_000);
+    const res = await fetch(`${url}?${params}`, { signal: ctrl.signal, headers: { Accept: 'application/json' } });
+    clearTimeout(t);
+    if (!res.ok) throw new Error(`Predicted streams ${res.status}`);
+    const data = await res.json();
+    return { available: true, features: data.features || [], source: 'WAM', source_url: PREDICTED_STREAMS_URL };
+  } catch (e) {
+    return { available: false, features: [], source: 'WAM', source_url: PREDICTED_STREAMS_URL, error: e.message };
+  }
+}

@@ -75,6 +75,14 @@
           "description": "Relevant to swale/pond sizing; Alberta precipitation is strongly summer-peaked (convective storms May-Aug)."
         },
         "distance_to_nearest_watercourse_m": { "type": "number" },
+        "distance_to_nearest_water_m": {
+          "type": ["number", "null"],
+          "description": "Distance from parcel centroid to nearest mapped surface-water feature edge; output carries source and confidence."
+        },
+        "nearest_water_source_type": {
+          "type": ["string", "null"],
+          "enum": ["lake", "pond", "river", "wetland", "predicted_stream", null]
+        },
         "watershed": {
           "type": "string",
           "description": "Source: Alberta River Basins mapping / Alberta Environment and Parks; also HYDAT (Water Survey of Canada) for gauged streams."

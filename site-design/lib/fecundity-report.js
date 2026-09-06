@@ -587,8 +587,19 @@ function waterLeverNarrative(rawData, base) {
   const parts = [];
   const sw = rawData.smallWater?.summary || {};
   const w = rawData.wetlands;
+  const mapped = rawData.surfaceWater;
 
-  if (w?.has_wetland_on_site) {
+  if (mapped?.water_bodies?.length) {
+    const near = mapped.distance_to_nearest_water_m;
+    const source = mapped.data_source === 'JRC_GLOBAL_SURFACE_WATER_FALLBACK'
+      ? 'JRC global 30 m surface-water fallback (lower resolution)'
+      : mapped.data_source || 'mapped hydrography';
+    parts.push(
+      `Mapped surface water: ${mapped.water_bodies.length} confirmed feature${mapped.water_bodies.length === 1 ? '' : 's'} from ${source}${
+        near != null ? ` · nearest edge ~${near} m` : ''
+      }.`
+    );
+  } else if (w?.has_wetland_on_site) {
     parts.push(
       `Confirmed water features detected: mapped wetland on site (${(w.wetland_types || []).join(', ') || 'classed'}${
         w.wetland_area_ha != null ? ` · ~${w.wetland_area_ha} ha` : ''
@@ -639,7 +650,9 @@ function microclimateFaunaWaterNote(rawData, key, base) {
 
 function buildWaterFeatureSummary(rawData) {
   const sw = rawData.smallWater?.summary || {};
+  const mapped = rawData.surfaceWater;
   const confirmed =
+    !!mapped?.water_bodies?.length ||
     !!rawData.hasPondOrWetlandInventory ||
     !!rawData.hasPondOrDugout ||
     !!sw.has_confirmed_water ||
@@ -651,7 +664,9 @@ function buildWaterFeatureSummary(rawData) {
   const lines = [];
   if (confirmed) {
     lines.push(
-      'Confirmed water features detected (inventory and/or optical open-water screening). Not a regulatory wetland delineation or permanent-water guarantee.'
+      mapped?.water_bodies?.length
+        ? `Mapped surface water: ${mapped.water_bodies.length} feature${mapped.water_bodies.length === 1 ? '' : 's'}${mapped.distance_to_nearest_water_m != null ? `; nearest edge ~${mapped.distance_to_nearest_water_m} m` : ''}.`
+        : 'Confirmed water features detected (inventory and/or optical open-water screening). Not a regulatory wetland delineation or permanent-water guarantee.'
     );
   }
   if (possible) {
@@ -668,7 +683,7 @@ function buildWaterFeatureSummary(rawData) {
   return {
     has_confirmed: confirmed,
     has_possible: possible,
-    nearest_m: sw.nearest_water_distance_m ?? rawData.smallWaterNearestM ?? null,
+    nearest_m: mapped?.distance_to_nearest_water_m ?? sw.nearest_water_distance_m ?? rawData.smallWaterNearestM ?? null,
     confirmed_area_m2: sw.total_confirmed_area_m2 ?? rawData.smallWaterConfirmedAreaM2 ?? null,
     possible_area_m2: sw.total_possible_area_m2 ?? rawData.smallWaterPossibleAreaM2 ?? null,
     density_score: sw.water_density_score ?? rawData.smallWaterDensity ?? null,
