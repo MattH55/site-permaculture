@@ -2108,11 +2108,6 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:10px;height:10px;background:#c4a035;border-radius:2px;vertical-align:middle"></span>
           Swale hills
         </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
-          <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
-          Trees
-        </label>
         ${(report?.canopy?.render_zones || []).some((z) => z.render_mode === 'billboard_impostor') ? `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
@@ -2755,8 +2750,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const groupCatchment = new THREE.Group(); groupCatchment.name = 'catchment';
     const groupPond = new THREE.Group(); groupPond.name = 'pond';
     const groupSwale = new THREE.Group(); groupSwale.name = 'swale';
-    const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
-    scene.add(groupCatchment, groupPond, groupSwale, groupTrees);
+    scene.add(groupCatchment, groupPond, groupSwale);
 
     // Build zone overlays from DEM classification.
     // For each zone class we render two layers into its group:
@@ -2868,7 +2862,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const denseZones = renderZones.filter((z) => z.render_mode === 'billboard_impostor');
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
     scene.add(groupForest);
-    let forestStats = null;
 
     // A dense zone's hull is convex (built by convexHull upstream), so
     // scaling its points toward the centroid by a factor < 1 is a correct,
@@ -2885,124 +2878,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       const ring = z.geometry.coordinates[0];
       return { zone: z, ring, inset: insetPolygon(ring, 0.72) };
     });
-    const denseZoneAt = (lng, lat) => zoneRings.find((zr) => pointInPolygon2D(lng, lat, zr.ring));
 
-    let treeBuildGeneration = 0;
-    const buildTrees = () => {
-      // Guards against a stale async model-load resolving after a newer
-      // buildTrees() call (e.g. the exaggeration slider firing again while
-      // the Kenney GLBs are still loading) and re-populating a group that
-      // has already moved on.
-      const myGeneration = ++treeBuildGeneration;
-      while (groupTrees.children.length) {
-        const c = groupTrees.children[0];
-        groupTrees.remove(c);
-        c.geometry?.dispose();
-        c.material?.dispose();
-      }
-
-      const placements = [];
-
-      // Prefer real detected tree instances (canopy.js: HRDEM CHM local-maxima
-      // extraction, or the Meta/WRI GEE fallback) — height/crown-radius scale
-      // each instance to its actual measured size.
-      const canopyTrees = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
-      let interiorSkipped = 0;
-      if (canopyTrees.length) {
-        for (const t of canopyTrees) {
-          // canopy.js tree instances are { x: lat, y: lng, height_m, crown_radius_m }
-          const lat = Number(t.x);
-          const lng = Number(t.y);
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
-          if (lng < west || lng > east || lat < south || lat > north) continue;
-
-          // Dense-woodlot interior: skip the per-tree billboard — that area
-          // is rendered as one flat textured-canopy forest zone instead
-          // (below). A tree still close to the dense/sparse boundary stays
-          // as its own billboard so the transition reads as trees thinning
-          // out, not a hard cut.
-          const dz = denseZoneAt(lng, lat);
-          if (dz && pointInPolygon2D(lng, lat, dz.inset)) { interiorSkipped++; continue; }
-
-          const gc = ((lng - west) / (east - west)) * (cols - 1);
-          const gr = ((north - lat) / (north - south)) * (rows - 1);
-          placements.push({
-            x: gridToLocalX(gc), z: gridToLocalZ(gr),
-            y: elevToLocalY(elevAtRC(gr, gc), exaggerate),
-            heightM: Number(t.height_m) || 2, crownM: Number(t.crown_radius_m) || 0.6,
-            idx: placements.length,
-          });
-        }
-        forestStats = {
-          instancedCount: placements.length,
-          interiorSkipped,
-          denseZoneCount: denseZones.length,
-        };
-      } else {
-        // Fallback: no detected canopy layer — use placeholder positions from
-        // semantic_terrain vegetation features or planted design elements.
-        // Sized from an assumed typical tree (6m tall, 2m crown) converted
-        // through the same real ground-scale factor as detected trees, rather
-        // than a fixed absolute scene-unit size — a constant scene-unit size
-        // is exactly bug #1 from the tree-scale fix (looks fine on a small
-        // lot, wildly oversized once the same 10-unit mesh represents a
-        // multi-km parcel).
-        const treeFeatures = [];
-        const semFeatures = report?.semantic_terrain?.features || [];
-        for (const f of semFeatures) {
-          const layer = f.layer || f.priority_group || '';
-          const ftype = f.feature_type || '';
-          if (layer === 'trees' || layer === 'vegetation' || ftype === 'tree' || ftype === 'vegetation') {
-            if (f.geometry?.coordinates) treeFeatures.push(f);
-          }
-        }
-        const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
-        for (const el of designEls) {
-          if ((el.element_type === 'tree' || el.element_type === 'food_forest' || el.element_type === 'windbreak') && el.coordinates) {
-            treeFeatures.push({ geometry: { type: 'Point', coordinates: el.coordinates }, element_type: el.element_type });
-          }
-        }
-        for (const f of treeFeatures) {
-          const coords = f.geometry?.coordinates;
-          if (!coords || coords.length < 2) continue;
-          const lng = Number(coords[0]);
-          const lat = Number(coords[1]);
-          if (lng < west || lng > east || lat < south || lat > north) continue;
-          const gc = ((lng - west) / (east - west)) * (cols - 1);
-          const gr = ((north - lat) / (north - south)) * (rows - 1);
-          placements.push({
-            x: gridToLocalX(gc), z: gridToLocalZ(gr),
-            y: elevToLocalY(elevAtRC(gr, gc), exaggerate),
-            heightM: 6, crownM: 2, idx: placements.length,
-          });
-        }
-      }
-
-      if (!placements.length) return;
-      // Individually meshed trees (full Nature Kit GLB geometry, one full
-      // 3D model per tree) were reading as wildly oversized in the
-      // individual-tree view regardless of the tree-scale math — rendering
-      // every tree as a billboard-impostor (the same textured-cross sprite
-      // used for dense-canopy zones below) sidesteps that entirely and
-      // matches what the user actually wants here: tree *texture*, not
-      // individually meshed trees.
-      loadTreeModels().then((models) => Promise.all([models, bakeTreeBillboardAtlas(renderer, models)]))
-        .then(([models, atlas]) => {
-          if (myGeneration !== treeBuildGeneration) return; // superseded
-          const cells = placements.map((p) => (
-            { x: p.x, groundY: p.y, z: p.z, isEdge: false, heightM: p.heightM, idx: p.idx }
-          ));
-          if (atlas) {
-            renderBillboardForest(groupTrees, cells, atlas, metersPerSceneUnit);
-          } else {
-            renderProceduralForestQuads(groupTrees, cells, meshW, meshD, cols, rows, metersPerSceneUnit);
-          }
-        });
-    };
-    buildTrees();
-
-    // --- Dense-canopy areas: billboard-impostor forest instead of
-    // individually instanced trees (spec Part 2, revised) ---
+    // --- Dense-canopy areas: billboard-impostor forest (spec Part 2, revised) ---
     let forestBuildGeneration = 0;
     const buildForestTexture = () => {
       const myGeneration = ++forestBuildGeneration;
@@ -3053,13 +2930,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         });
     };
     buildForestTexture();
-
-    // Confirm the before/after instance-count reduction textually, not just
-    // by eyeballing the render (spec Part 2 performance note).
-    const forestStatsEl = document.getElementById(`${ctrlId}-forest-stats`);
-    if (forestStatsEl && forestStats?.interiorSkipped) {
-      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as one flat textured-canopy forest zone instead of ${forestStats.interiorSkipped} per-tree billboard${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still rendered as individual billboards, sparse areas + zone edges).`;
-    }
 
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
@@ -3165,7 +3035,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildContours();
         buildParcelBoundary();
         buildZoneOverlays();
-        buildTrees();
         buildForestTexture();
       });
     }
@@ -3182,8 +3051,6 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupPond.visible = !!cb.checked;
         } else if (layer === 'swale') {
           groupSwale.visible = !!cb.checked;
-        } else if (layer === 'trees') {
-          groupTrees.visible = !!cb.checked;
         } else if (layer === 'forest-texture') {
           groupForest.visible = !!cb.checked;
         }
