@@ -101,7 +101,11 @@ export async function gatherProximity(centre, bbox) {
     nearest_water_source: water.nearest_water_source || null,
     nearest_city,
     nearest_settlement,
-    amenities: [], // Overpass amenities can be added later without schema change
+    // Placeholder here — proximity.js resolves before the site centroid's
+    // access/amenities layer does. pipeline.js overwrites this with the
+    // real OSM Overpass amenity lookup (lib/access.js findNearbyAmenities)
+    // once that background layer settles, right before the report is built.
+    amenities: [],
     crime_risk,
     _sources: {
       water: water.source_name || null,

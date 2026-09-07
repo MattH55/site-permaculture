@@ -359,28 +359,48 @@ export async function generateSiteReport(input = {}) {
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
 
-  // GBIF — run async alongside other fetches (fire-and-forget, attach after)
+  // These run concurrently with each other and with whatever else the
+  // pipeline does next, but — unlike a true fire-and-forget — they are
+  // collected into `backgroundPromises` and explicitly awaited below,
+  // before `record` is spread into the final `report` object. Previously
+  // this was pure fire-and-forget with no such gate: fields fed by a fast
+  // source (GBIF, biodiversity, wind rose, minerals — a few seconds) only
+  // ever landed in the response by the accident of enough slower awaited
+  // work happening later in this function; assessAccess (OSRM + Overpass,
+  // ~15-20s) never won that race and record.access silently stayed on its
+  // "Loading..." placeholder in every real response.
+  const backgroundPromises = [];
+  backgroundPromises.push(
     queryGbig(bbox).then((gbif) => {
       record.gbif_species = gbif;
-    }).catch(() => {});
+    }).catch(() => {})
+  );
 
-    const nearestCityDist = proximity.nearest_city?.distance_km || null;
+  const nearestCityDist = proximity.nearest_city?.distance_km || null;
+  backgroundPromises.push(
     assessAccess(centre, nearestCityDist).then((access) => {
       record.access = access;
-    }).catch(() => {});
+    }).catch(() => {})
+  );
 
+  backgroundPromises.push(
     assessBiodiversity(centre).then((bio) => {
       record.biodiversity = bio;
-    }).catch(() => {});
+    }).catch(() => {})
+  );
 
+  backgroundPromises.push(
     getWindRose(centre).then((wr) => {
       record.wind_rose = wr;
-    }).catch(() => {});
+    }).catch(() => {})
+  );
 
+  backgroundPromises.push(
     fetchMinerals(bbox, { centre }).then((m) => {
       record.minerals = m;
-    }).catch(() => {});
-    record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
+    }).catch(() => {})
+  );
+  record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);
     record.ats = latLngToAts(centre);
     record.parcel_address = {
@@ -487,6 +507,19 @@ export async function generateSiteReport(input = {}) {
       source_date: new Date().toISOString().slice(0, 10),
       source_url: null,
     });
+  }
+
+  // Wait for the concurrent background layers (access/roads, GBIF,
+  // biodiversity, wind rose, minerals) so their real results — not the
+  // placeholders set above — make it into the response. allSettled: a slow
+  // or failed source degrades that one field, it never fails the report.
+  await Promise.allSettled(backgroundPromises);
+
+  // proximity_context.amenities was a permanent `[]` stub (see proximity.js)
+  // — the real amenity lookup (grocery/hospital/school/fire/fuel via OSM
+  // Overpass) lives in the access layer above, which only just resolved.
+  if (record.proximity_context) {
+    record.proximity_context.amenities = record.access?.amenities || [];
   }
 
   const report = {

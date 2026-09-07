@@ -333,6 +333,36 @@ out tags geom 30;
   };
 }
 
+/**
+ * Road classification (highway class + surface) at/near a point.
+ * OSRM's nearest API returns an accurate snap distance but no tags, so this
+ * fills the road_class/surface fields the report schema needs (relevant to
+ * site-access notes — e.g. "gravel range road" vs "paved highway") without
+ * discarding OSRM's better distance. Small radius, short timeout, and any
+ * failure here just leaves classification blank — it never fails the
+ * overall road lookup.
+ */
+async function fetchRoadClassNear(lat, lng) {
+  const query = `[out:json][timeout:6];way(around:35,${lat},${lng})["highway"];out tags 5;`.trim();
+  try {
+    const data = await overpassQuery(query, 6_000);
+    let best = null;
+    let bestRank = Infinity;
+    for (const el of data.elements || []) {
+      const highway = el.tags?.highway;
+      if (!highway) continue;
+      const rank = HIGHWAY_RANK[highway] ?? 15;
+      if (rank < bestRank) {
+        bestRank = rank;
+        best = { road_class: highway, surface: el.tags?.surface || null };
+      }
+    }
+    return best;
+  } catch {
+    return null;
+  }
+}
+
 // ── Public API ───────────────────────────────────────────
 
 /**
@@ -370,15 +400,25 @@ export async function findNearestRoad(centre) {
       named = false;
     }
 
+    // Fill road_class/surface from OSM tags at the snapped point — OSRM
+    // gives an accurate distance but no classification (schema field
+    // roads-access-layer-instructions.md calls for both).
+    const classAt = snap.snap_lat != null && snap.snap_lng != null
+      ? await fetchRoadClassNear(snap.snap_lat, snap.snap_lng)
+      : null;
+
     return {
       name,
       type,
+      road_class: classAt?.road_class || null,
+      surface: classAt?.surface || null,
       distance_m: snap.distance_m,
       available: true,
       named,
       snap_lat: snap.snap_lat,
       snap_lng: snap.snap_lng,
       candidates: snap.candidates,
+      data_source: 'OSM',
       source: snap.source + (named && !snap.name ? ' + Nominatim name' : ''),
     };
   } catch (osrmErr) {
@@ -391,6 +431,8 @@ export async function findNearestRoad(centre) {
     if (ov.distance_m != null) {
       return {
         ...ov,
+        road_class: ov.type || null,
+        data_source: 'OSM',
         available: true,
       };
     }
