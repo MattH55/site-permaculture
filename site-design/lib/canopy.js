@@ -278,6 +278,7 @@ export const _internal = {
   downsample,
   extractTrees,
   deterministicNoise,
+  classifyCanopyRenderZones,
   MIN_CHM_M,
 };
 
@@ -628,6 +629,7 @@ function extractTrees(chm, bbox, ctx) {
     if (h >= MIN_CHM_M) coverCells++;
   }
   const canopyCoverPct = totalValid ? Math.round((coverCells / totalValid) * 100) : 0;
+  const renderZones = classifyCanopyRenderZones(coverGrid, bbox, ctx.dense_cover_threshold);
 
   return {
     available: true,
@@ -651,6 +653,7 @@ function extractTrees(chm, bbox, ctx) {
     canopy_cover_pct: canopyCoverPct,
     tree_count: instances.length,
     tree_instances: instances,
+    render_zones: renderZones,
     extraction: {
       method: 'local-maxima + watershed (lidR-style, scale-space, inverted CHM)',
       window_cells: baseWin,
@@ -662,6 +665,125 @@ function extractTrees(chm, bbox, ctx) {
     bbox: { ...bbox },
     _meta: { source_info: ctx.source_info || null },
   };
+}
+
+// Default fraction of a window's local neighborhood that must carry canopy
+// for that window to be classified "dense" (rendered as textured canopy
+// rather than individually instanced trees). Configurable per call.
+const DEFAULT_DENSE_COVER_THRESHOLD = 0.55;
+
+/**
+ * Classify the coarse canopy-cover grid into "instanced" (sparse — isolated
+ * trees, orchard rows, guild plantings; individually instanced so the user
+ * can see/select/plan around specific trees) vs. "textured" (dense —
+ * natural woodlot/bush; rendered as a textured, height-displaced surface
+ * instead of thousands of individual meshes) render zones, per the
+ * tree-rendering-fix-and-forest-texture spec. No new data source — reuses
+ * the CHM cover grid already computed for the canopy-cover-pct estimate.
+ *
+ * @param {{cells:(number|null)[], m:number, n:number}} coverGrid windowed
+ *   mean-CHM-height grid from `downsample()`, `m`×`n` windows.
+ * @param {{west:number,south:number,east:number,north:number}} bbox
+ * @param {number} [denseCoverThreshold] fraction (0-1) of a window's 3×3
+ *   neighborhood that must itself carry canopy for the window to count as
+ *   "dense" rather than "sparse". Defaults to 0.55.
+ * @returns {Array<{geometry:object, render_mode:'instanced'|'textured', avg_canopy_height_m:number, canopy_cover_pct:number}>}
+ */
+function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
+  const threshold = denseCoverThreshold ?? DEFAULT_DENSE_COVER_THRESHOLD;
+  const { cells, m, n } = coverGrid;
+  const hasCanopy = cells.map((h) => h != null && h >= MIN_CHM_M);
+  const mode = new Array(m * n).fill(null); // 'textured' | 'instanced' | null (no canopy)
+  const coverFracAt = new Array(m * n).fill(0);
+
+  for (let r = 0; r < m; r++) {
+    for (let c = 0; c < n; c++) {
+      const idx = r * n + c;
+      if (!hasCanopy[idx]) continue;
+      let neighborCanopy = 0;
+      let neighborTotal = 0;
+      for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+        const rr = r + dr, cc = c + dc;
+        if (rr < 0 || rr >= m || cc < 0 || cc >= n) continue;
+        neighborTotal++;
+        if (hasCanopy[rr * n + cc]) neighborCanopy++;
+      }
+      const localCoverFrac = neighborTotal ? neighborCanopy / neighborTotal : 0;
+      coverFracAt[idx] = localCoverFrac;
+      mode[idx] = localCoverFrac >= threshold ? 'textured' : 'instanced';
+    }
+  }
+
+  // Connected-component merge (4-connectivity, same render_mode) into
+  // discrete zones, mirroring the frost-pocket zone-merge approach.
+  const winLocal = (r, c) => [
+    bbox.west + (c / n) * (bbox.east - bbox.west),
+    bbox.north - (r / m) * (bbox.north - bbox.south),
+  ];
+  const dLng = (bbox.east - bbox.west) / n;
+  const dLat = (bbox.north - bbox.south) / m;
+  const visited = new Array(m * n).fill(false);
+  const zones = [];
+  for (let r = 0; r < m; r++) for (let c = 0; c < n; c++) {
+    const idx = r * n + c;
+    if (!mode[idx] || visited[idx]) continue;
+    const renderMode = mode[idx];
+    const stack = [idx];
+    visited[idx] = true;
+    const windows = [];
+    while (stack.length) {
+      const cur = stack.pop();
+      windows.push(cur);
+      const cr = Math.floor(cur / n), cc = cur % n;
+      for (const [nr, nc] of [[cr - 1, cc], [cr + 1, cc], [cr, cc - 1], [cr, cc + 1]]) {
+        if (nr < 0 || nr >= m || nc < 0 || nc >= n) continue;
+        const nIdx = nr * n + nc;
+        if (visited[nIdx] || mode[nIdx] !== renderMode) continue;
+        visited[nIdx] = true;
+        stack.push(nIdx);
+      }
+    }
+    const corners = [];
+    let heightSum = 0;
+    let coverSum = 0;
+    for (const w of windows) {
+      const wr = Math.floor(w / n), wc = w % n;
+      const [west, north] = winLocal(wr, wc);
+      corners.push([west, north], [west + dLng, north], [west + dLng, north - dLat], [west, north - dLat]);
+      heightSum += cells[w] ?? 0;
+      coverSum += coverFracAt[w];
+    }
+    const hull = convexHullXY(corners);
+    if (hull.length < 3) continue;
+    zones.push({
+      geometry: { type: 'Polygon', coordinates: [[...hull, hull[0]]] },
+      render_mode: renderMode,
+      avg_canopy_height_m: round1(heightSum / windows.length),
+      canopy_cover_pct: Math.round((coverSum / windows.length) * 100),
+      window_count: windows.length,
+    });
+  }
+  return zones;
+}
+
+/** Andrew's monotone chain convex hull. Input/output: [[x,y], ...]. */
+function convexHullXY(points) {
+  const pts = [...new Map(points.map((p) => [`${p[0]},${p[1]}`, p])).values()]
+    .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  if (pts.length < 3) return pts;
+  const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+  const build = (seq) => {
+    const hull = [];
+    for (const p of seq) {
+      while (hull.length >= 2 && cross(hull[hull.length - 2], hull[hull.length - 1], p) <= 0) hull.pop();
+      hull.push(p);
+    }
+    hull.pop();
+    return hull;
+  };
+  const lower = build(pts);
+  const upper = build([...pts].reverse());
+  return [...lower, ...upper];
 }
 
 /** Candidate detection window sizes (coarse → fine) for scale-space search. */

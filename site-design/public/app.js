@@ -3,6 +3,8 @@
  * Draw parcel on topo map → POST /api/report → design report
  */
 
+import { groundSceneScale, treeInstanceDimensions } from './tree-scale.js';
+
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
   terrace: 'Terrace',
@@ -2091,6 +2093,12 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
           Trees
         </label>
+        ${(report?.canopy?.render_zones || []).some((z) => z.render_mode === 'textured') ? `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
+          <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
+          Dense forest (textured)
+        </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Exag</span>
           <input type="range" min="0.5" max="6" step="0.1" value="1" data-terrain-exag="${esc(id)}" style="width:90px;vertical-align:middle" />
@@ -2120,6 +2128,7 @@ function terrain3dBlock(id, report) {
           : keylineValleys.some((v) => v.keypoint?.status === 'ambiguous')
             ? ' Keypoint ambiguous — flagged for manual placement rather than guessed.'
             : ''}
+        <span id="${esc(id)}-forest-stats"></span>
       </p>
     </div>`;
 }
@@ -2830,9 +2839,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // --- Trees from report data ---
     // Ground-meters-to-scene-units factor (scene is undistorted, so this is
-    // the same along both axes — see the meshW/meshD derivation above).
-    const groundWidthM = lngRange * kmPerDegLng * 1000;
-    const metersPerSceneUnit = groundWidthM / meshW;
+    // the same along both axes — see the meshW/meshD derivation above). Uses
+    // the same shared, unit-tested math the tree-scale sanity check runs
+    // against (public/tree-scale.js) — there is exactly one implementation
+    // of this conversion, not a copy that can drift out of sync.
+    const { metersPerSceneUnit } = groundSceneScale({ west, south, east, north }, meshSize);
+    const renderZones = report?.canopy?.available ? (report.canopy.render_zones || []) : [];
+    const denseZones = renderZones.filter((z) => z.render_mode === 'textured');
+    const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
+    scene.add(groupForest);
+    let forestStats = null;
+
+    // A dense zone's hull is convex (built by convexHull upstream), so
+    // scaling its points toward the centroid by a factor < 1 is a correct,
+    // cheap inset polygon — used to tell "deep interior" (fully textured,
+    // no individual mesh) from "near the edge" (kept as real tree meshes so
+    // the sparse/dense transition isn't a hard seam — spec Part 2 step 4).
+    const insetPolygon = (ring, factor) => {
+      if (!ring.length) return ring;
+      const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+      const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+      return ring.map(([x, y]) => [cx + (x - cx) * factor, cy + (y - cy) * factor]);
+    };
+    const zoneRings = denseZones.map((z) => {
+      const ring = z.geometry.coordinates[0];
+      return { zone: z, ring, inset: insetPolygon(ring, 0.72) };
+    });
+    const denseZoneAt = (lng, lat) => zoneRings.find((zr) => pointInPolygon2D(lng, lat, zr.ring));
+
     const buildTrees = () => {
       while (groupTrees.children.length) {
         const c = groupTrees.children[0];
@@ -2845,6 +2879,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       // extraction, or the Meta/WRI GEE fallback) — height/crown-radius scale
       // each instance to its actual measured size.
       const canopyTrees = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
+      let interiorSkipped = 0;
       if (canopyTrees.length) {
         const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
         const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
@@ -2852,10 +2887,15 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           // canopy.js tree instances are { x: lat, y: lng, height_m, crown_radius_m }
           const lat = Number(t.x);
           const lng = Number(t.y);
-          const heightM = Number(t.height_m) || 2;
-          const crownM = Number(t.crown_radius_m) || 0.6;
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
           if (lng < west || lng > east || lat < south || lat > north) continue;
+
+          // Dense-woodlot interior: skip the individual mesh — that area is
+          // rendered as textured canopy instead (buildForestTexture below).
+          // A tree still close to the dense/sparse boundary stays instanced
+          // so the transition reads as trees thinning out, not a hard cut.
+          const dz = denseZoneAt(lng, lat);
+          if (dz && pointInPolygon2D(lng, lat, dz.inset)) { interiorSkipped++; continue; }
 
           const gc = ((lng - west) / (east - west)) * (cols - 1);
           const gr = ((north - lat) / (north - south)) * (rows - 1);
@@ -2863,13 +2903,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           const z = gridToLocalZ(gr);
           const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
 
-          const heightU = Math.max(heightM / metersPerSceneUnit, 0.04);
-          const crownU = Math.max(crownM / metersPerSceneUnit, 0.03);
-          const trunkH = heightU * 0.35;
-          const canopyH = heightU * 0.65;
+          const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(t, metersPerSceneUnit);
 
           const trunk = new THREE.Mesh(
-            new THREE.CylinderGeometry(crownU * 0.12, crownU * 0.18, trunkH, 6),
+            new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6),
             trunkMat
           );
           trunk.position.set(x, y + trunkH / 2, z);
@@ -2883,11 +2920,22 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
           groupTrees.add(trunk, canopy);
         }
+        forestStats = {
+          instancedCount: canopyTrees.length - interiorSkipped,
+          interiorSkipped,
+          denseZoneCount: denseZones.length,
+        };
         return;
       }
 
       // Fallback: no detected canopy layer — use placeholder positions from
       // semantic_terrain vegetation features or planted design elements.
+      // Sized from an assumed typical tree (6m tall, 2m crown) converted
+      // through the same real ground-scale factor as detected trees, rather
+      // than a fixed absolute scene-unit size — a constant scene-unit size
+      // is exactly bug #1 from the tree-scale fix (looks fine on a small
+      // lot, wildly oversized once the same 10-unit mesh represents a
+      // multi-km parcel).
       const treeFeatures = [];
       const semFeatures = report?.semantic_terrain?.features || [];
       for (const f of semFeatures) {
@@ -2910,11 +2958,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
       if (treeFeatures.length === 0) return;
 
-      // Simple tree representation: green cones
-      const trunkGeo = new THREE.CylinderGeometry(0.02, 0.03, 0.15, 6);
-      const canopyGeo = new THREE.ConeGeometry(0.12, 0.3, 8);
       const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
       const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
+      const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(
+        { height_m: 6, crown_radius_m: 2 }, metersPerSceneUnit
+      );
+      const trunkGeo = new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6);
+      const canopyGeo = new THREE.ConeGeometry(crownU, canopyH, 8);
 
       for (const f of treeFeatures) {
         const coords = f.geometry?.coordinates;
@@ -2933,15 +2983,87 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
 
         const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(x, y + 0.075, z);
+        trunk.position.set(x, y + trunkH / 2, z);
 
         const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-        canopy.position.set(x, y + 0.25, z);
+        canopy.position.set(x, y + trunkH + canopyH / 2, z);
 
         groupTrees.add(trunk, canopy);
       }
     };
     buildTrees();
+
+    // --- Dense-canopy areas: textured, height-displaced surface instead of
+    // individually instanced trees (spec Part 2) ---
+    const buildForestTexture = () => {
+      while (groupForest.children.length) {
+        const c = groupForest.children[0];
+        groupForest.remove(c);
+        c.geometry?.dispose();
+        c.material?.dispose();
+      }
+      if (!denseZones.length) return;
+
+      const canopyTex = buildForestCanopyTexture();
+      const cellW = meshW / (cols - 1 || 1);
+      const cellD = meshD / (rows - 1 || 1);
+      const quadGeo = new THREE.PlaneGeometry(Math.max(cellW * 1.35, 0.05), Math.max(cellD * 1.35, 0.05));
+      quadGeo.rotateX(-Math.PI / 2);
+
+      for (const { zone, ring, inset } of zoneRings) {
+        const cells = [];
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const lng = west + (c / (cols - 1)) * (east - west);
+            const lat = north - (r / (rows - 1)) * (north - south);
+            if (!pointInPolygon2D(lng, lat, ring)) continue;
+            const isEdge = !pointInPolygon2D(lng, lat, inset);
+            const x = gridToLocalX(c);
+            const z = gridToLocalZ(r);
+            const groundY = elevToLocalY(elevAtRC(r, c), exaggerate);
+            // Underlying CHM cell height (if we have the raster) drives
+            // subtle per-cell variation rather than one flat canopy height
+            // for the whole zone — spec Part 2 step 3.
+            const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
+            const canopyU = Math.max(chmH, 0.3) / metersPerSceneUnit;
+            cells.push({ x, y: groundY + canopyU, z, isEdge });
+          }
+        }
+        if (!cells.length) continue;
+
+        const interiorCells = cells.filter((c) => !c.isEdge);
+        const edgeCells = cells.filter((c) => c.isEdge);
+        for (const [group, opacity] of [[interiorCells, 0.92], [edgeCells, 0.55]]) {
+          if (!group.length) continue;
+          const inst = new THREE.InstancedMesh(
+            quadGeo,
+            new THREE.MeshLambertMaterial({ map: canopyTex, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: opacity > 0.8 }),
+            group.length
+          );
+          const m = new THREE.Matrix4();
+          const q = new THREE.Quaternion();
+          const v = new THREE.Vector3();
+          const s = new THREE.Vector3(1, 1, 1);
+          group.forEach((p, idx) => {
+            const scale = p.isEdge ? 0.6 + deterministicJitter(idx) * 0.3 : 0.85 + deterministicJitter(idx) * 0.3;
+            v.set(p.x, p.y, p.z);
+            s.set(scale, 1, scale);
+            m.compose(v, q, s);
+            inst.setMatrixAt(idx, m);
+          });
+          inst.instanceMatrix.needsUpdate = true;
+          groupForest.add(inst);
+        }
+      }
+    };
+    buildForestTexture();
+
+    // Confirm the before/after instance-count reduction textually, not just
+    // by eyeballing the render (spec Part 2 performance note).
+    const forestStatsEl = document.getElementById(`${ctrlId}-forest-stats`);
+    if (forestStatsEl && forestStats?.interiorSkipped) {
+      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as textured canopy instead of ${forestStats.interiorSkipped} individual tree${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still individually rendered, sparse areas + zone edges).`;
+    }
 
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
@@ -3048,6 +3170,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildParcelBoundary();
         buildZoneOverlays();
         buildTrees();
+        buildForestTexture();
       });
     }
 
@@ -3065,6 +3188,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupSwale.visible = !!cb.checked;
         } else if (layer === 'trees') {
           groupTrees.visible = !!cb.checked;
+        } else if (layer === 'forest-texture') {
+          groupForest.visible = !!cb.checked;
         }
       });
     });
@@ -3236,6 +3361,62 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     setVisible(type, visible) { groups.get(type)?.traverse((o) => { o.visible = visible; }); },
     dispose() { for (const group of groups.values()) { group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); }); scene.remove(group); } },
   };
+}
+
+// Procedural aerial-canopy-look texture for dense-forest render zones
+// (tree-rendering-fix-and-forest-texture, Part 2 step 1) — no external
+// image asset needed, and it works offline. Cached: the pattern doesn't
+// depend on report data, so every parcel reuses the same GPU texture.
+let _forestCanopyTexture = null;
+function buildForestCanopyTexture() {
+  if (_forestCanopyTexture) return _forestCanopyTexture;
+  const size = 128;
+  const canvas = document.createElement('canvas');
+  canvas.width = size; canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#2c6e3f';
+  ctx.fillRect(0, 0, size, size);
+  // Layered blotches at a few scales read as an aerial canopy view far
+  // better than a flat color — dark gaps between crowns, bright crown tops.
+  const blotch = (n, rMin, rMax, colors) => {
+    for (let i = 0; i < n; i++) {
+      const x = deterministicJitter(i * 7 + 1) * size;
+      const y = deterministicJitter(i * 13 + 2) * size;
+      const r = rMin + deterministicJitter(i * 19 + 3) * (rMax - rMin);
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  };
+  blotch(40, 6, 14, ['#245c35', '#1e4d2c']); // shadow gaps between crowns
+  blotch(70, 4, 10, ['#3d8a52', '#357a48', '#2f6e40']); // mid crown tone
+  blotch(90, 1.5, 4, ['#4fa864', '#5cb872']); // sunlit crown highlights
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  _forestCanopyTexture = tex;
+  return tex;
+}
+
+/** Deterministic 0..1 pseudo-random, seeded by an integer index. */
+function deterministicJitter(i) {
+  const x = Math.sin(i * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+/**
+ * Sample a CHM raster (report.canopy.chm: {rows, cols, values_m}) at a
+ * terrain-grid cell, mapping between the two grids' resolutions (the CHM is
+ * usually coarser than the terrain elevation sample grid). Returns null if
+ * no CHM raster is available.
+ */
+function sampleChmHeight(chm, r, c, terrainRows, terrainCols) {
+  if (!chm?.values_m?.length || !chm.rows || !chm.cols) return null;
+  const cr = Math.min(chm.rows - 1, Math.round((r / Math.max(terrainRows - 1, 1)) * (chm.rows - 1)));
+  const cc = Math.min(chm.cols - 1, Math.round((c / Math.max(terrainCols - 1, 1)) * (chm.cols - 1)));
+  const v = chm.values_m[cr * chm.cols + cc];
+  return Number.isFinite(v) ? v : null;
 }
 
 function topoHeatHtml(topo) {

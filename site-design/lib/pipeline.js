@@ -123,7 +123,7 @@ export async function generateSiteReport(input = {}) {
       available: false,
       error: e.message,
     })),
-    buildCanopyLayer(bbox, { size: 64, ring }).catch((e) => ({
+    buildCanopyLayer(bbox, { size: 64, ring, force: input.force }).catch((e) => ({
       available: false,
       error: e.message,
     })),
