@@ -2115,6 +2115,11 @@ function terrain3dBlock(id, report) {
           Dense forest (billboard trees)
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="roads" />
+          <span style="display:inline-block;width:14px;height:2px;background:#f0c040;vertical-align:middle;border-radius:1px"></span>
+          Roads
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Exag</span>
           <input type="range" min="0.5" max="6" step="0.1" value="1" data-terrain-exag="${esc(id)}" style="width:90px;vertical-align:middle" />
           <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
@@ -2863,6 +2868,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
     scene.add(groupForest);
 
+    // --- Roads layer ---
+    const groupRoads = new THREE.Group(); groupRoads.name = 'roads';
+    scene.add(groupRoads);
+
     // A dense zone's hull is convex (built by convexHull upstream), so
     // scaling its points toward the centroid by a factor < 1 is a correct,
     // cheap inset polygon — used to tell "deep interior" (one flat textured
@@ -2914,7 +2923,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
             // (heightScale), not the horizontal metersPerSceneUnit — otherwise
             // trees render at 1:1 horizontal scale while the terrain is
             // vertically compressed to 5%, making trees look enormously tall.
-            const heightU = heightM * heightScale * exaggerate;
+            let heightU = heightM * heightScale * exaggerate;
+            // Sanity cap: no tree taller than 12% of the terrain mesh diagonal.
+            const maxTreeU = Math.sqrt(meshW * meshW + meshD * meshD) * 0.12;
+            if (heightU > maxTreeU) {
+              console.warn(`Tree height capped: ${heightM.toFixed(1)}m → heightU ${heightU.toFixed(3)} > max ${maxTreeU.toFixed(3)} scene units (mesh ${meshW.toFixed(1)}×${meshD.toFixed(1)}, scale=${heightScale.toFixed(4)}, exag=${exaggerate.toFixed(1)})`);
+              heightU = maxTreeU;
+            }
             zoneCells.push({ x, groundY, z, isEdge, heightM, heightU, idx: zoneCells.length });
           }
         }
@@ -2936,6 +2951,67 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         });
     };
     buildForestTexture();
+
+    // --- Roads layer ---
+    let roadsGeoJSON = null;
+    const buildRoads = () => {
+      while (groupRoads.children.length) {
+        const c = groupRoads.children[0];
+        groupRoads.remove(c);
+        c.geometry?.dispose();
+        c.material?.dispose();
+      }
+      if (!roadsGeoJSON?.features?.length) return;
+
+      // Offset slightly above terrain to avoid z-fighting
+      const roadOffset = 0.015;
+      const roadColor = 0xf0c040; // gold/yellow for visibility
+      const majorColor = 0xe87830; // orange for motorway/trunk/primary
+
+      for (const feature of roadsGeoJSON.features) {
+        if (feature.geometry?.type !== 'LineString') continue;
+        const coords = feature.geometry.coordinates;
+        if (!coords || coords.length < 2) continue;
+
+        const highwayType = feature.properties?.highway || 'road';
+        const isMajor = ['motorway', 'trunk', 'primary'].includes(highwayType);
+        const color = isMajor ? majorColor : roadColor;
+        const lineWidth = isMajor ? 0.06 : 0.035;
+
+        const points = [];
+        for (const [lng, lat] of coords) {
+          // Convert lng/lat to grid indices, then to local scene coords
+          const c = (lng - west) / (east - west) * (cols - 1);
+          const r = (north - lat) / (north - south) * (rows - 1);
+          const x = gridToLocalX(Math.max(0, Math.min(cols - 1, c)));
+          const z = gridToLocalZ(Math.max(0, Math.min(rows - 1, r)));
+          const y = elevToLocalY(elevAtRC(r, c), exaggerate) + roadOffset;
+          points.push(new THREE.Vector3(x, y, z));
+        }
+
+        if (points.length < 2) continue;
+
+        // Create a tube or simple line for each road segment
+        const curve = new THREE.CatmullRomCurve3(points, false, 'catmullrom', 0.5);
+        const tubeGeo = new THREE.TubeGeometry(curve, Math.min(points.length * 2, 64), lineWidth, 4, false);
+        const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, depthWrite: true });
+        const mesh = new THREE.Mesh(tubeGeo, mat);
+        mesh.renderOrder = 1;
+        groupRoads.add(mesh);
+      }
+    };
+
+    // Fetch roads data async, then build
+    fetch('/api/roads', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ bbox: { west, south, east, north } }),
+    }).then((r) => r.json()).then((data) => {
+      roadsGeoJSON = data;
+      buildRoads();
+    }).catch((e) => {
+      console.warn('Roads layer fetch failed', e);
+    });
 
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
@@ -3042,6 +3118,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildParcelBoundary();
         buildZoneOverlays();
         buildForestTexture();
+        buildRoads();
       });
     }
 
@@ -3059,6 +3136,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupSwale.visible = !!cb.checked;
         } else if (layer === 'forest-texture') {
           groupForest.visible = !!cb.checked;
+        } else if (layer === 'roads') {
+          groupRoads.visible = !!cb.checked;
         }
       });
     });
