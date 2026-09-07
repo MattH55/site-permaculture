@@ -321,7 +321,7 @@ function mainPostInit() {
   $('btn-open-plant')?.addEventListener('click', () => switchReportPane('plant'));
   $('tab-site')?.addEventListener('click', () => switchReportPane('overview'));
   $('tab-plant')?.addEventListener('click', () => switchReportPane('plant'));
-  $('btn-pdf-all')?.addEventListener('click', downloadFullPdf);
+  $('btn-pdf-all')?.addEventListener('click', requestFullPdfDownload);
 
   // Global nav helpers (onclick-safe; survives re-renders)
   window.__eeNav = (pane) => {
@@ -1410,7 +1410,6 @@ function renderReport(r) {
       ${buildFindingsHtml(r, ctx, { forPdf: true })}
       <p class="fine" style="margin-top:1rem">
         Planning guidance for Land Intelligence — not engineered drawings.
-        mhalma@opensourcemed.info
       </p>
     </div>`;
     }
@@ -1424,13 +1423,6 @@ function renderReport(r) {
   } catch (e) {
     console.warn('planting pane render failed', e);
   }
-  setTimeout(() => {
-    try {
-      injectSectionPdfButtons();
-    } catch (e) {
-      console.warn('pdf buttons failed', e);
-    }
-  }, 200);
 }
 
 /** Tear down a Leaflet map on a container without throwing parentNode errors. */
@@ -8721,8 +8713,8 @@ function nextStepsSection(r, idSuffix = 'main') {
       <div class="next-step-panel inquiry-panel">
         <h3>Make an inquiry</h3>
         <p class="fine">
-          Send your selected interventions and site report summary to
-          <strong>mhalma@opensourcemed.info</strong>. We’ll follow up to schedule a site walk.
+          Send your selected interventions and site report summary to Land Intelligence.
+          We’ll follow up to schedule a site walk.
         </p>
         <div class="inquiry-form">
           <label>
@@ -8898,9 +8890,11 @@ function bindNextStepsInteractions(r) {
     });
 
     downloadBtn?.addEventListener('click', () => {
+      // The only way to get a document out of the report is the gated,
+      // branded PDF export below — no unstyled browser-print fallback that
+      // could be reached without an email on file.
       if (!state.reportUnlocked) return;
-      if (typeof downloadFullPdf === 'function') downloadFullPdf();
-      else window.print();
+      downloadFullPdf();
     });
 
     root.querySelector('[data-send-inquiry]')?.addEventListener('click', async () => {
@@ -9460,7 +9454,7 @@ function buildPdfDocument(reportEl) {
 
   // Clone report content but strip interactive elements that don't render well in PDF
   const clone = reportEl.cloneNode(true);
-  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
+  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form, .report-unlock-panel, .inquiry-panel, .flow-steps').forEach((el) => el.remove());
 
   // Harden layout: clip overflow, keep cards/rows unsplit, nothing wider than A4
   preparePdfClone(clone);
@@ -9575,107 +9569,26 @@ function el(tag, children, attrs = {}) {
 }
 
 /**
- * Add a PDF download button to each .report-block section.
+ * Entry point for every "Download full PDF" affordance in the UI (the
+ * always-visible rail button included). Enforces the same email-unlock gate
+ * as the "next steps" panel's own download button — there is exactly one
+ * path to a PDF, and it always requires an email on file first. Previously
+ * this button bypassed the gate entirely, and each report section also had
+ * its own ungated quick-download button; both bypasses are removed.
  */
-function injectSectionPdfButtons() {
-  const sections = document.querySelectorAll('#report .report-block');
-  sections.forEach((sec) => {
-    // Don't add twice
-    if (sec.querySelector('.btn-pdf-section')) return;
-    const heading = sec.querySelector('h2');
-    if (!heading) return;
-    const label = heading.textContent.trim();
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-quiet btn-pdf-section';
-    btn.textContent = '⬇ PDF';
-    btn.title = `Download "${label}" as PDF`;
-    btn.style.cssText = 'float:right;font-size:0.75rem;padding:0.15rem 0.5rem;margin-top:-0.2rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s';
-    btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-    btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.6'; });
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      downloadSectionPdf(sec, label);
-    });
-    heading.appendChild(btn);
-  });
-
-  // Also add to planting pane
-  const plantSections = document.querySelectorAll('#planting-pane .report-block, #planting-pane .panel');
-  plantSections.forEach((sec) => {
-    if (sec.querySelector('.btn-pdf-section')) return;
-    const heading = sec.querySelector('h1, h2');
-    if (!heading) return;
-    const label = heading.textContent.trim();
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn-quiet btn-pdf-section';
-    btn.textContent = '⬇ PDF';
-    btn.title = `Download "${label}" as PDF`;
-    btn.style.cssText = 'float:right;font-size:0.75rem;padding:0.15rem 0.5rem;margin-top:-0.2rem;cursor:pointer;opacity:0.6;transition:opacity 0.2s';
-    btn.addEventListener('mouseenter', () => { btn.style.opacity = '1'; });
-    btn.addEventListener('mouseleave', () => { btn.style.opacity = '0.6'; });
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      downloadSectionPdf(sec, label);
-    });
-    heading.appendChild(btn);
-  });
-}
-
-/**
- * Download a single section as PDF.
- */
-async function downloadSectionPdf(sectionEl, label) {
-  if (typeof html2pdf === 'undefined') {
-    setError('PDF library not loaded — try refreshing the page.');
+function requestFullPdfDownload() {
+  if (state.reportUnlocked) {
+    downloadFullPdf();
     return;
   }
-  const btn = sectionEl.querySelector('.btn-pdf-section');
-  const origText = btn?.textContent;
-  if (btn) { btn.textContent = '⏳'; btn.disabled = true; }
-
-  try {
-    // Clone the section so we can modify it for PDF without affecting the page
-    const clone = sectionEl.cloneNode(true);
-    // Remove the PDF button from the clone
-    clone.querySelectorAll('.btn-pdf-section').forEach((b) => b.remove());
-
-    // Strip interactive elements that don't render well in PDF (same list as buildPdfDocument)
-    clone.querySelectorAll('.minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form').forEach((el) => el.remove());
-
-    // Harden layout: clip overflow, keep cards/rows unsplit, nothing wider than A4
-    preparePdfClone(clone);
-
-    // Wrap with a title block for the PDF
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'font-family: system-ui, -apple-system, sans-serif; color: #16211b; padding: 0 4px;';
-
-    // Add a header
-    const hdr = document.createElement('div');
-    hdr.style.cssText = 'margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #5b3a73;';
-    hdr.innerHTML = `
-      <div style="font-size:10px;color:#5b3a73;font-weight:600;letter-spacing:0.5px;text-transform:uppercase">Land Intelligence</div>
-      <div style="font-size:14px;font-weight:700;margin-top:2px">${esc(state.report?.site_name || 'Site report')} — ${esc(label)}</div>
-      <div style="font-size:9px;color:#888;margin-top:2px">${new Date().toLocaleDateString('en-CA')} · Land Intelligence</div>
-    `;
-    wrapper.appendChild(hdr);
-    wrapper.appendChild(clone);
-
-    const fname = pdfFilename(label);
-    // Pin the wrapper to the A4 content width so nothing renders wider than
-    // the page (a detached clone has no width to resolve 100% against).
-    const release = clampPdfToWidth(wrapper);
-    try {
-      await html2pdf().set(pdfOpts(fname)).from(wrapper).save();
-    } finally {
-      release();
-    }
-  } catch (err) {
-    console.error('PDF generation failed:', err);
-    setError(`PDF failed: ${err.message}`);
-  } finally {
-    if (btn) { btn.textContent = origText; btn.disabled = false; }
+  const panel = document.querySelector('.report-unlock-panel');
+  if (panel) {
+    const paneEl = panel.closest('.report-pane');
+    if (paneEl?.id) switchReportPane(paneEl.id.replace(/^pane-/, ''));
+    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    panel.classList.add('flash-attention');
+    setTimeout(() => panel.classList.remove('flash-attention'), 1600);
+    panel.querySelector('[data-report-email]')?.focus();
   }
 }
 

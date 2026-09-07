@@ -1110,6 +1110,15 @@ h3 { font-size: 1.08rem; }
   margin: 0 0 0.35rem;
   font-size: 1.15rem;
 }
+/* Draws the eye to the email-unlock panel when the always-visible "Download
+   full PDF" button is clicked before an email is on file. */
+.next-step-panel.flash-attention {
+  animation: flash-attention-pulse 0.8s ease-in-out 2;
+}
+@keyframes flash-attention-pulse {
+  0%, 100% { box-shadow: none; }
+  50% { box-shadow: 0 0 0 3px var(--accent, #5b3a73); }
+}
 .report-unlock-form,
 .inquiry-form {
   display: flex;
