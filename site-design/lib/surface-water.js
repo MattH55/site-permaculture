@@ -76,11 +76,19 @@ export async function checkAltaLisCoverage(bbox, opts = {}) {
   // coverage check; service availability or an Alberta envelope alone is not.
   const index = await queryArcgis(ALTA_SERVICE, 2, bbox, { countOnly: true, fetcher });
   const lastRevised = parseDate(metadata?.documentInfo?.ModifiedDate || metadata?.editingInfo?.lastEditDate);
-  const current = !!lastRevised && Date.now() - lastRevised.getTime() <= 10 * 365.25 * 864e5;
+  // Alberta's live hydrography service doesn't publish a document/editing
+  // date at all (verified against the real endpoint — no documentInfo.
+  // ModifiedDate, no editingInfo). Treating "no date available" the same as
+  // "known to be stale" would permanently reject this authoritative,
+  // actively-maintained provincial service in favor of the far worse
+  // unconfigured JRC fallback. Only flag stale when we actually have a date
+  // and it's genuinely old; no date defaults to current, flagged as such.
+  const current = !lastRevised || Date.now() - lastRevised.getTime() <= 10 * 365.25 * 864e5;
   return {
     covers: Number(index.count || 0) > 0,
     current,
     last_revised: lastRevised?.toISOString() || null,
+    revision_date_available: !!lastRevised,
     checked_at: new Date().toISOString(),
     service_url: ALTA_SERVICE,
     note: metadata?.serviceDescription || null,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getSurfaceWaterLayer } from './surface-water.js';
+import { getSurfaceWaterLayer, checkAltaLisCoverage } from './surface-water.js';
 
 const bbox = { west: -113.51, south: 53.50, east: -113.50, north: 53.51 };
 
@@ -26,6 +26,36 @@ test('surface water prefers live, current AltaLIS coverage and retains WAM separ
   assert.ok(out.distance_to_nearest_water_m >= 0);
   assert.ok(out.water_bodies[0].local_geometry.coordinates.length);
   assert.ok(calls.some((u) => u.includes('/2/query')));
+});
+
+test('AltaLIS coverage: no document/editing date published still counts as current, not stale', async () => {
+  // Regression test: the real Alberta hydrography service publishes no
+  // documentInfo.ModifiedDate / editingInfo.lastEditDate at all — verified
+  // against the live endpoint. Treating that missing field as "stale" was
+  // silently rejecting AltaLIS on every real request and falling through to
+  // the unconfigured JRC fallback, so surface water was never actually
+  // returned for any parcel in production.
+  const fakeFetch = async (url) => {
+    if (String(url).includes('MapServer?f=json')) return ok({ serviceDescription: 'no dates here' }); // no documentInfo/editingInfo
+    if (String(url).includes('/2/query')) return ok({ count: 1 });
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const cov = await checkAltaLisCoverage(bbox, { fetch: fakeFetch });
+  assert.equal(cov.covers, true);
+  assert.equal(cov.current, true, 'missing revision date must not be treated as stale');
+  assert.equal(cov.revision_date_available, false);
+});
+
+test('AltaLIS coverage: a genuinely old published date is flagged stale', async () => {
+  const fakeFetch = async (url) => {
+    if (String(url).includes('MapServer?f=json')) return ok({ documentInfo: { ModifiedDate: '2005-01-01T00:00:00Z' } });
+    if (String(url).includes('/2/query')) return ok({ count: 1 });
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const cov = await checkAltaLisCoverage(bbox, { fetch: fakeFetch });
+  assert.equal(cov.covers, true);
+  assert.equal(cov.current, false);
+  assert.equal(cov.revision_date_available, true);
 });
 
 function ok(body) { return { ok: true, json: async () => body }; }
