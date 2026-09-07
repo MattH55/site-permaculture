@@ -2002,6 +2002,33 @@ function topologySection(topo, a) {
     </section>`;
 }
 
+// Legend colors for the mapped-features toggle row — kept in sync with the
+// `colors` map in mountSemanticTerrainObjects() below (the actual 3D render
+// colors), so the legend swatch always matches what's drawn on the mesh.
+const SEMANTIC_LEGEND_COLORS = {
+  water: '#2a9dc9', surface_water: '#2a9dc9', wetland: '#38a68b', building: '#d88c45',
+  road: '#777777', railway: '#b4b4b4', forest: '#2f8f4e', shrubland: '#77a84e',
+  cropland: '#b1a447', grassland: '#88b858', pipeline: '#e36b35', power: '#f0c64b',
+  protected_area: '#9b75c7',
+};
+
+/** One or more colored line/dot swatches for a mapped-features legend row. */
+function semanticLayerSwatches(type) {
+  const dot = (color) =>
+    `<span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:50%;vertical-align:middle"></span>`;
+  const line = (color, dashed) =>
+    `<span style="display:inline-block;width:14px;height:0;border-top:2px ${dashed ? 'dashed' : 'solid'} ${color};vertical-align:middle"></span>`;
+  if (type === 'keyline') {
+    // Talweg (steel blue), the keyline itself (amber — the reference guide
+    // lines should follow this bearing), guide lines (light amber tint).
+    return `${line('#3a6ea5')}<span class="fine" style="margin:0 0.15rem">talweg</span>${line('#ffb300')}<span class="fine" style="margin:0 0.15rem">keyline</span>${line('#ffdd8a', true)}<span class="fine" style="margin-left:0.15rem">guides</span>`;
+  }
+  if (type === 'frost_pocket') {
+    return `${dot('#4a3b8c')}<span class="fine" style="margin:0 0.15rem">high</span>${dot('#9186c9')}<span class="fine" style="margin-left:0.15rem">moderate</span>`;
+  }
+  return dot(SEMANTIC_LEGEND_COLORS[type] || '#aaaaaa');
+}
+
 /**
  * 3D terrain panel — prefers NRCan HRDEM DTM sample grid, falls back to design DEM.
  * Overlays: contour lines, catchment, pond candidates, swale hillsides.
@@ -2041,6 +2068,7 @@ function terrain3dBlock(id, report) {
     ? Object.entries(semanticCounts).map(([type, count]) => `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-semantic-toggle="${esc(id)}" data-semantic-layer="${esc(type)}" />
+          ${semanticLayerSwatches(type)}
           ${esc(semantic?.layer_labels?.[type] || type.replace(/_/g, ' '))} (${count})
         </label>`).join('')
     : '<span class="fine">No mapped semantic features returned for this AOI.</span>';
