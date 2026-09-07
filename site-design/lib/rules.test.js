@@ -239,7 +239,7 @@ describe('recommendation-values', () => {
     assert.ok(svc.some((s) => s.id === 'shelterbelt_design'));
     const full = svc.find((s) => s.id === 'full_site_design');
     assert.equal(full?.hit_count, 2);
-    assert.equal(EE_SERVICES.full_site_design.href, 'mailto:mhalma@opensourcemed.info');
+    assert.equal(EE_SERVICES.full_site_design.href, 'mailto:matt.halma@gmail.com');
     // water (priority 3) should sort before or with full_site that inherits best 3
     assert.ok(svc[0].best_priority <= svc[svc.length - 1].best_priority);
   });

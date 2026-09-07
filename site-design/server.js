@@ -291,7 +291,7 @@ app.post('/api/lead', async (req, res) => {
 });
 
 /**
- * Inquiry: selected interventions + report summary → mhalma@opensourcemed.info
+ * Inquiry: selected interventions + report summary → matt.halma@gmail.com
  * Body: {
  *   email, name?, phone?, message?,
  *   selected_items: [{ id, label, price_cad? }],
@@ -415,13 +415,13 @@ function inquiryDeliveryAddress() {
   return (
     process.env.INQUIRY_TO ||
     process.env.RESEND_FALLBACK_TO ||
-    'mhalma@opensourcemed.info'
+    'matt.halma@gmail.com'
   );
 }
 
 /** Public Land Intelligence address shown in the body for human forwarding (optional). */
 function inquiryPublicAddress() {
-  return process.env.INQUIRY_PUBLIC_TO || 'mhalma@opensourcemed.info';
+  return process.env.INQUIRY_PUBLIC_TO || 'matt.halma@gmail.com';
 }
 
 /**
@@ -462,7 +462,7 @@ async function sendViaResend({ to, replyTo, subject, text, html }) {
   const fallback =
     process.env.RESEND_FALLBACK_TO ||
     process.env.RESEND_OWNER_EMAIL ||
-    'mhalma@opensourcemed.info';
+    'matt.halma@gmail.com';
 
   const result = await resendSendOnce({
     resendKey,

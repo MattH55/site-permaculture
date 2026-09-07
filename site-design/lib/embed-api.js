@@ -46,7 +46,7 @@ export function buildEmbedRecommendations(body = {}) {
     brand: {
       name: 'Land Intelligence',
       url: '/',
-      email: 'mhalma@opensourcemed.info',
+      email: 'matt.halma@gmail.com',
     },
     site: {
       site_id: record.site_id,
