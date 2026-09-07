@@ -2093,11 +2093,11 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:12px;height:14px;background:#2d7a3a;border-radius:50% 50% 50% 50%/60% 60% 40% 40%;vertical-align:middle"></span>
           Trees
         </label>
-        ${(report?.canopy?.render_zones || []).some((z) => z.render_mode === 'textured') ? `
+        ${(report?.canopy?.render_zones || []).some((z) => z.render_mode === 'billboard_impostor') ? `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
           <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
-          Dense forest (textured)
+          Dense forest (billboard trees)
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Exag</span>
@@ -2845,7 +2845,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // of this conversion, not a copy that can drift out of sync.
     const { metersPerSceneUnit } = groundSceneScale({ west, south, east, north }, meshSize);
     const renderZones = report?.canopy?.available ? (report.canopy.render_zones || []) : [];
-    const denseZones = renderZones.filter((z) => z.render_mode === 'textured');
+    const denseZones = renderZones.filter((z) => z.render_mode === 'billboard_impostor');
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
     scene.add(groupForest);
     let forestStats = null;
@@ -2867,7 +2867,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     });
     const denseZoneAt = (lng, lat) => zoneRings.find((zr) => pointInPolygon2D(lng, lat, zr.ring));
 
+    let treeBuildGeneration = 0;
     const buildTrees = () => {
+      // Guards against a stale async model-load resolving after a newer
+      // buildTrees() call (e.g. the exaggeration slider firing again while
+      // the Kenney GLBs are still loading) and re-populating a group that
+      // has already moved on.
+      const myGeneration = ++treeBuildGeneration;
       while (groupTrees.children.length) {
         const c = groupTrees.children[0];
         groupTrees.remove(c);
@@ -2875,14 +2881,14 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         c.material?.dispose();
       }
 
+      const placements = [];
+
       // Prefer real detected tree instances (canopy.js: HRDEM CHM local-maxima
       // extraction, or the Meta/WRI GEE fallback) — height/crown-radius scale
       // each instance to its actual measured size.
       const canopyTrees = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
       let interiorSkipped = 0;
       if (canopyTrees.length) {
-        const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
-        const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
         for (const t of canopyTrees) {
           // canopy.js tree instances are { x: lat, y: lng, height_m, crown_radius_m }
           const lat = Number(t.x);
@@ -2891,111 +2897,79 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           if (lng < west || lng > east || lat < south || lat > north) continue;
 
           // Dense-woodlot interior: skip the individual mesh — that area is
-          // rendered as textured canopy instead (buildForestTexture below).
-          // A tree still close to the dense/sparse boundary stays instanced
-          // so the transition reads as trees thinning out, not a hard cut.
+          // rendered as a billboard-impostor forest instead (below). A tree
+          // still close to the dense/sparse boundary stays instanced so the
+          // transition reads as trees thinning out, not a hard cut.
           const dz = denseZoneAt(lng, lat);
           if (dz && pointInPolygon2D(lng, lat, dz.inset)) { interiorSkipped++; continue; }
 
           const gc = ((lng - west) / (east - west)) * (cols - 1);
           const gr = ((north - lat) / (north - south)) * (rows - 1);
-          const x = gridToLocalX(gc);
-          const z = gridToLocalZ(gr);
-          const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
-
-          const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(t, metersPerSceneUnit);
-
-          const trunk = new THREE.Mesh(
-            new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6),
-            trunkMat
-          );
-          trunk.position.set(x, y + trunkH / 2, z);
-
-          const canopy = new THREE.Mesh(
-            new THREE.ConeGeometry(crownU, canopyH, 8),
-            canopyMat
-          );
-          canopy.position.set(x, y + trunkH + canopyH / 2, z);
-          canopy.userData.treeInstance = t;
-
-          groupTrees.add(trunk, canopy);
+          placements.push({
+            x: gridToLocalX(gc), z: gridToLocalZ(gr),
+            y: elevToLocalY(elevAtRC(gr, gc), exaggerate),
+            heightM: Number(t.height_m) || 2, crownM: Number(t.crown_radius_m) || 0.6,
+            idx: placements.length,
+          });
         }
         forestStats = {
-          instancedCount: canopyTrees.length - interiorSkipped,
+          instancedCount: placements.length,
           interiorSkipped,
           denseZoneCount: denseZones.length,
         };
-        return;
-      }
-
-      // Fallback: no detected canopy layer — use placeholder positions from
-      // semantic_terrain vegetation features or planted design elements.
-      // Sized from an assumed typical tree (6m tall, 2m crown) converted
-      // through the same real ground-scale factor as detected trees, rather
-      // than a fixed absolute scene-unit size — a constant scene-unit size
-      // is exactly bug #1 from the tree-scale fix (looks fine on a small
-      // lot, wildly oversized once the same 10-unit mesh represents a
-      // multi-km parcel).
-      const treeFeatures = [];
-      const semFeatures = report?.semantic_terrain?.features || [];
-      for (const f of semFeatures) {
-        const layer = f.layer || f.priority_group || '';
-        const ftype = f.feature_type || '';
-        if (layer === 'trees' || layer === 'vegetation' || ftype === 'tree' || ftype === 'vegetation') {
-          if (f.geometry?.coordinates) {
-            treeFeatures.push(f);
+      } else {
+        // Fallback: no detected canopy layer — use placeholder positions from
+        // semantic_terrain vegetation features or planted design elements.
+        // Sized from an assumed typical tree (6m tall, 2m crown) converted
+        // through the same real ground-scale factor as detected trees, rather
+        // than a fixed absolute scene-unit size — a constant scene-unit size
+        // is exactly bug #1 from the tree-scale fix (looks fine on a small
+        // lot, wildly oversized once the same 10-unit mesh represents a
+        // multi-km parcel).
+        const treeFeatures = [];
+        const semFeatures = report?.semantic_terrain?.features || [];
+        for (const f of semFeatures) {
+          const layer = f.layer || f.priority_group || '';
+          const ftype = f.feature_type || '';
+          if (layer === 'trees' || layer === 'vegetation' || ftype === 'tree' || ftype === 'vegetation') {
+            if (f.geometry?.coordinates) treeFeatures.push(f);
           }
         }
-      }
-
-      // Check design_elements for tree plantings with coordinates
-      const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
-      for (const el of designEls) {
-        if ((el.element_type === 'tree' || el.element_type === 'food_forest' || el.element_type === 'windbreak') && el.coordinates) {
-          treeFeatures.push({ geometry: { type: 'Point', coordinates: el.coordinates }, element_type: el.element_type });
+        const designEls = report?.design_elements || report?.recommendations?.priority_ordered || [];
+        for (const el of designEls) {
+          if ((el.element_type === 'tree' || el.element_type === 'food_forest' || el.element_type === 'windbreak') && el.coordinates) {
+            treeFeatures.push({ geometry: { type: 'Point', coordinates: el.coordinates }, element_type: el.element_type });
+          }
+        }
+        for (const f of treeFeatures) {
+          const coords = f.geometry?.coordinates;
+          if (!coords || coords.length < 2) continue;
+          const lng = Number(coords[0]);
+          const lat = Number(coords[1]);
+          if (lng < west || lng > east || lat < south || lat > north) continue;
+          const gc = ((lng - west) / (east - west)) * (cols - 1);
+          const gr = ((north - lat) / (north - south)) * (rows - 1);
+          placements.push({
+            x: gridToLocalX(gc), z: gridToLocalZ(gr),
+            y: elevToLocalY(elevAtRC(gr, gc), exaggerate),
+            heightM: 6, crownM: 2, idx: placements.length,
+          });
         }
       }
 
-      if (treeFeatures.length === 0) return;
-
-      const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
-      const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
-      const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(
-        { height_m: 6, crown_radius_m: 2 }, metersPerSceneUnit
-      );
-      const trunkGeo = new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6);
-      const canopyGeo = new THREE.ConeGeometry(crownU, canopyH, 8);
-
-      for (const f of treeFeatures) {
-        const coords = f.geometry?.coordinates;
-        if (!coords || coords.length < 2) continue;
-
-        const lng = Number(coords[0]);
-        const lat = Number(coords[1]);
-
-        // Convert to local coordinates
-        if (lng < west || lng > east || lat < south || lat > north) continue;
-
-        const gc = ((lng - west) / (east - west)) * (cols - 1);
-        const gr = ((north - lat) / (north - south)) * (rows - 1);
-        const x = gridToLocalX(gc);
-        const z = gridToLocalZ(gr);
-        const y = elevToLocalY(elevAtRC(gr, gc), exaggerate);
-
-        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-        trunk.position.set(x, y + trunkH / 2, z);
-
-        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-        canopy.position.set(x, y + trunkH + canopyH / 2, z);
-
-        groupTrees.add(trunk, canopy);
-      }
+      if (!placements.length) return;
+      loadTreeModels().then((models) => {
+        if (myGeneration !== treeBuildGeneration) return; // superseded
+        renderTreeInstances(groupTrees, placements, models, metersPerSceneUnit);
+      });
     };
     buildTrees();
 
-    // --- Dense-canopy areas: textured, height-displaced surface instead of
-    // individually instanced trees (spec Part 2) ---
+    // --- Dense-canopy areas: billboard-impostor forest instead of
+    // individually instanced trees (spec Part 2, revised) ---
+    let forestBuildGeneration = 0;
     const buildForestTexture = () => {
+      const myGeneration = ++forestBuildGeneration;
       while (groupForest.children.length) {
         const c = groupForest.children[0];
         groupForest.remove(c);
@@ -3004,14 +2978,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
       if (!denseZones.length) return;
 
-      const canopyTex = buildForestCanopyTexture();
-      const cellW = meshW / (cols - 1 || 1);
-      const cellD = meshD / (rows - 1 || 1);
-      const quadGeo = new THREE.PlaneGeometry(Math.max(cellW * 1.35, 0.05), Math.max(cellD * 1.35, 0.05));
-      quadGeo.rotateX(-Math.PI / 2);
-
+      // Sample every terrain-grid cell inside each dense zone once, tagging
+      // edge cells (outside the inset polygon) for the lighter/smaller
+      // treatment that blends the sparse/dense transition.
+      const zoneCells = [];
       for (const { zone, ring, inset } of zoneRings) {
-        const cells = [];
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
             const lng = west + (c / (cols - 1)) * (east - west);
@@ -3025,36 +2996,25 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
             // subtle per-cell variation rather than one flat canopy height
             // for the whole zone — spec Part 2 step 3.
             const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
-            const canopyU = Math.max(chmH, 0.3) / metersPerSceneUnit;
-            cells.push({ x, y: groundY + canopyU, z, isEdge });
+            zoneCells.push({ x, groundY, z, isEdge, heightM: Math.max(chmH, 0.5), idx: zoneCells.length });
           }
         }
-        if (!cells.length) continue;
-
-        const interiorCells = cells.filter((c) => !c.isEdge);
-        const edgeCells = cells.filter((c) => c.isEdge);
-        for (const [group, opacity] of [[interiorCells, 0.92], [edgeCells, 0.55]]) {
-          if (!group.length) continue;
-          const inst = new THREE.InstancedMesh(
-            quadGeo,
-            new THREE.MeshLambertMaterial({ map: canopyTex, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: opacity > 0.8 }),
-            group.length
-          );
-          const m = new THREE.Matrix4();
-          const q = new THREE.Quaternion();
-          const v = new THREE.Vector3();
-          const s = new THREE.Vector3(1, 1, 1);
-          group.forEach((p, idx) => {
-            const scale = p.isEdge ? 0.6 + deterministicJitter(idx) * 0.3 : 0.85 + deterministicJitter(idx) * 0.3;
-            v.set(p.x, p.y, p.z);
-            s.set(scale, 1, scale);
-            m.compose(v, q, s);
-            inst.setMatrixAt(idx, m);
-          });
-          inst.instanceMatrix.needsUpdate = true;
-          groupForest.add(inst);
-        }
       }
+      if (!zoneCells.length) return;
+
+      loadTreeModels().then((models) => Promise.all([models, bakeTreeBillboardAtlas(renderer, models)]))
+        .then(([models, atlas]) => {
+          if (myGeneration !== forestBuildGeneration) return; // superseded
+          if (atlas) {
+            renderBillboardForest(groupForest, zoneCells, atlas, metersPerSceneUnit);
+          } else {
+            // Baking unavailable (GLTFLoader missing, WebGL readback failed,
+            // or no species loaded) — fall back to the flat, procedurally
+            // textured canopy surface so the dense area still reads as
+            // forest rather than showing nothing.
+            renderProceduralForestQuads(groupForest, zoneCells, meshW, meshD, cols, rows, metersPerSceneUnit);
+          }
+        });
     };
     buildForestTexture();
 
@@ -3062,7 +3022,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // by eyeballing the render (spec Part 2 performance note).
     const forestStatsEl = document.getElementById(`${ctrlId}-forest-stats`);
     if (forestStatsEl && forestStats?.interiorSkipped) {
-      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as textured canopy instead of ${forestStats.interiorSkipped} individual tree${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still individually rendered, sparse areas + zone edges).`;
+      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as billboard-impostor forest instead of ${forestStats.interiorSkipped} individually meshed tree${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still individually rendered, sparse areas + zone edges).`;
     }
 
     // --- Contour lines ---
@@ -3397,6 +3357,353 @@ function buildForestCanopyTexture() {
   tex.wrapT = THREE.RepeatWrapping;
   _forestCanopyTexture = tex;
   return tex;
+}
+
+// --- Kenney Nature Kit tree models (CC0 — public/assets/nature-kit) ---
+// tree-rendering-fix-and-forest-texture-instructions, Part 1b: replace the
+// raw cone/cylinder primitives with real low-poly tree assets.
+const TREE_SPECIES = [
+  { key: 'pine', url: '/assets/nature-kit/tree_pineTallA.glb' }, // conifer
+  { key: 'deciduous', url: '/assets/nature-kit/tree_default.glb' },
+  { key: 'oak', url: '/assets/nature-kit/tree_oak.glb' },
+];
+
+let _treeModelsPromise = null;
+/**
+ * Load the Nature Kit tree GLBs once per page session. Each model's scale
+ * factor is `height_m / baseHeight`, where baseHeight is the asset's own
+ * measured bounding-box height (THREE.Box3), never an assumed constant —
+ * this is the actual fix for the "assumed base height" bug (Part 1 bug #2).
+ * A part list (geometry+material per mesh, already baked to the model's
+ * local origin with the base at y=0) lets each species instance with a
+ * plain uniform Matrix4 scale — no non-uniform stretching (bug #4).
+ * A species whose GLB fails to load resolves to null so callers degrade to
+ * the plain cone/cylinder tree for just that species, instead of breaking.
+ */
+function loadTreeModels() {
+  if (_treeModelsPromise) return _treeModelsPromise;
+  if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') {
+    _treeModelsPromise = Promise.resolve(TREE_SPECIES.map(() => null));
+    return _treeModelsPromise;
+  }
+  const loader = new THREE.GLTFLoader();
+  _treeModelsPromise = Promise.all(TREE_SPECIES.map((sp) => new Promise((resolve) => {
+    loader.load(sp.url, (gltf) => {
+      try {
+        const root = gltf.scene;
+        root.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(root);
+        const baseHeight = Math.max(box.max.y - box.min.y, 0.01);
+        const cx = (box.min.x + box.max.x) / 2;
+        const cz = (box.min.z + box.max.z) / 2;
+        const baseY = box.min.y;
+        const parts = [];
+        root.traverse((obj) => {
+          if (obj.isMesh && obj.geometry) {
+            // Bake each mesh's node transform into its geometry so a flat
+            // list of (geometry, material) parts reproduces the model
+            // without needing to keep its original node hierarchy.
+            const geo = obj.geometry.clone();
+            geo.applyMatrix4(obj.matrixWorld);
+            geo.translate(-cx, -baseY, -cz);
+            parts.push({ geometry: geo, material: obj.material });
+          }
+        });
+        resolve(parts.length ? { key: sp.key, parts, baseHeight } : null);
+      } catch (e) {
+        console.warn(`Tree model "${sp.key}" failed to process`, e);
+        resolve(null);
+      }
+    }, undefined, (err) => {
+      console.warn(`Tree model "${sp.key}" failed to load`, err);
+      resolve(null);
+    });
+  })));
+  return _treeModelsPromise;
+}
+
+/**
+ * Context-based species pick (spec Part 1b step 5: "not randomly") — a tree
+ * tall relative to its crown radius reads as a conifer; otherwise a
+ * deterministic (seeded by instance index, not Math.random) weighted split
+ * across the two deciduous variants so a forest doesn't look copy-pasted.
+ */
+function pickTreeSpeciesIndex(heightM, crownM, idx) {
+  const slenderness = heightM / Math.max(crownM, 0.5);
+  if (slenderness > 3) return 0; // pine
+  return deterministicJitter(idx * 31 + 7) < 0.5 ? 1 : 2; // deciduous / oak
+}
+
+/**
+ * Instance a list of tree placements ({x,y,z in scene units, heightM,
+ * crownM, idx}) using the loaded Nature Kit models — one InstancedMesh per
+ * (species, mesh-part) so hundreds to low-thousands of trees stay cheap
+ * (spec Part 1b step 4), with a slight per-instance Y-rotation so identical
+ * models don't all face the same way. Placements whose picked species
+ * failed to load fall back to a plain cone/cylinder tree.
+ */
+function renderTreeInstances(group, placements, models, metersPerSceneUnit) {
+  if (!placements.length) return;
+  const bySpecies = new Map();
+  const fallback = [];
+  for (const p of placements) {
+    const speciesIdx = pickTreeSpeciesIndex(p.heightM, p.crownM, p.idx);
+    const model = models[speciesIdx];
+    if (!model) { fallback.push(p); continue; }
+    if (!bySpecies.has(speciesIdx)) bySpecies.set(speciesIdx, []);
+    bySpecies.get(speciesIdx).push(p);
+  }
+
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const s = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  for (const [speciesIdx, group_] of bySpecies) {
+    const model = models[speciesIdx];
+    for (const part of model.parts) {
+      const inst = new THREE.InstancedMesh(part.geometry, part.material, group_.length);
+      group_.forEach((p, i) => {
+        const scale = Math.max(p.heightM, 0.3) / model.baseHeight;
+        q.setFromAxisAngle(up, deterministicJitter(p.idx * 17 + 3) * Math.PI * 2);
+        v.set(p.x, p.y, p.z);
+        s.set(scale, scale, scale);
+        m.compose(v, q, s);
+        inst.setMatrixAt(i, m);
+      });
+      inst.instanceMatrix.needsUpdate = true;
+      group.add(inst);
+    }
+  }
+
+  if (fallback.length) {
+    // Real asset unavailable (offline / load failure) for these — degrade
+    // to the simple cone/cylinder tree rather than rendering nothing.
+    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
+    const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
+    for (const p of fallback) {
+      const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(
+        { height_m: p.heightM, crown_radius_m: p.crownM }, metersPerSceneUnit
+      );
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6), trunkMat);
+      trunk.position.set(p.x, p.y + trunkH / 2, p.z);
+      const canopy = new THREE.Mesh(new THREE.ConeGeometry(crownU, canopyH, 8), canopyMat);
+      canopy.position.set(p.x, p.y + trunkH + canopyH / 2, p.z);
+      group.add(trunk, canopy);
+    }
+  }
+}
+
+// --- Billboard impostors for dense-canopy zones, baked from the same
+// Nature Kit models used for individual trees (spec Part 2, revised) ---
+
+let _crossBillboardGeo = null;
+/** Unit "billboard cross" — two perpendicular vertical planes, base at
+ * y=0, top at y=1, each ±0.5 wide — scaled per-instance to size. This is
+ * the classic low-cost mass-foliage technique (no per-frame camera-facing
+ * shader needed): from most horizontal viewing angles at least one card
+ * reads close to face-on. */
+function crossBillboardGeometry() {
+  if (_crossBillboardGeo) return _crossBillboardGeo;
+  const positions = [];
+  const uvs = [];
+  const quad = (x0, z0, x1, z1) => {
+    positions.push(
+      x0, 0, z0, x1, 0, z1, x1, 1, z1,
+      x0, 0, z0, x1, 1, z1, x0, 1, z0
+    );
+    uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
+  };
+  quad(-0.5, 0, 0.5, 0);
+  quad(0, -0.5, 0, 0.5);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  geo.computeVertexNormals();
+  _crossBillboardGeo = geo;
+  return geo;
+}
+
+let _billboardAtlasPromise = null;
+/**
+ * Render each loaded tree model to a transparent-background cell in a
+ * shared canvas atlas, using the same WebGLRenderer as the main scene —
+ * this is the "bake billboard impostors from the Kenney models" step,
+ * done once at runtime rather than every frame (a true offline/build-time
+ * bake would need a separate asset pipeline; this renders the same real
+ * models so the far/background trees still visually match the close-up
+ * ones, which is the actual goal). Returns null (caller falls back to the
+ * procedural canopy texture) if no species loaded or baking throws.
+ */
+function bakeTreeBillboardAtlas(renderer, models) {
+  if (_billboardAtlasPromise) return _billboardAtlasPromise;
+  _billboardAtlasPromise = (async () => {
+    const available = models.filter(Boolean);
+    if (!available.length || !renderer) return null;
+    const cell = 128;
+    const atlasCanvas = document.createElement('canvas');
+    atlasCanvas.width = cell;
+    atlasCanvas.height = cell * available.length;
+    const actx = atlasCanvas.getContext('2d');
+
+    const bakeScene = new THREE.Scene();
+    bakeScene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.7);
+    sun.position.set(1, 2, 1);
+    bakeScene.add(sun);
+
+    const target = new THREE.WebGLRenderTarget(cell, cell, { format: THREE.RGBAFormat });
+    const prevTarget = renderer.getRenderTarget();
+    const prevClearColor = new THREE.Color();
+    renderer.getClearColor(prevClearColor);
+    const prevClearAlpha = renderer.getClearAlpha();
+    const cells = {};
+
+    try {
+      available.forEach((model, i) => {
+        const modelGroup = new THREE.Group();
+        for (const part of model.parts) modelGroup.add(new THREE.Mesh(part.geometry, part.material));
+        bakeScene.add(modelGroup);
+
+        const radius = model.baseHeight * 0.55;
+        const halfH = model.baseHeight / 2 + radius * 0.2;
+        const halfW = radius * 1.3;
+        const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, radius * 10);
+        cam.position.set(0, model.baseHeight / 2, radius * 4);
+        cam.lookAt(0, model.baseHeight / 2, 0);
+
+        renderer.setRenderTarget(target);
+        renderer.setClearColor(0x000000, 0);
+        renderer.clear(true, true, true);
+        renderer.render(bakeScene, cam);
+
+        const buf = new Uint8Array(cell * cell * 4);
+        renderer.readRenderTargetPixels(target, 0, 0, cell, cell, buf);
+        // WebGL reads bottom-up; canvas ImageData is top-down — flip rows.
+        const imgData = actx.createImageData(cell, cell);
+        for (let row = 0; row < cell; row++) {
+          const src = (cell - 1 - row) * cell * 4;
+          imgData.data.set(buf.subarray(src, src + cell * 4), row * cell * 4);
+        }
+        actx.putImageData(imgData, 0, i * cell);
+        cells[model.key] = { v0: i / available.length, v1: (i + 1) / available.length };
+
+        bakeScene.remove(modelGroup);
+      });
+    } finally {
+      renderer.setRenderTarget(prevTarget);
+      renderer.setClearColor(prevClearColor, prevClearAlpha);
+      target.dispose();
+    }
+
+    const texture = new THREE.CanvasTexture(atlasCanvas);
+    texture.needsUpdate = true;
+    return { texture, cells, speciesKeys: available.map((m) => m.key) };
+  })().catch((e) => {
+    console.warn('Billboard atlas bake failed — falling back to procedural canopy texture', e);
+    return null;
+  });
+  return _billboardAtlasPromise;
+}
+
+/** Clone the shared unit cross-billboard geometry with its UV v-range
+ * remapped to one atlas cell (each species occupies one horizontal band of
+ * the atlas — see bakeTreeBillboardAtlas). */
+function billboardGeometryForAtlasCell(v0, v1) {
+  const geo = crossBillboardGeometry().clone();
+  const uv = geo.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setY(i, v0 + uv.getY(i) * (v1 - v0));
+  uv.needsUpdate = true;
+  return geo;
+}
+
+/**
+ * Populate a dense-canopy zone with billboard-cross impostors baked from
+ * the real Nature Kit tree models (spec Part 2 steps 1-2), sized from the
+ * CHM per cell (step 3), with edge cells rendered smaller/more transparent
+ * so the sparse (real instanced trees) / dense boundary isn't a hard seam
+ * (step 4 — the actual edge *trees* near the boundary are handled by
+ * renderTreeInstances via the zone's inset polygon; this just softens the
+ * billboard side of that same seam).
+ */
+function renderBillboardForest(group, cells, atlas, metersPerSceneUnit) {
+  const speciesKeys = atlas.speciesKeys;
+  const geomCache = new Map();
+  const geometryFor = (key) => {
+    if (!geomCache.has(key)) geomCache.set(key, billboardGeometryForAtlasCell(atlas.cells[key].v0, atlas.cells[key].v1));
+    return geomCache.get(key);
+  };
+
+  const byGroup = new Map(); // "species|edge" -> cells[]
+  cells.forEach((c) => {
+    const key = speciesKeys[Math.floor(deterministicJitter(c.idx * 13 + 5) * speciesKeys.length) % speciesKeys.length];
+    const groupKey = `${key}|${c.isEdge ? 1 : 0}`;
+    if (!byGroup.has(groupKey)) byGroup.set(groupKey, { key, isEdge: c.isEdge, cells: [] });
+    byGroup.get(groupKey).cells.push(c);
+  });
+
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const s = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
+  for (const { key, isEdge, cells: groupCells } of byGroup.values()) {
+    const material = new THREE.MeshBasicMaterial({
+      map: atlas.texture, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide,
+      opacity: isEdge ? 0.7 : 1,
+    });
+    const inst = new THREE.InstancedMesh(geometryFor(key), material, groupCells.length);
+    groupCells.forEach((c, i) => {
+      const heightU = Math.max(c.heightM, 0.5) / metersPerSceneUnit;
+      const widthU = heightU * (0.45 + deterministicJitter(c.idx * 23 + 11) * 0.2);
+      const sizeMul = isEdge ? 0.55 + deterministicJitter(c.idx) * 0.25 : 0.85 + deterministicJitter(c.idx) * 0.25;
+      q.setFromAxisAngle(up, deterministicJitter(c.idx * 41 + 3) * Math.PI * 2);
+      v.set(c.x, c.groundY, c.z);
+      s.set(widthU * sizeMul, heightU * sizeMul, widthU * sizeMul);
+      m.compose(v, q, s);
+      inst.setMatrixAt(i, m);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    group.add(inst);
+  }
+}
+
+/**
+ * Fallback dense-canopy rendering when the billboard atlas can't be baked
+ * (GLTFLoader unavailable, WebGL readback failed, or no tree model loaded):
+ * the original flat, procedurally-textured aerial canopy quads.
+ */
+function renderProceduralForestQuads(group, cells, meshW, meshD, cols, rows, metersPerSceneUnit) {
+  const canopyTex = buildForestCanopyTexture();
+  const cellW = meshW / (cols - 1 || 1);
+  const cellD = meshD / (rows - 1 || 1);
+  const quadGeo = new THREE.PlaneGeometry(Math.max(cellW * 1.35, 0.05), Math.max(cellD * 1.35, 0.05));
+  quadGeo.rotateX(-Math.PI / 2);
+
+  const interiorCells = cells.filter((c) => !c.isEdge);
+  const edgeCells = cells.filter((c) => c.isEdge);
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const s = new THREE.Vector3(1, 1, 1);
+  for (const [cellGroup, opacity] of [[interiorCells, 0.92], [edgeCells, 0.55]]) {
+    if (!cellGroup.length) continue;
+    const inst = new THREE.InstancedMesh(
+      quadGeo,
+      new THREE.MeshLambertMaterial({ map: canopyTex, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: opacity > 0.8 }),
+      cellGroup.length
+    );
+    cellGroup.forEach((c, idx) => {
+      const canopyU = Math.max(c.heightM, 0.3) / metersPerSceneUnit;
+      const scale = c.isEdge ? 0.6 + deterministicJitter(idx) * 0.3 : 0.85 + deterministicJitter(idx) * 0.3;
+      v.set(c.x, c.groundY + canopyU, c.z);
+      s.set(scale, 1, scale);
+      m.compose(v, q, s);
+      inst.setMatrixAt(idx, m);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    group.add(inst);
+  }
 }
 
 /** Deterministic 0..1 pseudo-random, seeded by an integer index. */

@@ -675,7 +675,7 @@ const DEFAULT_DENSE_COVER_THRESHOLD = 0.55;
 /**
  * Classify the coarse canopy-cover grid into "instanced" (sparse — isolated
  * trees, orchard rows, guild plantings; individually instanced so the user
- * can see/select/plan around specific trees) vs. "textured" (dense —
+ * can see/select/plan around specific trees) vs. "billboard_impostor" (dense —
  * natural woodlot/bush; rendered as a textured, height-displaced surface
  * instead of thousands of individual meshes) render zones, per the
  * tree-rendering-fix-and-forest-texture spec. No new data source — reuses
@@ -687,13 +687,13 @@ const DEFAULT_DENSE_COVER_THRESHOLD = 0.55;
  * @param {number} [denseCoverThreshold] fraction (0-1) of a window's 3×3
  *   neighborhood that must itself carry canopy for the window to count as
  *   "dense" rather than "sparse". Defaults to 0.55.
- * @returns {Array<{geometry:object, render_mode:'instanced'|'textured', avg_canopy_height_m:number, canopy_cover_pct:number}>}
+ * @returns {Array<{geometry:object, render_mode:'instanced'|'billboard_impostor', avg_canopy_height_m:number, canopy_cover_pct:number}>}
  */
 function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
   const threshold = denseCoverThreshold ?? DEFAULT_DENSE_COVER_THRESHOLD;
   const { cells, m, n } = coverGrid;
   const hasCanopy = cells.map((h) => h != null && h >= MIN_CHM_M);
-  const mode = new Array(m * n).fill(null); // 'textured' | 'instanced' | null (no canopy)
+  const mode = new Array(m * n).fill(null); // 'billboard_impostor' | 'instanced' | null (no canopy)
   const coverFracAt = new Array(m * n).fill(0);
 
   for (let r = 0; r < m; r++) {
@@ -710,7 +710,7 @@ function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
       }
       const localCoverFrac = neighborTotal ? neighborCanopy / neighborTotal : 0;
       coverFracAt[idx] = localCoverFrac;
-      mode[idx] = localCoverFrac >= threshold ? 'textured' : 'instanced';
+      mode[idx] = localCoverFrac >= threshold ? 'billboard_impostor' : 'instanced';
     }
   }
 

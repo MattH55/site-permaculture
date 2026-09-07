@@ -8,7 +8,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test lib/rules.test.js lib/embed-plant.test.js lib/pond-hydrology.test.js lib/abmi-lidar.test.js lib/surface-water.test.js lib/canopy.test.js lib/tree-scale.test.js",
+    "test": "node --test lib/rules.test.js lib/embed-plant.test.js lib/pond-hydrology.test.js lib/abmi-lidar.test.js lib/surface-water.test.js lib/canopy.test.js lib/tree-scale.test.js lib/tree-models.test.js",
     "export-crops": "node scripts/export-farmfit-crops.mjs",
     "ingest:land-value": "node scripts/ingest-land-value.mjs",
     "ingest:land-value:calgary": "node scripts/ingest-land-value.mjs calgary --max-tiles 30",

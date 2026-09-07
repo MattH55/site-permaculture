@@ -138,18 +138,18 @@ test('downsample: shape + values preserved', () => {
   for (const v of g.cells) assert.strictEqual(v, 5);
 });
 
-test('classifyCanopyRenderZones: a solid canopy block classifies as textured, a lone tree as instanced', () => {
+test('classifyCanopyRenderZones: a solid canopy block classifies as billboard_impostor, a lone tree as instanced', () => {
   // 10x10 window grid: a dense 6x6 forest block plus one isolated canopy cell.
   const m = 10, n = 10;
   const cells = new Array(m * n).fill(0);
   for (let r = 1; r < 7; r++) for (let c = 1; c < 7; c++) cells[r * n + c] = 8;
   cells[8 * n + 8] = 6; // isolated single-window "tree"
   const zones = classifyCanopyRenderZones({ cells, m, n }, bbox);
-  const textured = zones.filter((z) => z.render_mode === 'textured');
+  const dense = zones.filter((z) => z.render_mode === 'billboard_impostor');
   const instanced = zones.filter((z) => z.render_mode === 'instanced');
-  assert.ok(textured.length >= 1, 'dense block should yield a textured zone');
+  assert.ok(dense.length >= 1, 'dense block should yield a billboard_impostor zone');
   assert.ok(instanced.length >= 1, 'isolated cell should yield an instanced zone');
-  const denseZone = textured[0];
+  const denseZone = dense[0];
   assert.ok(denseZone.avg_canopy_height_m > 0);
   assert.ok(denseZone.canopy_cover_pct > 50, `expected high cover pct, got ${denseZone.canopy_cover_pct}`);
   assert.strictEqual(denseZone.geometry.type, 'Polygon');
