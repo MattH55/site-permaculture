@@ -750,6 +750,7 @@ export {
   fetchSoilSampleGrid,
   querySoilGridsPoint,
   recommendedLabSoilTests,
+  sampleGridPoints,
   AGRASIS_URL,
   AGRASID_URL,
 };
