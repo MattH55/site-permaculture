@@ -3,7 +3,7 @@
  * Draw parcel on topo map → POST /api/report → design report
  */
 
-import { groundSceneScale, treeInstanceDimensions } from './tree-scale.js';
+import { groundSceneScale } from './tree-scale.js';
 
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
@@ -2872,9 +2872,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // A dense zone's hull is convex (built by convexHull upstream), so
     // scaling its points toward the centroid by a factor < 1 is a correct,
-    // cheap inset polygon — used to tell "deep interior" (fully textured,
-    // no individual mesh) from "near the edge" (kept as real tree meshes so
-    // the sparse/dense transition isn't a hard seam — spec Part 2 step 4).
+    // cheap inset polygon — used to tell "deep interior" (one flat textured
+    // zone) from "near the edge" (kept as per-tree billboards so the
+    // sparse/dense transition isn't a hard seam — spec Part 2 step 4).
     const insetPolygon = (ring, factor) => {
       if (!ring.length) return ring;
       const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
@@ -2916,10 +2916,11 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
           if (lng < west || lng > east || lat < south || lat > north) continue;
 
-          // Dense-woodlot interior: skip the individual mesh — that area is
-          // rendered as a billboard-impostor forest instead (below). A tree
-          // still close to the dense/sparse boundary stays instanced so the
-          // transition reads as trees thinning out, not a hard cut.
+          // Dense-woodlot interior: skip the per-tree billboard — that area
+          // is rendered as one flat textured-canopy forest zone instead
+          // (below). A tree still close to the dense/sparse boundary stays
+          // as its own billboard so the transition reads as trees thinning
+          // out, not a hard cut.
           const dz = denseZoneAt(lng, lat);
           if (dz && pointInPolygon2D(lng, lat, dz.inset)) { interiorSkipped++; continue; }
 
@@ -2978,10 +2979,25 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
 
       if (!placements.length) return;
-      loadTreeModels().then((models) => {
-        if (myGeneration !== treeBuildGeneration) return; // superseded
-        renderTreeInstances(groupTrees, placements, models, metersPerSceneUnit);
-      });
+      // Individually meshed trees (full Nature Kit GLB geometry, one full
+      // 3D model per tree) were reading as wildly oversized in the
+      // individual-tree view regardless of the tree-scale math — rendering
+      // every tree as a billboard-impostor (the same textured-cross sprite
+      // used for dense-canopy zones below) sidesteps that entirely and
+      // matches what the user actually wants here: tree *texture*, not
+      // individually meshed trees.
+      loadTreeModels().then((models) => Promise.all([models, bakeTreeBillboardAtlas(renderer, models)]))
+        .then(([models, atlas]) => {
+          if (myGeneration !== treeBuildGeneration) return; // superseded
+          const cells = placements.map((p) => (
+            { x: p.x, groundY: p.y, z: p.z, isEdge: false, heightM: p.heightM, idx: p.idx }
+          ));
+          if (atlas) {
+            renderBillboardForest(groupTrees, cells, atlas, metersPerSceneUnit);
+          } else {
+            renderProceduralForestQuads(groupTrees, cells, meshW, meshD, cols, rows, metersPerSceneUnit);
+          }
+        });
     };
     buildTrees();
 
@@ -3042,7 +3058,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // by eyeballing the render (spec Part 2 performance note).
     const forestStatsEl = document.getElementById(`${ctrlId}-forest-stats`);
     if (forestStatsEl && forestStats?.interiorSkipped) {
-      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as billboard-impostor forest instead of ${forestStats.interiorSkipped} individually meshed tree${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still individually rendered, sparse areas + zone edges).`;
+      forestStatsEl.textContent = ` Dense-canopy zones: ${forestStats.denseZoneCount} area${forestStats.denseZoneCount === 1 ? '' : 's'} rendered as one flat textured-canopy forest zone instead of ${forestStats.interiorSkipped} per-tree billboard${forestStats.interiorSkipped === 1 ? '' : 's'} (${forestStats.instancedCount} tree${forestStats.instancedCount === 1 ? '' : 's'} still rendered as individual billboards, sparse areas + zone edges).`;
     }
 
     // --- Contour lines ---
@@ -3442,80 +3458,11 @@ function loadTreeModels() {
   return _treeModelsPromise;
 }
 
-/**
- * Context-based species pick (spec Part 1b step 5: "not randomly") — a tree
- * tall relative to its crown radius reads as a conifer; otherwise a
- * deterministic (seeded by instance index, not Math.random) weighted split
- * across the two deciduous variants so a forest doesn't look copy-pasted.
- */
-function pickTreeSpeciesIndex(heightM, crownM, idx) {
-  const slenderness = heightM / Math.max(crownM, 0.5);
-  if (slenderness > 3) return 0; // pine
-  return deterministicJitter(idx * 31 + 7) < 0.5 ? 1 : 2; // deciduous / oak
-}
-
-/**
- * Instance a list of tree placements ({x,y,z in scene units, heightM,
- * crownM, idx}) using the loaded Nature Kit models — one InstancedMesh per
- * (species, mesh-part) so hundreds to low-thousands of trees stay cheap
- * (spec Part 1b step 4), with a slight per-instance Y-rotation so identical
- * models don't all face the same way. Placements whose picked species
- * failed to load fall back to a plain cone/cylinder tree.
- */
-function renderTreeInstances(group, placements, models, metersPerSceneUnit) {
-  if (!placements.length) return;
-  const bySpecies = new Map();
-  const fallback = [];
-  for (const p of placements) {
-    const speciesIdx = pickTreeSpeciesIndex(p.heightM, p.crownM, p.idx);
-    const model = models[speciesIdx];
-    if (!model) { fallback.push(p); continue; }
-    if (!bySpecies.has(speciesIdx)) bySpecies.set(speciesIdx, []);
-    bySpecies.get(speciesIdx).push(p);
-  }
-
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const v = new THREE.Vector3();
-  const s = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
-  for (const [speciesIdx, group_] of bySpecies) {
-    const model = models[speciesIdx];
-    for (const part of model.parts) {
-      const inst = new THREE.InstancedMesh(part.geometry, part.material, group_.length);
-      group_.forEach((p, i) => {
-        const scale = Math.max(p.heightM, 0.3) / model.baseHeight;
-        q.setFromAxisAngle(up, deterministicJitter(p.idx * 17 + 3) * Math.PI * 2);
-        v.set(p.x, p.y, p.z);
-        s.set(scale, scale, scale);
-        m.compose(v, q, s);
-        inst.setMatrixAt(i, m);
-      });
-      inst.instanceMatrix.needsUpdate = true;
-      group.add(inst);
-    }
-  }
-
-  if (fallback.length) {
-    // Real asset unavailable (offline / load failure) for these — degrade
-    // to the simple cone/cylinder tree rather than rendering nothing.
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x5c4033 });
-    const canopyMat = new THREE.MeshLambertMaterial({ color: 0x2d7a3a });
-    for (const p of fallback) {
-      const { trunkH, canopyH, crownU, trunkRadiusU } = treeInstanceDimensions(
-        { height_m: p.heightM, crown_radius_m: p.crownM }, metersPerSceneUnit
-      );
-      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(trunkRadiusU * 0.65, trunkRadiusU, trunkH, 6), trunkMat);
-      trunk.position.set(p.x, p.y + trunkH / 2, p.z);
-      const canopy = new THREE.Mesh(new THREE.ConeGeometry(crownU, canopyH, 8), canopyMat);
-      canopy.position.set(p.x, p.y + trunkH + canopyH / 2, p.z);
-      group.add(trunk, canopy);
-    }
-  }
-}
-
-// --- Billboard impostors for dense-canopy zones, baked from the same
-// Nature Kit models used for individual trees (spec Part 2, revised) ---
+// --- Billboard impostors for all trees (sparse + dense-canopy zones),
+// baked from the Nature Kit models — no individually meshed trees are
+// rendered anywhere; the "individual tree view" (full 3D GLB geometry per
+// tree) was reading as wildly oversized, so every tree is now a textured
+// billboard-cross impostor instead (spec Part 2, revised further). ---
 
 let _crossBillboardGeo = null;
 /** Unit "billboard cross" — two perpendicular vertical planes, base at
@@ -3638,13 +3585,11 @@ function billboardGeometryForAtlasCell(v0, v1) {
 }
 
 /**
- * Populate a dense-canopy zone with billboard-cross impostors baked from
- * the real Nature Kit tree models (spec Part 2 steps 1-2), sized from the
- * CHM per cell (step 3), with edge cells rendered smaller/more transparent
- * so the sparse (real instanced trees) / dense boundary isn't a hard seam
- * (step 4 — the actual edge *trees* near the boundary are handled by
- * renderTreeInstances via the zone's inset polygon; this just softens the
- * billboard side of that same seam).
+ * Populate a set of tree cells (sparse trees and dense-canopy zones alike)
+ * with billboard-cross impostors baked from the real Nature Kit tree models
+ * (spec Part 2 steps 1-2), sized from height per cell (step 3), with edge
+ * cells rendered smaller/more transparent so the sparse/dense boundary
+ * isn't a hard seam (step 4).
  */
 function renderBillboardForest(group, cells, atlas, metersPerSceneUnit) {
   const speciesKeys = atlas.speciesKeys;
