@@ -2909,7 +2909,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
             // subtle per-cell variation rather than one flat canopy height
             // for the whole zone — spec Part 2 step 3.
             const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
-            zoneCells.push({ x, groundY, z, isEdge, heightM: Math.max(chmH, 0.5), idx: zoneCells.length });
+            const heightM = Math.max(chmH, 0.5);
+            // Tree height in scene units must use the terrain's vertical scale
+            // (heightScale), not the horizontal metersPerSceneUnit — otherwise
+            // trees render at 1:1 horizontal scale while the terrain is
+            // vertically compressed to 5%, making trees look enormously tall.
+            const heightU = heightM * heightScale * exaggerate;
+            zoneCells.push({ x, groundY, z, isEdge, heightM, heightU, idx: zoneCells.length });
           }
         }
       }
@@ -3486,7 +3492,10 @@ function renderBillboardForest(group, cells, atlas, metersPerSceneUnit) {
     });
     const inst = new THREE.InstancedMesh(geometryFor(key), material, groupCells.length);
     groupCells.forEach((c, i) => {
-      const heightU = Math.max(c.heightM, 0.5) / metersPerSceneUnit;
+      // heightU is pre-computed in buildForestTexture using the terrain's
+      // vertical scale (heightScale * exaggerate), NOT the horizontal
+      // metersPerSceneUnit — see the comment there.
+      const heightU = c.heightU != null ? c.heightU : Math.max(c.heightM, 0.5) / metersPerSceneUnit;
       const widthU = heightU * (0.45 + deterministicJitter(c.idx * 23 + 11) * 0.2);
       const sizeMul = isEdge ? 0.55 + deterministicJitter(c.idx) * 0.25 : 0.85 + deterministicJitter(c.idx) * 0.25;
       q.setFromAxisAngle(up, deterministicJitter(c.idx * 41 + 3) * Math.PI * 2);
@@ -3526,7 +3535,7 @@ function renderProceduralForestQuads(group, cells, meshW, meshD, cols, rows, met
       cellGroup.length
     );
     cellGroup.forEach((c, idx) => {
-      const canopyU = Math.max(c.heightM, 0.3) / metersPerSceneUnit;
+      const canopyU = c.heightU != null ? c.heightU : Math.max(c.heightM, 0.3) / metersPerSceneUnit;
       const scale = c.isEdge ? 0.6 + deterministicJitter(idx) * 0.3 : 0.85 + deterministicJitter(idx) * 0.3;
       v.set(c.x, c.groundY + canopyU, c.z);
       s.set(scale, 1, scale);
