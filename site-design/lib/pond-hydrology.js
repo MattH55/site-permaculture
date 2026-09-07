@@ -93,7 +93,11 @@ export function modelPondHydrology(opts = {}) {
   };
 }
 
-function findOptimalPondLocation(opts) {
+/**
+ * Exported so lib/pond-water-balance.js can site its catchment/CN model on
+ * the same DEM-screened candidate rather than re-deriving pond placement.
+ */
+export function findOptimalPondLocation(opts) {
   const { elevations, rows, cols, bbox } = opts;
   if (!Array.isArray(elevations) || !rows || !cols || elevations.length < rows * cols || !bbox) {
     return { available: false, reason: 'No complete DEM grid and bounding box were supplied.' };

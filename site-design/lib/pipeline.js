@@ -40,6 +40,8 @@ import { generateFecundityReport } from './fecundity-report.js';
 import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
+import { modelPondWaterBalance } from './pond-water-balance.js';
+import { computeSolarHorizonShading } from './solar-horizon-shading.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
 import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { getSurfaceWaterLayer } from './surface-water.js';
@@ -422,6 +424,21 @@ export async function generateSiteReport(input = {}) {
   record.keyline = terrain_derivatives.keyline;
   record.frost_pockets = terrain_derivatives.frost;
 
+  // Real horizon-vs-sun-path solar exposure (terrain self-shading + canopy
+  // shadow-casting), replacing the aspect/slope insolation guess. Reuses
+  // the same HRDEM grid + canopy tree instances already sampled above.
+  record.solar_horizon_shading = computeSolarHorizonShading({
+    elevations: hrdem_terrain?.elevations_m || [],
+    rows: hrdem_terrain?.rows || 0,
+    cols: hrdem_terrain?.cols || 0,
+    bbox,
+    latitude: centre.latitude,
+    longitude: centre.longitude,
+    canopy,
+    dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
+    data_source: hrdem_terrain?.available ? hrdem_terrain.source : 'coarse fallback DEM',
+  });
+
   // Provincial contours — await for report, then attach to record
   const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
   record._provincial_contours = provincialContours;
@@ -514,6 +531,24 @@ export async function generateSiteReport(input = {}) {
   // placeholders set above — make it into the response. allSettled: a slow
   // or failed source degrades that one field, it never fails the report.
   await Promise.allSettled(backgroundPromises);
+
+  // Full pond catchment water balance (SCS/NRCS Curve Number runoff, direct
+  // rainfall, exposure-modulated evaporation, seepage) run over the same
+  // three standard pond-size tiers as pond-hydrology.js, sited at that
+  // module's DEM-screened candidate point. Wind rose only resolves via the
+  // background promises above, so this runs after they settle.
+  record.pond_water_balance = modelPondWaterBalance({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    precipitation: climate,
+    parcel_area_m2: areaHa * 10_000,
+    soil_data,
+    canopy,
+    wind_rose: record.wind_rose,
+    solar: record.solar,
+  });
 
   // proximity_context.amenities was a permanent `[]` stub (see proximity.js)
   // — the real amenity lookup (grocery/hospital/school/fire/fuel via OSM
