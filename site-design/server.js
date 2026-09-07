@@ -18,6 +18,8 @@ import {
 import { groupRecommendationsByValue } from './lib/recommendation-values.js';
 import { fetchGeoOverlays } from './lib/geo-overlays.js';
 
+import { fetchRoadsLayer } from './lib/roads-layer.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // The pipeline fires many concurrent outbound fetch()+AbortController calls
@@ -572,6 +574,25 @@ app.post('/api/geo-overlays', async (req, res) => {
   } catch (e) {
     console.error('geo-overlays failed', e);
     res.status(400).json({ error: e.message || 'geo-overlays failed' });
+  }
+});
+/**
+ * Roads layer for 3D map rendering. Returns GeoJSON road line segments
+ * within the parcel's bounding box.
+ * Body: { bbox: {west, south, east, north} }
+ */
+app.post('/api/roads', async (req, res) => {
+  try {
+    const body = req.body || {};
+    const bbox = body.bbox;
+    if (!bbox || bbox.west == null || bbox.east == null || bbox.south == null || bbox.north == null) {
+      return res.status(400).json({ error: 'bbox {west,south,east,north} required' });
+    }
+    const roads = await fetchRoadsLayer(bbox);
+    res.json(roads);
+  } catch (e) {
+    console.error('roads layer failed', e);
+    res.status(500).json({ error: e.message || 'roads layer failed' });
   }
 });
 
