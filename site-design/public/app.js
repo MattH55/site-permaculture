@@ -3295,10 +3295,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       return { zone: z, ring, inset: insetPolygon(ring, 0.72) };
     });
 
-    // --- Dense-canopy areas: billboard-impostor forest (spec Part 2, revised) ---
-    let forestBuildGeneration = 0;
+    // --- Dense-canopy areas: flat procedural canopy texture (no per-tree
+    // billboards) — a textured quad per grid cell, not individual trees. ---
     const buildForestTexture = () => {
-      const myGeneration = ++forestBuildGeneration;
       while (groupForest.children.length) {
         const c = groupForest.children[0];
         groupForest.remove(c);
@@ -3326,36 +3325,25 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
             // for the whole zone — spec Part 2 step 3.
             const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
             const heightM = Math.max(chmH, 0.5);
-            // Tree height in scene units must use the terrain's vertical scale
-            // (heightScale), not the horizontal metersPerSceneUnit — otherwise
-            // trees render at 1:1 horizontal scale while the terrain is
-            // vertically compressed to 5%, making trees look enormously tall.
-            let heightU = heightM * heightScale * exaggerate;
-            // Sanity cap: no tree taller than 12% of the terrain mesh diagonal.
+            // Real-world scale, same tested formula as treeInstanceDimensions
+            // (tree-scale.js): metersPerSceneUnit is the ONE horizontal-to-
+            // scene conversion factor. Deliberately NOT heightScale/exaggerate
+            // — that factor compresses terrain RELIEF into the mesh's vertical
+            // budget and has nothing to do with a real object's height; tying
+            // canopy offset to it made the texture balloon with the terrain
+            // exaggeration slider (or shrink to a sliver on flat terrain).
+            let heightU = heightM / metersPerSceneUnit;
+            // Sanity cap: canopy offset never exceeds 12% of the mesh
+            // diagonal, so a bad CHM outlier can't blow the texture up.
             const maxTreeU = Math.sqrt(meshW * meshW + meshD * meshD) * 0.12;
-            if (heightU > maxTreeU) {
-              console.warn(`Tree height capped: ${heightM.toFixed(1)}m → heightU ${heightU.toFixed(3)} > max ${maxTreeU.toFixed(3)} scene units (mesh ${meshW.toFixed(1)}×${meshD.toFixed(1)}, scale=${heightScale.toFixed(4)}, exag=${exaggerate.toFixed(1)})`);
-              heightU = maxTreeU;
-            }
+            if (heightU > maxTreeU) heightU = maxTreeU;
             zoneCells.push({ x, groundY, z, isEdge, heightM, heightU, idx: zoneCells.length });
           }
         }
       }
       if (!zoneCells.length) return;
 
-      loadTreeModels().then((models) => Promise.all([models, bakeTreeBillboardAtlas(renderer, models)]))
-        .then(([models, atlas]) => {
-          if (myGeneration !== forestBuildGeneration) return; // superseded
-          if (atlas) {
-            renderBillboardForest(groupForest, zoneCells, atlas, metersPerSceneUnit);
-          } else {
-            // Baking unavailable (GLTFLoader missing, WebGL readback failed,
-            // or no species loaded) — fall back to the flat, procedurally
-            // textured canopy surface so the dense area still reads as
-            // forest rather than showing nothing.
-            renderProceduralForestQuads(groupForest, zoneCells, meshW, meshD, cols, rows, metersPerSceneUnit);
-          }
-        });
+      renderProceduralForestQuads(groupForest, zoneCells, meshW, meshD, cols, rows, metersPerSceneUnit);
     };
     buildForestTexture();
 
@@ -3948,251 +3936,10 @@ function buildForestCanopyTexture() {
   return tex;
 }
 
-// --- Kenney Nature Kit tree models (CC0 — public/assets/nature-kit) ---
-// tree-rendering-fix-and-forest-texture-instructions, Part 1b: replace the
-// raw cone/cylinder primitives with real low-poly tree assets.
-const TREE_SPECIES = [
-  { key: 'pine', url: '/assets/nature-kit/tree_pineTallA.glb' }, // conifer
-  { key: 'deciduous', url: '/assets/nature-kit/tree_default.glb' },
-  { key: 'oak', url: '/assets/nature-kit/tree_oak.glb' },
-];
-
-let _treeModelsPromise = null;
 /**
- * Load the Nature Kit tree GLBs once per page session. Each model's scale
- * factor is `height_m / baseHeight`, where baseHeight is the asset's own
- * measured bounding-box height (THREE.Box3), never an assumed constant —
- * this is the actual fix for the "assumed base height" bug (Part 1 bug #2).
- * A part list (geometry+material per mesh, already baked to the model's
- * local origin with the base at y=0) lets each species instance with a
- * plain uniform Matrix4 scale — no non-uniform stretching (bug #4).
- * A species whose GLB fails to load resolves to null so callers degrade to
- * the plain cone/cylinder tree for just that species, instead of breaking.
- */
-function loadTreeModels() {
-  if (_treeModelsPromise) return _treeModelsPromise;
-  if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') {
-    _treeModelsPromise = Promise.resolve(TREE_SPECIES.map(() => null));
-    return _treeModelsPromise;
-  }
-  const loader = new THREE.GLTFLoader();
-  _treeModelsPromise = Promise.all(TREE_SPECIES.map((sp) => new Promise((resolve) => {
-    loader.load(sp.url, (gltf) => {
-      try {
-        const root = gltf.scene;
-        root.updateMatrixWorld(true);
-        const box = new THREE.Box3().setFromObject(root);
-        const baseHeight = Math.max(box.max.y - box.min.y, 0.01);
-        const cx = (box.min.x + box.max.x) / 2;
-        const cz = (box.min.z + box.max.z) / 2;
-        const baseY = box.min.y;
-        const parts = [];
-        root.traverse((obj) => {
-          if (obj.isMesh && obj.geometry) {
-            // Bake each mesh's node transform into its geometry so a flat
-            // list of (geometry, material) parts reproduces the model
-            // without needing to keep its original node hierarchy.
-            const geo = obj.geometry.clone();
-            geo.applyMatrix4(obj.matrixWorld);
-            geo.translate(-cx, -baseY, -cz);
-            parts.push({ geometry: geo, material: obj.material });
-          }
-        });
-        resolve(parts.length ? { key: sp.key, parts, baseHeight } : null);
-      } catch (e) {
-        console.warn(`Tree model "${sp.key}" failed to process`, e);
-        resolve(null);
-      }
-    }, undefined, (err) => {
-      console.warn(`Tree model "${sp.key}" failed to load`, err);
-      resolve(null);
-    });
-  })));
-  return _treeModelsPromise;
-}
-
-// --- Billboard impostors for all trees (sparse + dense-canopy zones),
-// baked from the Nature Kit models — no individually meshed trees are
-// rendered anywhere; the "individual tree view" (full 3D GLB geometry per
-// tree) was reading as wildly oversized, so every tree is now a textured
-// billboard-cross impostor instead (spec Part 2, revised further). ---
-
-let _crossBillboardGeo = null;
-/** Unit "billboard cross" — two perpendicular vertical planes, base at
- * y=0, top at y=1, each ±0.5 wide — scaled per-instance to size. This is
- * the classic low-cost mass-foliage technique (no per-frame camera-facing
- * shader needed): from most horizontal viewing angles at least one card
- * reads close to face-on. */
-function crossBillboardGeometry() {
-  if (_crossBillboardGeo) return _crossBillboardGeo;
-  const positions = [];
-  const uvs = [];
-  const quad = (x0, z0, x1, z1) => {
-    positions.push(
-      x0, 0, z0, x1, 0, z1, x1, 1, z1,
-      x0, 0, z0, x1, 1, z1, x0, 1, z0
-    );
-    uvs.push(0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1);
-  };
-  quad(-0.5, 0, 0.5, 0);
-  quad(0, -0.5, 0, 0.5);
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  geo.computeVertexNormals();
-  _crossBillboardGeo = geo;
-  return geo;
-}
-
-let _billboardAtlasPromise = null;
-/**
- * Render each loaded tree model to a transparent-background cell in a
- * shared canvas atlas, using the same WebGLRenderer as the main scene —
- * this is the "bake billboard impostors from the Kenney models" step,
- * done once at runtime rather than every frame (a true offline/build-time
- * bake would need a separate asset pipeline; this renders the same real
- * models so the far/background trees still visually match the close-up
- * ones, which is the actual goal). Returns null (caller falls back to the
- * procedural canopy texture) if no species loaded or baking throws.
- */
-function bakeTreeBillboardAtlas(renderer, models) {
-  if (_billboardAtlasPromise) return _billboardAtlasPromise;
-  _billboardAtlasPromise = (async () => {
-    const available = models.filter(Boolean);
-    if (!available.length || !renderer) return null;
-    const cell = 128;
-    const atlasCanvas = document.createElement('canvas');
-    atlasCanvas.width = cell;
-    atlasCanvas.height = cell * available.length;
-    const actx = atlasCanvas.getContext('2d');
-
-    const bakeScene = new THREE.Scene();
-    bakeScene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.7);
-    sun.position.set(1, 2, 1);
-    bakeScene.add(sun);
-
-    const target = new THREE.WebGLRenderTarget(cell, cell, { format: THREE.RGBAFormat });
-    const prevTarget = renderer.getRenderTarget();
-    const prevClearColor = new THREE.Color();
-    renderer.getClearColor(prevClearColor);
-    const prevClearAlpha = renderer.getClearAlpha();
-    const cells = {};
-
-    try {
-      available.forEach((model, i) => {
-        const modelGroup = new THREE.Group();
-        for (const part of model.parts) modelGroup.add(new THREE.Mesh(part.geometry, part.material));
-        bakeScene.add(modelGroup);
-
-        const radius = model.baseHeight * 0.55;
-        const halfH = model.baseHeight / 2 + radius * 0.2;
-        const halfW = radius * 1.3;
-        const cam = new THREE.OrthographicCamera(-halfW, halfW, halfH, -halfH, 0.01, radius * 10);
-        cam.position.set(0, model.baseHeight / 2, radius * 4);
-        cam.lookAt(0, model.baseHeight / 2, 0);
-
-        renderer.setRenderTarget(target);
-        renderer.setClearColor(0x000000, 0);
-        renderer.clear(true, true, true);
-        renderer.render(bakeScene, cam);
-
-        const buf = new Uint8Array(cell * cell * 4);
-        renderer.readRenderTargetPixels(target, 0, 0, cell, cell, buf);
-        // WebGL reads bottom-up; canvas ImageData is top-down — flip rows.
-        const imgData = actx.createImageData(cell, cell);
-        for (let row = 0; row < cell; row++) {
-          const src = (cell - 1 - row) * cell * 4;
-          imgData.data.set(buf.subarray(src, src + cell * 4), row * cell * 4);
-        }
-        actx.putImageData(imgData, 0, i * cell);
-        cells[model.key] = { v0: i / available.length, v1: (i + 1) / available.length };
-
-        bakeScene.remove(modelGroup);
-      });
-    } finally {
-      renderer.setRenderTarget(prevTarget);
-      renderer.setClearColor(prevClearColor, prevClearAlpha);
-      target.dispose();
-    }
-
-    const texture = new THREE.CanvasTexture(atlasCanvas);
-    texture.needsUpdate = true;
-    return { texture, cells, speciesKeys: available.map((m) => m.key) };
-  })().catch((e) => {
-    console.warn('Billboard atlas bake failed — falling back to procedural canopy texture', e);
-    return null;
-  });
-  return _billboardAtlasPromise;
-}
-
-/** Clone the shared unit cross-billboard geometry with its UV v-range
- * remapped to one atlas cell (each species occupies one horizontal band of
- * the atlas — see bakeTreeBillboardAtlas). */
-function billboardGeometryForAtlasCell(v0, v1) {
-  const geo = crossBillboardGeometry().clone();
-  const uv = geo.attributes.uv;
-  for (let i = 0; i < uv.count; i++) uv.setY(i, v0 + uv.getY(i) * (v1 - v0));
-  uv.needsUpdate = true;
-  return geo;
-}
-
-/**
- * Populate a set of tree cells (sparse trees and dense-canopy zones alike)
- * with billboard-cross impostors baked from the real Nature Kit tree models
- * (spec Part 2 steps 1-2), sized from height per cell (step 3), with edge
- * cells rendered smaller/more transparent so the sparse/dense boundary
- * isn't a hard seam (step 4).
- */
-function renderBillboardForest(group, cells, atlas, metersPerSceneUnit) {
-  const speciesKeys = atlas.speciesKeys;
-  const geomCache = new Map();
-  const geometryFor = (key) => {
-    if (!geomCache.has(key)) geomCache.set(key, billboardGeometryForAtlasCell(atlas.cells[key].v0, atlas.cells[key].v1));
-    return geomCache.get(key);
-  };
-
-  const byGroup = new Map(); // "species|edge" -> cells[]
-  cells.forEach((c) => {
-    const key = speciesKeys[Math.floor(deterministicJitter(c.idx * 13 + 5) * speciesKeys.length) % speciesKeys.length];
-    const groupKey = `${key}|${c.isEdge ? 1 : 0}`;
-    if (!byGroup.has(groupKey)) byGroup.set(groupKey, { key, isEdge: c.isEdge, cells: [] });
-    byGroup.get(groupKey).cells.push(c);
-  });
-
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const v = new THREE.Vector3();
-  const s = new THREE.Vector3();
-  const up = new THREE.Vector3(0, 1, 0);
-  for (const { key, isEdge, cells: groupCells } of byGroup.values()) {
-    const material = new THREE.MeshBasicMaterial({
-      map: atlas.texture, transparent: true, alphaTest: 0.3, side: THREE.DoubleSide,
-      opacity: isEdge ? 0.7 : 1,
-    });
-    const inst = new THREE.InstancedMesh(geometryFor(key), material, groupCells.length);
-    groupCells.forEach((c, i) => {
-      // heightU is pre-computed in buildForestTexture using the terrain's
-      // vertical scale (heightScale * exaggerate), NOT the horizontal
-      // metersPerSceneUnit — see the comment there.
-      const heightU = c.heightU != null ? c.heightU : Math.max(c.heightM, 0.5) / metersPerSceneUnit;
-      const widthU = heightU * (0.45 + deterministicJitter(c.idx * 23 + 11) * 0.2);
-      const sizeMul = isEdge ? 0.55 + deterministicJitter(c.idx) * 0.25 : 0.85 + deterministicJitter(c.idx) * 0.25;
-      q.setFromAxisAngle(up, deterministicJitter(c.idx * 41 + 3) * Math.PI * 2);
-      v.set(c.x, c.groundY, c.z);
-      s.set(widthU * sizeMul, heightU * sizeMul, widthU * sizeMul);
-      m.compose(v, q, s);
-      inst.setMatrixAt(i, m);
-    });
-    inst.instanceMatrix.needsUpdate = true;
-    group.add(inst);
-  }
-}
-
-/**
- * Fallback dense-canopy rendering when the billboard atlas can't be baked
- * (GLTFLoader unavailable, WebGL readback failed, or no tree model loaded):
- * the original flat, procedurally-textured aerial canopy quads.
+ * Dense-canopy rendering: a textured quad per grid cell (a canopy texture
+ * draped over the terrain), not individual tree geometry — deliberately no
+ * per-tree billboards/instanced models here.
  */
 function renderProceduralForestQuads(group, cells, meshW, meshD, cols, rows, metersPerSceneUnit) {
   const canopyTex = buildForestCanopyTexture();
