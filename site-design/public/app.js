@@ -148,6 +148,8 @@ const state = {
   vertexMarkers: [],
   paths: null, // [[lng, lat], ...]
   report: null,
+  /** User-placed homestead point (real or proposed house site) — {lat, lon, is_placeholder}. */
+  homesteadPoint: null,
   mode: 'google', // or 'fallback'
   /** Phase 2: filter placement cards by primary/secondary value id, or 'all' */
   valueFilter: 'all',
@@ -1463,6 +1465,9 @@ function mapEmbedSection(idSuffix = 'main') {
   const id = `report-map-${idSuffix}`;
   const legendId = `report-map-legend-${idSuffix}`;
   const statusId = `report-map-status-${idSuffix}`;
+  const homesteadBtnId = `report-map-homestead-btn-${idSuffix}`;
+  const homesteadClearId = `report-map-homestead-clear-${idSuffix}`;
+  const homesteadStatusId = `report-map-homestead-status-${idSuffix}`;
   return `
     <section class="report-block report-map-block">
       <h2>Your parcel</h2>
@@ -1478,6 +1483,13 @@ function mapEmbedSection(idSuffix = 'main') {
       <div id="${id}" class="report-map minimap-embed report-map-unified" role="img" aria-label="Parcel map with provincial contours and HRDEM"></div>
       <div id="${legendId}" class="unified-map-legend minimap-legend" style="margin-top:0.45rem"></div>
       <p id="${statusId}" class="fine unified-map-status" style="margin-top:0.35rem"></p>
+      <div class="homestead-controls" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
+        <button type="button" id="${homesteadBtnId}" class="btn-quiet" style="font-size:0.8rem">
+          📍 Place your homestead (real or proposed)
+        </button>
+        <button type="button" id="${homesteadClearId}" class="btn-quiet" style="font-size:0.8rem;display:none">Clear</button>
+        <span id="${homesteadStatusId}" class="fine" style="opacity:0.85"></span>
+      </div>
     </section>`;
 }
 
@@ -1585,6 +1597,91 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     }).addTo(map);
     parcelLayer.bindPopup('<strong>Your parcel</strong><br/>Boundary you drew');
     overlays['Your parcel'] = parcelLayer;
+
+    // --- Homestead point placement (zone-sector-overlay-instructions.md) ---
+    // A user-placeable "real or proposed" house location, anchoring the
+    // permaculture zone/sector overlay. This wires up the placement UI +
+    // client-side state; the zone-ring/sector computation itself is a
+    // separate follow-up. Element ids follow the same idSuffix pattern the
+    // legend/status lookups below use.
+    try {
+      const idSuffix = el.id.replace(/^report-map-/, '');
+      const homesteadBtn = document.getElementById(`report-map-homestead-btn-${idSuffix}`);
+      const homesteadClearBtn = document.getElementById(`report-map-homestead-clear-${idSuffix}`);
+      const homesteadStatusEl = document.getElementById(`report-map-homestead-status-${idSuffix}`);
+      let homesteadMarker = null;
+      let placingHomestead = false;
+
+      const homesteadIcon = L.divIcon({
+        className: 'homestead-marker-icon',
+        html: '<div style="font-size:22px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6))">🏠</div>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 20],
+      });
+
+      const updateHomesteadUi = () => {
+        const pt = state.homesteadPoint;
+        if (homesteadClearBtn) homesteadClearBtn.style.display = pt ? 'inline-block' : 'none';
+        if (homesteadBtn) {
+          homesteadBtn.textContent = placingHomestead
+            ? 'Click the map to place your homestead…'
+            : pt ? '📍 Move your homestead' : '📍 Place your homestead (real or proposed)';
+        }
+        if (homesteadStatusEl) {
+          homesteadStatusEl.textContent = pt
+            ? `Homestead at ${pt.lat.toFixed(5)}, ${pt.lon.toFixed(5)}${pt.is_placeholder ? ' (placeholder)' : ''}`
+            : 'No homestead placed yet — zone/sector planning defaults to the parcel centre until you place one.';
+        }
+      };
+
+      const setHomesteadPoint = (lat, lon) => {
+        state.homesteadPoint = { lat, lon, is_placeholder: false };
+        if (homesteadMarker) {
+          homesteadMarker.setLatLng([lat, lon]);
+        } else {
+          homesteadMarker = L.marker([lat, lon], { icon: homesteadIcon, draggable: true })
+            .addTo(map)
+            .bindPopup('<strong>Homestead</strong><br/>Real or proposed house site — drag to adjust');
+          homesteadMarker.on('dragend', () => {
+            const ll = homesteadMarker.getLatLng();
+            state.homesteadPoint = { lat: ll.lat, lon: ll.lng, is_placeholder: false };
+            updateHomesteadUi();
+          });
+        }
+        updateHomesteadUi();
+      };
+
+      if (state.homesteadPoint) setHomesteadPoint(state.homesteadPoint.lat, state.homesteadPoint.lon);
+      updateHomesteadUi();
+
+      if (homesteadBtn) {
+        // Assignment (not addEventListener) so a remount of this map
+        // (mountUnifiedPropertyMap re-runs on report reload/resize) replaces
+        // the handler instead of stacking a duplicate on the same button.
+        homesteadBtn.onclick = () => {
+          placingHomestead = !placingHomestead;
+          map.getContainer().style.cursor = placingHomestead ? 'crosshair' : '';
+          updateHomesteadUi();
+        };
+      }
+      if (homesteadClearBtn) {
+        homesteadClearBtn.onclick = () => {
+          state.homesteadPoint = null;
+          if (homesteadMarker) { map.removeLayer(homesteadMarker); homesteadMarker = null; }
+          placingHomestead = false;
+          map.getContainer().style.cursor = '';
+          updateHomesteadUi();
+        };
+      }
+      map.on('click', (ev) => {
+        if (!placingHomestead) return;
+        placingHomestead = false;
+        map.getContainer().style.cursor = '';
+        setHomesteadPoint(ev.latlng.lat, ev.latlng.lng);
+      });
+    } catch (e) {
+      console.warn('Homestead placement UI skipped', e);
+    }
 
     const legendEl = document.getElementById(
       el.id.replace('report-map-', 'report-map-legend-')
