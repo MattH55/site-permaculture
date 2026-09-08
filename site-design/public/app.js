@@ -1582,6 +1582,25 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
     ).addTo(map);
 
     const overlays = {};
+    // Layer-control instance is created once all the synchronous overlays
+    // below are registered, but declared here (with the helper to add to it
+    // later) so async overlays — the zone/sector overlay, added once a
+    // homestead point is placed, which can happen well after this initial
+    // mount — can register into the same control instead of only ever
+    // addTo(map) with no toggle.
+    let layerControl = null;
+    const addDynamicOverlay = (name, layer) => {
+      try {
+        layer.addTo(map);
+        if (layerControl) {
+          layerControl.addOverlay(layer, name);
+        } else {
+          layerControl = L.control.layers({ Imagery: imagery }, { ...overlays, [name]: layer }, { collapsed: true }).addTo(map);
+        }
+      } catch (e) {
+        console.warn('dynamic overlay add skipped', e);
+      }
+    };
     try {
       const hrdemLayer = addHrdemWmsToMap(map, report);
       if (hrdemLayer) overlays['HRDEM hillshade'] = hrdemLayer;
@@ -1634,6 +1653,88 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
         }
       };
 
+      // --- Zone rings + sun/wind/fire sectors, recomputed whenever the
+      // homestead point moves (zone-sector-overlay-instructions.md). Uses
+      // /api/zone-sectors — stateless, same pattern as /api/plan/evaluate —
+      // fed with the terrain grid + wind rose this map already has in
+      // `report`, not re-fetched.
+      let zoneSectorLayer = null;
+      let zoneSectorGeneration = 0;
+      const ZONE_RING_COLORS = { 0: '#c0392b', 1: '#e67e22', 2: '#f1c40f', 3: '#27ae60', 4: '#16a085', 5: '#7f8c8d' };
+      const clearZoneSectorOverlay = () => {
+        if (!zoneSectorLayer) return;
+        map.removeLayer(zoneSectorLayer);
+        if (layerControl) layerControl.removeLayer(zoneSectorLayer);
+        zoneSectorLayer = null;
+      };
+      const refreshZoneSectorOverlay = async () => {
+        const myGeneration = ++zoneSectorGeneration;
+        clearZoneSectorOverlay();
+        const pt = state.homesteadPoint;
+        if (!pt) return;
+        const grid = terrainGridForReport(report, latlngs);
+        const b = L.latLngBounds(latlngs);
+        const centre = b.getCenter();
+        const bbox = grid?.bbox || { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+        let result;
+        try {
+          const resp = await fetch('/api/zone-sectors', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              homestead_point: pt,
+              latitude: centre.lat, longitude: centre.lng,
+              bbox,
+              elevations: grid?.elevations, rows: grid?.rows, cols: grid?.cols,
+              wind_rose: report?.wind_rose,
+              is_in_alberta: true,
+              parcel_id: `${bbox.west.toFixed(5)},${bbox.south.toFixed(5)},${bbox.east.toFixed(5)},${bbox.north.toFixed(5)}`,
+            }),
+          });
+          result = await resp.json();
+        } catch (e) {
+          console.warn('zone-sector fetch failed', e);
+          return;
+        }
+        if (myGeneration !== zoneSectorGeneration || result?.error) return; // superseded by a newer placement
+
+        const shapes = [];
+        for (const z of result.zones || []) {
+          const ring = (z.geometry?.coordinates?.[0] || []).map(([lng, lat]) => [lat, lng]);
+          if (ring.length < 3) continue;
+          const color = ZONE_RING_COLORS[z.zone_number] || '#999';
+          shapes.push(L.polygon(ring, {
+            color, fillColor: color, fillOpacity: 0.16, weight: 1,
+            dashArray: z.boundary_type === 'euclidean' ? '4,3' : null,
+          }).bindPopup(
+            `<strong>Zone ${esc(z.zone_number)}</strong><br/>` +
+            `<span class="fine">${z.boundary_type === 'euclidean' ? 'Flat-terrain distance ring (no resolved DEM)' : 'Slope-adjusted travel-time ring'}</span>`
+          ));
+        }
+
+        const radiusM = Math.max(b.getNorthEast().distanceTo(b.getSouthWest()) / 2, 200);
+        for (const s of result.sectors?.sun || []) {
+          const fillColor = s.season === 'winter_solstice' ? '#ffb703' : '#ffe066';
+          shapes.push(L.polygon(sectorWedgeLatLngs(pt.lat, pt.lon, s.azimuth_range_deg[0], s.azimuth_range_deg[1], radiusM), {
+            color: 'transparent', fillColor, fillOpacity: 0.28, weight: 0,
+          }).bindPopup(`<strong>☀ Sun sector — ${esc(s.season.replace('_', ' '))}</strong>`));
+        }
+        for (const w of result.sectors?.wind || []) {
+          shapes.push(L.polygon(sectorWedgeLatLngs(pt.lat, pt.lon, w.direction_deg_from, w.direction_deg_to, radiusM * 0.85), {
+            color: 'transparent', fillColor: '#4aa8ff', fillOpacity: 0.22, weight: 0,
+          }).bindPopup(`<strong>💨 ${esc((w.label || 'wind').replace(/_/g, ' '))}</strong>${w.frequency_pct != null ? `<br/>${esc(w.frequency_pct)}% frequency` : ''}`));
+        }
+        for (const f of result.sectors?.fire_risk || []) {
+          shapes.push(L.polygon(sectorWedgeLatLngs(pt.lat, pt.lon, f.direction_deg_from, f.direction_deg_to, radiusM * 0.7), {
+            color: 'transparent', fillColor: '#ff5252', fillOpacity: 0.2, weight: 0,
+          }).bindPopup(`<strong>🔥 Fire-approach sector</strong><br/><span class="fine">${esc(f.basis || '')}</span>`));
+        }
+
+        if (!shapes.length) return;
+        zoneSectorLayer = L.layerGroup(shapes);
+        addDynamicOverlay('Zone rings & sun/wind sectors', zoneSectorLayer);
+      };
+
       const setHomesteadPoint = (lat, lon) => {
         state.homesteadPoint = { lat, lon, is_placeholder: false };
         if (homesteadMarker) {
@@ -1646,9 +1747,11 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
             const ll = homesteadMarker.getLatLng();
             state.homesteadPoint = { lat: ll.lat, lon: ll.lng, is_placeholder: false };
             updateHomesteadUi();
+            refreshZoneSectorOverlay();
           });
         }
         updateHomesteadUi();
+        refreshZoneSectorOverlay();
       };
 
       if (state.homesteadPoint) setHomesteadPoint(state.homesteadPoint.lat, state.homesteadPoint.lon);
@@ -1671,6 +1774,7 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
           placingHomestead = false;
           map.getContainer().style.cursor = '';
           updateHomesteadUi();
+          clearZoneSectorOverlay();
         };
       }
       map.on('click', (ev) => {
@@ -1839,13 +1943,57 @@ function mountUnifiedPropertyMap(el, latlngs, report) {
       console.warn('Tree overlay skipped', e);
     }
 
+    // --- Pond & solar suggestion markers (interactive-planning-mode-instructions.md
+    // "optimal-location overlays") — the report's ranked pond candidates and
+    // top annual-insolation solar zones, already computed server-side. ---
+    try {
+      const pondCandidates = report?.pond_candidate_zones?.candidate_zones || [];
+      if (pondCandidates.length) {
+        const pondMarkers = pondCandidates.map((c) => L.circleMarker([c.lat, c.lon], {
+          radius: c.top_pick ? 9 : 6,
+          color: '#0d7d94',
+          fillColor: c.top_pick ? '#1a9bb5' : '#6fd0e6',
+          fillOpacity: 0.85,
+          weight: c.top_pick ? 2 : 1,
+        }).bindPopup(
+          `<strong>💧 Pond candidate #${esc(c.rank)}${c.top_pick ? ' (top pick)' : ''}</strong><br/>` +
+          `Net annual balance: ${esc(Math.round(c.net_annual_balance_m3 ?? 0))} m³/yr<br/>` +
+          `<span class="fine">Source: ${esc((c.source || '').replace(/_/g, ' '))}</span>`
+        ));
+        overlays['Pond suggestions'] = L.layerGroup(pondMarkers).addTo(map);
+      }
+    } catch (e) {
+      console.warn('Pond suggestion overlay skipped', e);
+    }
+
+    try {
+      const solarZones = report?.solar_horizon_shading?.candidate_zones || [];
+      if (solarZones.length) {
+        const solarShapes = solarZones.map((z) => {
+          const ring = (z.geometry?.coordinates?.[0] || []).map(([lng, lat]) => [lat, lng]);
+          return L.polygon(ring, {
+            color: '#e0a800',
+            fillColor: '#ffe066',
+            fillOpacity: 0.55,
+            weight: 1.5,
+          }).bindPopup(
+            `<strong>☀ Solar candidate</strong><br/>` +
+            `${esc(Math.round(z.annual_insolation_hours))} annual hrs / ${esc(z.winter_insolation_hours.toFixed(1))} winter hrs`
+          );
+        });
+        overlays['Solar suggestions'] = L.layerGroup(solarShapes).addTo(map);
+      }
+    } catch (e) {
+      console.warn('Solar suggestion overlay skipped', e);
+    }
+
     try {
       parcelLayer.bringToFront();
     } catch { /* ignore */ }
 
     try {
       if (Object.keys(overlays).length > 1) {
-        L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
+        layerControl = L.control.layers({ Imagery: imagery }, overlays, { collapsed: true }).addTo(map);
       }
     } catch (e) {
       console.warn('layer control skipped', e);
@@ -1901,6 +2049,55 @@ function elevPayloadFromTopology(report, latlngs) {
     mean_m: topo.elevation_m,
     bbox,
   };
+}
+
+/**
+ * Prefer the high-res HRDEM sample grid (same one the 3D twin's planning
+ * mode uses) for zone-sector cost-distance travel time; fall back to the
+ * coarser topology grid used elsewhere on this map when HRDEM coverage
+ * isn't available.
+ */
+function terrainGridForReport(report, latlngs) {
+  const ht = report?.hrdem_terrain;
+  if (ht?.available && ht.elevations_m?.length && ht.rows && ht.cols) {
+    let bbox = null;
+    if (report?.geometry?.bbox?.length === 4) {
+      const [west, south, east, north] = report.geometry.bbox;
+      bbox = { west, south, east, north };
+    } else if (latlngs?.length) {
+      const b = L.latLngBounds(latlngs);
+      bbox = { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+    }
+    if (bbox) return { elevations: ht.elevations_m, rows: ht.rows, cols: ht.cols, bbox };
+  }
+  const ep = elevPayloadFromTopology(report, latlngs);
+  if (ep) return { elevations: ep.elevations_m, rows: ep.rows, cols: ep.cols, bbox: ep.bbox };
+  return null;
+}
+
+/** Great-circle destination point (Leaflet [lat,lng]) from a bearing + distance in metres. */
+function destinationLatLng(lat, lon, bearingDeg, distanceM) {
+  const R = 6371000;
+  const bearing = (bearingDeg * Math.PI) / 180;
+  const latR = (lat * Math.PI) / 180;
+  const lonR = (lon * Math.PI) / 180;
+  const angDist = distanceM / R;
+  const lat2 = Math.asin(Math.sin(latR) * Math.cos(angDist) + Math.cos(latR) * Math.sin(angDist) * Math.cos(bearing));
+  const lon2 = lonR + Math.atan2(
+    Math.sin(bearing) * Math.sin(angDist) * Math.cos(latR),
+    Math.cos(angDist) - Math.sin(latR) * Math.sin(lat2)
+  );
+  return [(lat2 * 180) / Math.PI, (((lon2 * 180) / Math.PI + 540) % 360) - 180];
+}
+
+/** A filled pie-wedge polygon (as Leaflet [lat,lng][]) from a centre point, sweeping clockwise from fromDeg to toDeg. */
+function sectorWedgeLatLngs(lat, lon, fromDeg, toDeg, radiusM, steps = 16) {
+  const span = ((toDeg - fromDeg + 360) % 360) || 360;
+  const pts = [[lat, lon]];
+  for (let i = 0; i <= steps; i++) {
+    pts.push(destinationLatLng(lat, lon, (fromDeg + (span * i) / steps) % 360, radiusM));
+  }
+  return pts;
 }
 
 /** Fallback water FC when site_map missing (older cached reports). */

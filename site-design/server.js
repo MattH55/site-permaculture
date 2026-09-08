@@ -20,6 +20,7 @@ import { fetchGeoOverlays } from './lib/geo-overlays.js';
 
 import { fetchRoadsLayer } from './lib/roads-layer.js';
 import { evaluatePlanningClick } from './lib/planning-evaluate.js';
+import { computeZoneSectorOverlay } from './lib/zone-sector.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -636,6 +637,29 @@ app.post('/api/plan/evaluate', (req, res) => {
   } catch (e) {
     console.error('plan evaluate failed', e);
     res.status(400).json({ error: e.message || 'plan evaluate failed' });
+  }
+});
+
+/**
+ * Zone & sector overlay (zone-sector-overlay-instructions.md) — permaculture
+ * zone rings (0-5) as slope-adjusted travel-time isochrones from a
+ * user-placed homestead point, plus sun/wind/fire sector wedges. Stateless
+ * like /api/plan/evaluate: the client sends the report slices it already
+ * holds (terrain grid, wind rose) rather than the server re-fetching them.
+ * Body: { homestead_point: {lat,lon,is_placeholder?}, latitude, longitude,
+ *   bbox, elevations?, rows?, cols?, wind_rose?, is_in_alberta?, parcel_id?, opts? }
+ */
+app.post('/api/zone-sectors', (req, res) => {
+  try {
+    const body = req.body || {};
+    if (!body.bbox) {
+      return res.status(400).json({ error: 'bbox {west,south,east,north} is required' });
+    }
+    const result = computeZoneSectorOverlay(body);
+    res.json(result);
+  } catch (e) {
+    console.error('zone-sectors failed', e);
+    res.status(400).json({ error: e.message || 'zone-sectors failed' });
   }
 });
 
