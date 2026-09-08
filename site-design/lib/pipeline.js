@@ -49,6 +49,10 @@ import { getSoilData } from './soil-data.js';
 import { deriveKeylineAndFrost } from './keyline-frost.js';
 import { buildCanopyLayer } from './canopy.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
+import { computePondSuitability } from './suitability-pond.js';
+import { computeSolarSuitability } from './suitability-solar.js';
+import { computeWindSuitability } from './suitability-wind.js';
+import { getWindAtlasBaseline } from './wind-atlas.js';
 
 const cache = new Map();
 
@@ -394,6 +398,12 @@ export async function generateSiteReport(input = {}) {
   backgroundPromises.push(
     getWindRose(centre).then((wr) => {
       record.wind_rose = wr;
+      // Global Wind Atlas regional baseline (wind-atlas.js) — sampled once
+      // per parcel for the wind suitability layer below; falls back to this
+      // same wind rose's mean speed if the atlas itself is unreachable.
+      return getWindAtlasBaseline(centre, { wind_rose: wr }).then((wa) => {
+        record.wind_atlas = wa;
+      });
     }).catch(() => {})
   );
 
@@ -569,6 +579,49 @@ export async function generateSiteReport(input = {}) {
     keypoint: terrain_derivatives.keyline?.primary_valleys?.[0]?.keypoint?.status === 'resolved'
       ? terrain_derivatives.keyline.primary_valleys[0].keypoint
       : null,
+  });
+
+  // Independent location-suitability scoring layers (pond / solar / wind) —
+  // see location-suitability-scoring-instructions.md. Each is scored on its
+  // own criteria and deliberately NOT reconciled against the others here;
+  // where two layers both rate the same spot highly, that's expected.
+  record.pond_suitability = computePondSuitability({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    parcel_area_m2: areaHa * 10_000,
+    soil_data,
+    keyline: terrain_derivatives.keyline,
+    surface_water,
+    dem_confidence: layers.elevation?.available !== false ? 'moderate' : 'insufficient',
+    parcel_id: key,
+  });
+
+  record.solar_suitability = computeSolarSuitability({
+    solar_horizon_shading: record.solar_horizon_shading,
+    elevations: hrdem_terrain?.elevations_m || [],
+    rows: hrdem_terrain?.rows || 0,
+    cols: hrdem_terrain?.cols || 0,
+    bbox,
+    latitude: centre.latitude,
+    canopy,
+    surface_water,
+    dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
+    parcel_id: key,
+  });
+
+  record.wind_suitability = computeWindSuitability({
+    elevations: hrdem_terrain?.elevations_m || [],
+    rows: hrdem_terrain?.rows || 0,
+    cols: hrdem_terrain?.cols || 0,
+    bbox,
+    wind_atlas: record.wind_atlas,
+    wind_rose: record.wind_rose,
+    canopy,
+    parcel_boundary_ring: ring,
+    dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
+    parcel_id: key,
   });
 
   // proximity_context.amenities was a permanent `[]` stub (see proximity.js)
