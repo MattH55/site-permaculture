@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { modelPondWaterBalance } from './pond-water-balance.js';
+import { modelPondWaterBalance, rankPondCandidateZones } from './pond-water-balance.js';
 
 const bowlElevations = [
   10, 10, 10, 10, 10,
@@ -52,4 +52,29 @@ test('monthly time series has all twelve months and reports design storm + dry p
   assert.equal(tier.monthly_level_time_series.length, 12);
   assert.ok(tier.design_storm_peak_inflow_m3 > 0);
   assert.ok(tier.dry_period_minimum_storage_m3 >= 0);
+});
+
+test('rankPondCandidateZones ranks candidates by net annual balance and flags a top pick', () => {
+  const result = rankPondCandidateZones(base);
+  assert.equal(result.available, true);
+  assert.ok(result.candidate_zones.length >= 1);
+  assert.equal(result.candidate_zones[0].top_pick, true);
+  assert.equal(result.candidate_zones[0].rank, 1);
+  for (let i = 1; i < result.candidate_zones.length; i++) {
+    assert.ok(result.candidate_zones[i - 1].net_annual_balance_m3 >= result.candidate_zones[i].net_annual_balance_m3);
+  }
+});
+
+test('rankPondCandidateZones folds in a distinct keyline keypoint as its own candidate', () => {
+  const result = rankPondCandidateZones({
+    ...base,
+    keypoint: { lat: 53.009, lon: -113.991, elevation_m: 9 }, // far corner from the bowl's centre candidate
+  });
+  assert.ok(result.candidate_zones.some((c) => c.source === 'keyline_keypoint'));
+});
+
+test('rankPondCandidateZones reports unavailable with no DEM grid', () => {
+  const result = rankPondCandidateZones({ precipitation: base.precipitation });
+  assert.equal(result.available, false);
+  assert.deepEqual(result.candidate_zones, []);
 });

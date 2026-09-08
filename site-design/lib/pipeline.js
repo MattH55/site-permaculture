@@ -40,7 +40,7 @@ import { generateFecundityReport } from './fecundity-report.js';
 import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
-import { modelPondWaterBalance } from './pond-water-balance.js';
+import { modelPondWaterBalance, rankPondCandidateZones } from './pond-water-balance.js';
 import { computeSolarHorizonShading } from './solar-horizon-shading.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
 import { sampleHrdemTerrain } from './hrdem-terrain.js';
@@ -548,6 +548,27 @@ export async function generateSiteReport(input = {}) {
     canopy,
     wind_rose: record.wind_rose,
     solar: record.solar,
+  });
+
+  // Ranked pond candidate list (interactive-planning "optimal pond overlay"
+  // — interactive-planning-mode-instructions.md) — a short DEM-convergence
+  // + keyline-keypoint candidate list, each run through the same
+  // water-balance model above and ranked by net annual balance, rather than
+  // brute-forcing every point on the parcel.
+  record.pond_candidate_zones = rankPondCandidateZones({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    precipitation: climate,
+    parcel_area_m2: areaHa * 10_000,
+    soil_data,
+    canopy,
+    wind_rose: record.wind_rose,
+    solar: record.solar,
+    keypoint: terrain_derivatives.keyline?.primary_valleys?.[0]?.keypoint?.status === 'resolved'
+      ? terrain_derivatives.keyline.primary_valleys[0].keypoint
+      : null,
   });
 
   // proximity_context.amenities was a permanent `[]` stub (see proximity.js)

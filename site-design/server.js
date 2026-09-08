@@ -19,6 +19,7 @@ import { groupRecommendationsByValue } from './lib/recommendation-values.js';
 import { fetchGeoOverlays } from './lib/geo-overlays.js';
 
 import { fetchRoadsLayer } from './lib/roads-layer.js';
+import { evaluatePlanningClick } from './lib/planning-evaluate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -593,6 +594,48 @@ app.post('/api/roads', async (req, res) => {
   } catch (e) {
     console.error('roads layer failed', e);
     res.status(500).json({ error: e.message || 'roads layer failed' });
+  }
+});
+
+/**
+ * Interactive planning mode — click-to-place live evaluation
+ * (interactive-planning-mode-instructions.md). The client already holds the
+ * full site report in memory (it's what renders the 3D twin), so it sends
+ * back just the slices the relevant model needs plus the clicked point;
+ * this stays stateless like the rest of the API rather than adding a
+ * server-side report cache.
+ * Body: { feature_type: 'solar'|'pond'|'planting', position: {lat,lon},
+ *   user_params?: object, context: object, cache_key?: string }
+ */
+const PLAN_EVAL_CACHE = new Map(); // key -> result; capped, evicts oldest first
+const PLAN_EVAL_CACHE_MAX = 500;
+
+app.post('/api/plan/evaluate', (req, res) => {
+  try {
+    const body = req.body || {};
+    const { feature_type, position, user_params = {}, context = {} } = body;
+    if (!feature_type || !position) {
+      return res.status(400).json({ error: 'feature_type and position {lat, lon} are required' });
+    }
+    // Cache by (feature_type, position, user_params) per spec — cache_key
+    // additionally scopes this to one parcel/report so a stale entry from a
+    // previously-viewed parcel can't be served for a new one (the client
+    // passes something like its polygon+report timestamp as cache_key;
+    // invalidation otherwise falls out naturally since a new report run
+    // changes that key).
+    const key = JSON.stringify({ feature_type, position, user_params, cache_key: body.cache_key || null });
+    if (PLAN_EVAL_CACHE.has(key)) {
+      return res.json({ ...PLAN_EVAL_CACHE.get(key), cached: true });
+    }
+    const result = evaluatePlanningClick({ feature_type, position, user_params, context });
+    if (PLAN_EVAL_CACHE.size >= PLAN_EVAL_CACHE_MAX) {
+      PLAN_EVAL_CACHE.delete(PLAN_EVAL_CACHE.keys().next().value);
+    }
+    PLAN_EVAL_CACHE.set(key, result);
+    res.json({ ...result, cached: false });
+  } catch (e) {
+    console.error('plan evaluate failed', e);
+    res.status(400).json({ error: e.message || 'plan evaluate failed' });
   }
 });
 
