@@ -53,6 +53,9 @@ import { computePondSuitability } from './suitability-pond.js';
 import { computeSolarSuitability } from './suitability-solar.js';
 import { computeWindSuitability } from './suitability-wind.js';
 import { getWindAtlasBaseline } from './wind-atlas.js';
+import { getStructureFootprints } from './structures.js';
+import { computePlantableArea } from './plantable-area.js';
+import { computeBuildingDetection } from './building-detection.js';
 
 const cache = new Map();
 
@@ -395,6 +398,17 @@ export async function generateSiteReport(input = {}) {
     }).catch(() => {})
   );
 
+  // Structure footprints (Microsoft Canadian Building Footprints + OSM,
+  // merged) — fetched once and shared by the plantable-area exclusion
+  // layer, the building-detection/3D layer, and the pond/solar/wind
+  // suitability layers' structure hard-exclusions below (see
+  // building-detection-3d-instructions.md's integration notes).
+  backgroundPromises.push(
+    getStructureFootprints(bbox).then((structures) => {
+      record.structures = structures;
+    }).catch(() => {})
+  );
+
   backgroundPromises.push(
     getWindRose(centre).then((wr) => {
       record.wind_rose = wr;
@@ -594,6 +608,7 @@ export async function generateSiteReport(input = {}) {
     soil_data,
     keyline: terrain_derivatives.keyline,
     surface_water,
+    structures: (record.structures?.footprints || []),
     dem_confidence: layers.elevation?.available !== false ? 'moderate' : 'insufficient',
     parcel_id: key,
   });
@@ -607,6 +622,7 @@ export async function generateSiteReport(input = {}) {
     latitude: centre.latitude,
     canopy,
     surface_water,
+    structures: (record.structures?.footprints || []),
     dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
     parcel_id: key,
   });
@@ -619,8 +635,36 @@ export async function generateSiteReport(input = {}) {
     wind_atlas: record.wind_atlas,
     wind_rose: record.wind_rose,
     canopy,
+    structures: (record.structures?.footprints || []),
     parcel_boundary_ring: ring,
     dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
+    parcel_id: key,
+  });
+
+  // Available planting space — open ground actually usable for new
+  // planting, as discrete patches (not a parcel-wide score). See
+  // plantable-area-identification-instructions.md.
+  record.plantable_area = computePlantableArea({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    parcel_ring: ring,
+    canopy,
+    surface_water,
+    structures: record.structures,
+    soil_data,
+    frost: terrain_derivatives.frost,
+    parcel_id: key,
+  });
+
+  // Detected structures rendered in the 3D twin (footprint → height →
+  // type) — see building-detection-3d-instructions.md. Reuses the same
+  // structures fetch above and the canopy CHM already sampled for height.
+  record.buildings = computeBuildingDetection({
+    structures: record.structures,
+    bbox,
+    canopy,
     parcel_id: key,
   });
 
