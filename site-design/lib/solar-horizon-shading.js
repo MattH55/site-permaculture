@@ -151,8 +151,13 @@ function formatPointResult(r) {
   };
 }
 
-/** Radial DEM sampling: max elevation angle observed at each azimuth. */
-function horizonProfile(ctx) {
+/**
+ * Radial DEM sampling: max elevation angle observed at each azimuth.
+ * Exported so suitability-wind.js can reuse the exact same "how much is
+ * this point shielded by surrounding terrain" geometry for wind exposure
+ * instead of sun visibility — the underlying question is identical.
+ */
+export function horizonProfile(ctx) {
   const { at, rows, cols, bbox, cellWidthM, cellHeightM, r, c, lat, lon, elevation_m } = ctx;
   const profile = [];
   for (let az = 0; az < 360; az += AZIMUTH_STEP_DEG) {
@@ -190,7 +195,7 @@ function horizonProfile(ctx) {
   return profile;
 }
 
-function horizonAngleAt(profile, azimuth) {
+export function horizonAngleAt(profile, azimuth) {
   const az = ((azimuth % 360) + 360) % 360;
   const idx = az / AZIMUTH_STEP_DEG;
   const lo = Math.floor(idx) % profile.length;
