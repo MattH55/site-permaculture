@@ -171,6 +171,17 @@ export const PACKAGE_CATALOG = {
     related_element_types: ['windbreak', 'shelterbelt_zone'],
     rate_service_id: 'shelterbelt',
   },
+  firesmart_fuel_reduction: {
+    id: 'firesmart_fuel_reduction',
+    category: 'shelter',
+    label: 'FireSmart vegetation / fuel-reduction',
+    blurb: 'Thin and space vegetation in the Home Ignition Zones flagged around your structure(s).',
+    cta: 'Discuss FireSmart plan',
+    href: 'mailto:matt.halma@gmail.com',
+    effort: 'medium',
+    fixed_price_cad: 1200,
+    fixed_label: 'FireSmart vegetation-management assessment + first-pass fuel reduction (planning estimate)',
+  },
 };
 
 /** Display order and labels for the four pillars. */
@@ -468,6 +479,31 @@ export function recommendServicePackages(ctx = {}) {
         size: sbQuote?.size,
         unit: sbQuote?.unit,
         default_selected: true,
+      })
+    );
+  }
+
+  // FireSmart fuel-reduction: only when a building's assessment actually
+  // flagged risk — reason is the specific per-zone contributing_factors
+  // from firesmart-zones.js, not a generic "consider FireSmart" note
+  // (firesmart-zone-assessment-instructions.md, step 5).
+  const riskyBuildings = (ctx.firesmart?.assessments || []).filter((a) => a.overall_risk_rating === 'high' || a.overall_risk_rating === 'extreme');
+  if (riskyBuildings.length) {
+    packages.push(
+      packageRec('firesmart_fuel_reduction', {
+        priority: 2,
+        confidence: 'moderate',
+        reason: riskyBuildings
+          .flatMap((a) => a.contributing_factors)
+          .filter((f) => !f.startsWith('No significant'))
+          .slice(0, 4)
+          .join(' '),
+        site_facts: {
+          buildings_flagged: riskyBuildings.length,
+          worst_rating: riskyBuildings.some((a) => a.overall_risk_rating === 'extreme') ? 'extreme' : 'high',
+        },
+        price: fixedPrice(PACKAGE_CATALOG.firesmart_fuel_reduction),
+        default_selected: riskyBuildings.some((a) => a.overall_risk_rating === 'extreme'),
       })
     );
   }

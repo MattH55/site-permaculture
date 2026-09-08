@@ -56,6 +56,7 @@ import { getWindAtlasBaseline } from './wind-atlas.js';
 import { getStructureFootprints } from './structures.js';
 import { computePlantableArea } from './plantable-area.js';
 import { computeBuildingDetection } from './building-detection.js';
+import { computeFireSmartAssessments } from './firesmart-zones.js';
 
 const cache = new Map();
 
@@ -516,31 +517,6 @@ export async function generateSiteReport(input = {}) {
   record.planting_plan = planting_plan;
   record.service_quote = service_quote;
 
-  // Service packages + action menu for "Build Your Plan" UI
-  const servicePackages = recommendServicePackages({
-    design_elements: record.design_elements,
-    predicted_well_depth: record.predicted_well_depth,
-    solar: record.solar,
-    fecundity: record.fecundity,
-    footprint_ha: siteInput.footprint_ha,
-    slope_percent: t.slope_percent,
-    hydrology: siteInput.hydrology,
-    service_quote: record.service_quote,
-    travel_km: proximity.nearest_settlement?.distance_km ?? proximity.nearest_city?.distance_km ?? 40,
-    propertyLabel: siteInput.site_name,
-  });
-  record.service_packages = servicePackages;
-
-  const actionMenu = buildActionMenu({
-    ...record,
-    service_packages: servicePackages,
-    service_quote: record.service_quote,
-    planting_plan: planting_plan,
-    wetlands: wetlands,
-    terrain: { slope_percent: t.slope_percent },
-  });
-  record.action_menu = actionMenu;
-
   if (Array.isArray(record.data_provenance)) {
     record.data_provenance.push({
       field: 'service_quote',
@@ -667,6 +643,48 @@ export async function generateSiteReport(input = {}) {
     canopy,
     parcel_id: key,
   });
+
+  // FireSmart Home Ignition Zone assessment per detected building — a
+  // composite of layers already built (footprint, canopy, tree detections,
+  // slope), no new fetch. See firesmart-zone-assessment-instructions.md.
+  record.firesmart = computeFireSmartAssessments({
+    buildings: record.buildings,
+    canopy,
+    elevations: hrdem_terrain?.elevations_m || [],
+    rows: hrdem_terrain?.rows || 0,
+    cols: hrdem_terrain?.cols || 0,
+    bbox,
+    parcel_id: key,
+  });
+
+  // Service packages + action menu for "Build Your Plan" UI — placed after
+  // buildings/firesmart resolve above so a flagged FireSmart risk can pull
+  // in the fuel-reduction package with its specific per-zone reasoning
+  // (firesmart-zone-assessment-instructions.md, step 5).
+  const servicePackages = recommendServicePackages({
+    design_elements: record.design_elements,
+    predicted_well_depth: record.predicted_well_depth,
+    solar: record.solar,
+    fecundity: record.fecundity,
+    footprint_ha: siteInput.footprint_ha,
+    slope_percent: t.slope_percent,
+    hydrology: siteInput.hydrology,
+    service_quote: record.service_quote,
+    firesmart: record.firesmart,
+    travel_km: proximity.nearest_settlement?.distance_km ?? proximity.nearest_city?.distance_km ?? 40,
+    propertyLabel: siteInput.site_name,
+  });
+  record.service_packages = servicePackages;
+
+  const actionMenu = buildActionMenu({
+    ...record,
+    service_packages: servicePackages,
+    service_quote: record.service_quote,
+    planting_plan: planting_plan,
+    wetlands: wetlands,
+    terrain: { slope_percent: t.slope_percent },
+  });
+  record.action_menu = actionMenu;
 
   // proximity_context.amenities was a permanent `[]` stub (see proximity.js)
   // — the real amenity lookup (grocery/hospital/school/fire/fuel via OSM
