@@ -2413,6 +2413,12 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:14px;height:2px;background:#f0c040;vertical-align:middle;border-radius:1px"></span>
           Roads
         </label>
+        ${report?.buildings?.available ? `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="buildings" />
+          <span style="display:inline-block;width:10px;height:10px;background:#b8a892;border-radius:2px;vertical-align:middle"></span>
+          Buildings
+        </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Exag</span>
           <input type="range" min="0.5" max="6" step="0.1" value="1" data-terrain-exag="${esc(id)}" style="width:90px;vertical-align:middle" />
@@ -3184,6 +3190,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const groupRoads = new THREE.Group(); groupRoads.name = 'roads';
     scene.add(groupRoads);
 
+    // --- Detected structures (building-detection-3d-instructions.md) ---
+    const groupBuildings = new THREE.Group(); groupBuildings.name = 'buildings';
+    scene.add(groupBuildings);
+
     // --- Interactive planning mode (interactive-planning-mode-instructions.md) ---
     // A second *mode* on the same twin, not a separate rendering pipeline:
     // terrain/canopy/existing-structure layers above are untouched: this
@@ -3408,6 +3418,64 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       console.warn('Roads layer fetch failed', e);
     });
 
+    // Detected structures (building-detection.js data) — real, not proposed:
+    // solid materials, same as existing/detected trees, never the ghost/
+    // translucent treatment used for the click-to-place planning overlay.
+    // Procedural extrusion (footprint straight up to height_m, flat cap) is
+    // the reliable renderer for every building here; an asset swap-in for
+    // recognized farm-structure types (barn/shed/garage) is left for when
+    // matching low-poly models are actually added under
+    // /assets/quaternius-farm/ — render_mode_hint is carried through from
+    // the report so that swap-in can key off it without a data-model change.
+    const buildBuildings = () => {
+      while (groupBuildings.children.length) {
+        const c = groupBuildings.children[0];
+        groupBuildings.remove(c);
+        (Array.isArray(c.material) ? c.material : [c.material]).forEach((m) => m?.dispose());
+        c.geometry?.dispose();
+      }
+      const buildings = report?.buildings?.available ? (report.buildings.buildings || []) : [];
+      if (!buildings.length) return;
+
+      const wallMat = new THREE.MeshLambertMaterial({ color: 0xb8a892 });
+      const roofMat = new THREE.MeshLambertMaterial({ color: 0x6b4a3a });
+
+      for (const b of buildings) {
+        const ring = b.geometry?.coordinates?.[0];
+        if (!Array.isArray(ring) || ring.length < 4) continue;
+        const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+        if (closed.length < 3) continue;
+
+        const pts = closed.map(([lon, lat]) => latLonToLocal(lat, lon));
+        const heightM = Math.max(Number(b.height_m) || 3, 2);
+        // Real-world scale (metersPerSceneUnit), same tested formula used
+        // for canopy — a building's real height, not tied to terrain
+        // exaggeration.
+        const heightU = heightM / metersPerSceneUnit;
+
+        // Shape is authored in an (x, -z) plane so that, after rotating the
+        // extrusion -90° about X, its footprint lands back on the true
+        // ground (x, z) plane with the extrusion running up +Y.
+        const shape = new THREE.Shape();
+        shape.moveTo(pts[0].x, -pts[0].z);
+        for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, -pts[i].z);
+        shape.closePath();
+
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: heightU, bevelEnabled: false, curveSegments: 1 });
+        geo.rotateX(-Math.PI / 2);
+
+        // Single reference ground height at the footprint centroid — planning-
+        // level, not terrain-following per vertex (footprints are small
+        // relative to DEM relief).
+        const centroid = pts.reduce((s, p) => ({ x: s.x + p.x / pts.length, y: s.y + p.y / pts.length, z: s.z + p.z / pts.length }), { x: 0, y: 0, z: 0 });
+        const mesh = new THREE.Mesh(geo, [wallMat, roofMat]);
+        mesh.position.y = centroid.y;
+        mesh.userData.buildingType = b.building_type;
+        groupBuildings.add(mesh);
+      }
+    };
+    buildBuildings();
+
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
     contourLinesGroup.name = 'contours';
@@ -3514,6 +3582,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildZoneOverlays();
         buildForestTexture();
         buildRoads();
+        buildBuildings();
         buildPlanningOverlay();
       });
     }
@@ -3534,6 +3603,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupForest.visible = !!cb.checked;
         } else if (layer === 'roads') {
           groupRoads.visible = !!cb.checked;
+        } else if (layer === 'buildings') {
+          groupBuildings.visible = !!cb.checked;
         }
       });
     });

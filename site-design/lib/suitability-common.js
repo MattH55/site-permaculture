@@ -202,6 +202,51 @@ export function cachedSuitability(parcelKey, versionParts, compute) {
 
 export function clearSuitabilityCache() { cache.clear(); }
 
+/**
+ * Nearest-neighbour sample of a {rows,cols,bbox,values} raster at a
+ * lat/lon — works for any raster keyed to its own bbox (frost-pocket risk,
+ * a CHM grid, etc.) regardless of whether its grid resolution matches the
+ * caller's own DEM grid.
+ */
+export function sampleRasterAtLatLon(raster, lat, lon) {
+  if (!raster?.values?.length || !raster.rows || !raster.cols || !raster.bbox) return null;
+  const { bbox, rows, cols, values } = raster;
+  if (!(bbox.east > bbox.west) || !(bbox.north > bbox.south)) return null;
+  const c = clamp(Math.round(((lon - bbox.west) / (bbox.east - bbox.west)) * (cols - 1)), 0, cols - 1);
+  const r = clamp(Math.round(((bbox.north - lat) / (bbox.north - bbox.south)) * (rows - 1)), 0, rows - 1);
+  const v = values[r * cols + c];
+  return v == null ? null : v;
+}
+
+// --- Slope / aspect -----------------------------------------------------------
+
+/**
+ * Central-difference slope (%) and downslope-facing aspect (° from N,
+ * compass) at one DEM cell. Shared by anything that needs per-cell terrain
+ * orientation (suitability-solar.js has its own copy predating this shared
+ * version; plantable-area.js uses this one).
+ */
+export function slopeAspectAt({ r, c, at, rows, cols, cellWidthM, cellHeightM }) {
+  if (r <= 0 || r >= rows - 1 || c <= 0 || c >= cols - 1) return { slopePercent: 0, aspectDeg: null };
+  const zE = at(r, c + 1), zW = at(r, c - 1), zN = at(r - 1, c), zS = at(r + 1, c);
+  if (![zE, zW, zN, zS].every(Number.isFinite)) return { slopePercent: 0, aspectDeg: null };
+  const dzdx = (zE - zW) / (2 * cellWidthM);   // east-positive gradient
+  const dzdy = (zN - zS) / (2 * cellHeightM);  // north-positive gradient (row decreases northward)
+  const slopePercent = Math.hypot(dzdx, dzdy) * 100;
+  if (slopePercent < 0.5) return { slopePercent, aspectDeg: null }; // effectively flat — no defined aspect
+  const aspectDeg = normalizeDeg((Math.atan2(-dzdx, -dzdy) * 180) / Math.PI);
+  return { slopePercent, aspectDeg };
+}
+
+/** Nearest 8-point compass label for a bearing in degrees, or null. */
+export function compassBucket8(deg) {
+  if (!Number.isFinite(deg)) return null;
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  return dirs[Math.round(normalizeDeg(deg) / 45) % 8];
+}
+
+function normalizeDeg(d) { return ((d % 360) + 360) % 360; }
+
 // --- misc ---------------------------------------------------------------------
 
 export function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
