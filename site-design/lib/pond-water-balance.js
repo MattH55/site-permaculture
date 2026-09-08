@@ -15,7 +15,7 @@
  * See pond-water-balance-instructions.md for the schema this implements.
  */
 
-import { findOptimalPondLocation, POND_HYDROLOGY_TIERS } from './pond-hydrology.js';
+import { findOptimalPondLocation, findPondCandidateZones, POND_HYDROLOGY_TIERS } from './pond-hydrology.js';
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -173,6 +173,94 @@ export function modelPondWaterBalance(opts = {}) {
       `Design-storm peak inflow uses a regional planning-storm depth (${DESIGN_STORM_24H_MM} mm/24h, approx. 1-in-25-year), not a site-specific IDF curve.`,
     ],
   };
+}
+
+/**
+ * Rank a short list of DEM-screened pond candidate points (plus the keyline
+ * keypoint, if resolved) by net annual water balance, for the interactive-
+ * planning "optimal pond overlay" (interactive-planning-mode-instructions.md)
+ * — rather than brute-forcing every point on the parcel, this runs the full
+ * water-balance model against the same short candidate list
+ * findPondCandidateZones() already narrows the parcel down to.
+ *
+ * @param {object} opts Same shape as modelPondWaterBalance's opts.
+ * @param {{lat:number,lon:number,elevation_m?:number}} [opts.keypoint] The
+ *   resolved keyline keypoint (deriveKeylineAndFrost's primary_valleys[0]
+ *   .keypoint), included as a candidate tagged source:'keyline_keypoint'.
+ * @param {number} [topN=4] How many ranked candidates to return.
+ */
+export function rankPondCandidateZones(opts = {}, topN = 4) {
+  const screened = findPondCandidateZones(opts, { topN: 6 });
+  if (!screened.available) {
+    return { available: false, reason: screened.reason, candidate_zones: [] };
+  }
+
+  const candidates = screened.candidates.map((c) => ({
+    candidate_id: c.candidate_id,
+    source: c.source,
+    lat: c.latitude,
+    lon: c.longitude,
+    elevation_m: c.elevation_m,
+    catchment_area_m2: c.catchment_area_m2,
+    site_confidence: c.score,
+  }));
+
+  // Fold in the keyline keypoint (the traditional keyline-dam siting spot)
+  // as its own candidate, unless it lands on/adjacent to one already found
+  // by the convergence screen — the two methods often agree on the same
+  // valley low point, and duplicating it as a separate "candidate" would
+  // just crowd the ranked list with the same site twice.
+  const keypoint = opts.keypoint;
+  if (keypoint && Number.isFinite(keypoint.lat) && Number.isFinite(keypoint.lon)) {
+    const nearExisting = candidates.some((c) => haversineApproxM(c.lat, c.lon, keypoint.lat, keypoint.lon) < 60);
+    if (!nearExisting) {
+      candidates.push({
+        candidate_id: 'pond-candidate-keyline',
+        source: 'keyline_keypoint',
+        lat: keypoint.lat,
+        lon: keypoint.lon,
+        elevation_m: keypoint.elevation_m ?? null,
+        catchment_area_m2: null,
+        site_confidence: null,
+      });
+    }
+  }
+
+  const evaluated = candidates.map((c) => {
+    const result = modelPondWaterBalance({
+      ...opts,
+      pond_point: { lat: c.lat, lon: c.lon },
+      catchment_area_m2: c.catchment_area_m2 || undefined,
+    });
+    const primaryTier = result.tiers?.[0] || null;
+    return {
+      ...c,
+      available: result.available,
+      confidence: result.confidence,
+      net_annual_balance_m3: primaryTier?.net_annual_balance_m3 ?? null,
+      dry_period_minimum_storage_m3: primaryTier?.dry_period_minimum_storage_m3 ?? null,
+      evaluated_tier: primaryTier?.tier_id ?? null,
+    };
+  }).filter((c) => c.available);
+
+  evaluated.sort((a, b) => (b.net_annual_balance_m3 ?? -Infinity) - (a.net_annual_balance_m3 ?? -Infinity));
+  const ranked = evaluated.slice(0, topN);
+  ranked.forEach((c, i) => { c.rank = i + 1; });
+  if (ranked[0]) ranked[0].top_pick = true;
+
+  return {
+    available: ranked.length > 0,
+    candidate_zones: ranked,
+    evaluated_tier: ranked[0]?.evaluated_tier || (opts.assumed_surface_area_m2 ? 'custom' : 'small'),
+    methodology: 'DEM flow-convergence screen (+ keyline keypoint if resolved) narrowed to a short candidate list, each run through the full water-balance model and ranked by net annual balance — not an exhaustive parcel-wide search.',
+  };
+}
+
+function haversineApproxM(lat1, lon1, lat2, lon2) {
+  const dLat = (lat2 - lat1) * 111_320;
+  const meanLat = ((lat1 + lat2) / 2) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * 111_320 * Math.cos(meanLat);
+  return Math.hypot(dLat, dLon);
 }
 
 function runTierBalance(tier, ctx) {

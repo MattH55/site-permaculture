@@ -76,6 +76,11 @@ test('extracts top candidate zones with required output fields', () => {
   assert.ok(z.geometry?.type === 'Polygon');
   assert.ok(typeof z.annual_insolation_hours === 'number');
   assert.ok(typeof z.winter_insolation_hours === 'number');
+  assert.ok(r.winter_candidate_zones.length >= 1);
+  // The two overlays are ranked by different fields and carry distinct id
+  // namespaces so the UI can tell which toggle state produced which zone.
+  assert.ok(r.winter_candidate_zones.every((zone) => zone.zone_id.startsWith('solar-winter-zone')));
+  assert.ok(r.candidate_zones.every((zone) => zone.zone_id.startsWith('solar-zone')));
 });
 
 function avg(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }

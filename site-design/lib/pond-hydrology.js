@@ -94,16 +94,19 @@ export function modelPondHydrology(opts = {}) {
 }
 
 /**
- * Exported so lib/pond-water-balance.js can site its catchment/CN model on
- * the same DEM-screened candidate rather than re-deriving pond placement.
+ * Score every interior DEM cell for pond siting (low, locally-convergent =
+ * good). Shared by findOptimalPondLocation (single best point) and
+ * findPondCandidateZones (top few well-separated points, for the
+ * interactive-planning "optimal pond overlay" — see
+ * interactive-planning-mode-instructions.md). Not exported directly: the
+ * DEM/bbox validity check and empty-result shape differ slightly between
+ * the two callers, so each wraps this.
  */
-export function findOptimalPondLocation(opts) {
+function scorePondCandidates(opts) {
   const { elevations, rows, cols, bbox } = opts;
-  if (!Array.isArray(elevations) || !rows || !cols || elevations.length < rows * cols || !bbox) {
-    return { available: false, reason: 'No complete DEM grid and bounding box were supplied.' };
-  }
+  if (!Array.isArray(elevations) || !rows || !cols || elevations.length < rows * cols || !bbox) return null;
   const valid = elevations.filter((v) => Number.isFinite(v));
-  if (valid.length < 9) return { available: false, reason: 'Too few valid DEM cells for pond placement.' };
+  if (valid.length < 9) return null;
   const min = Math.min(...valid);
   const max = Math.max(...valid);
   const candidates = [];
@@ -129,15 +132,16 @@ export function findOptimalPondLocation(opts) {
     }
   }
   candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
-  if (!best) return { available: false, reason: 'No usable interior DEM cells were found.' };
+  return candidates;
+}
+
+function candidateToPoint(best, opts) {
+  const { rows, cols, bbox } = opts;
   const lat = bbox.north - (best.r / (rows - 1)) * (bbox.north - bbox.south);
   const lng = bbox.west + (best.c / (cols - 1)) * (bbox.east - bbox.west);
   const parcelAreaM2 = Math.max(Number(opts.parcel_area_m2) || 10_000, 1);
   const catchmentFraction = clamp(0.10 + best.convergence * 0.25 + (best.score * 0.10), 0.10, 0.45);
   return {
-    available: true,
-    method: 'Lowest/convergent interior DEM cell screen',
     latitude: round6(lat),
     longitude: round6(lng),
     elevation_m: round1(best.elevation),
@@ -145,9 +149,57 @@ export function findOptimalPondLocation(opts) {
     convergence_score: round3(best.convergence),
     catchment_fraction_of_parcel: round3(catchmentFraction),
     catchment_area_m2: round0(parcelAreaM2 * catchmentFraction),
+  };
+}
+
+/**
+ * Exported so lib/pond-water-balance.js can site its catchment/CN model on
+ * the same DEM-screened candidate rather than re-deriving pond placement.
+ */
+export function findOptimalPondLocation(opts) {
+  const candidates = scorePondCandidates(opts);
+  if (candidates === null) return { available: false, reason: 'No complete DEM grid and bounding box were supplied.' };
+  const best = candidates[0];
+  if (!best) return { available: false, reason: 'No usable interior DEM cells were found.' };
+  return {
+    available: true,
+    method: 'Lowest/convergent interior DEM cell screen',
+    ...candidateToPoint(best, opts),
     candidate_count: candidates.length,
     confidence: candidates.length >= 25 ? 'moderate' : 'low',
   };
+}
+
+/**
+ * Top-N well-separated pond candidate points, for the interactive-planning
+ * "optimal pond overlay" (spec: don't brute-force every point — generate
+ * candidates from the flow-convergence screen already computed above, plus
+ * the keyline keypoint if the caller supplies one). A pure top-N slice of
+ * the sorted candidate list tends to return a cluster of adjacent cells
+ * around the single best low point, which isn't useful as a set of
+ * distinct options — this suppresses candidates too close (in grid cells)
+ * to one already picked.
+ */
+export function findPondCandidateZones(opts, { topN = 6, minSeparationCells = 3 } = {}) {
+  const candidates = scorePondCandidates(opts);
+  if (candidates === null) return { available: false, reason: 'No complete DEM grid and bounding box were supplied.', candidates: [] };
+  if (!candidates.length) return { available: false, reason: 'No usable interior DEM cells were found.', candidates: [] };
+
+  const picked = [];
+  for (const cand of candidates) {
+    if (picked.length >= topN) break;
+    const tooClose = picked.some((p) => Math.hypot(p.r - cand.r, p.c - cand.c) < minSeparationCells);
+    if (tooClose) continue;
+    picked.push(cand);
+  }
+
+  const points = picked.map((cand, i) => ({
+    candidate_id: `pond-candidate-${i + 1}`,
+    source: 'flow_convergence',
+    ...candidateToPoint(cand, opts),
+  }));
+
+  return { available: true, candidates: points, candidate_count: candidates.length };
 }
 
 function normalizeMonthly(precipitation) {

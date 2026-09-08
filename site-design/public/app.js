@@ -2126,6 +2126,24 @@ function terrain3dBlock(id, report) {
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
       </div>
+      <div class="terrain-planning-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.9rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem;font-weight:600">
+          <input type="checkbox" data-planning-toggle="${esc(id)}" />
+          Planning mode
+        </label>
+        <span data-planning-feature-picker="${esc(id)}" style="display:none;gap:0.5rem;align-items:center;flex-wrap:wrap">
+          <select data-planning-feature="${esc(id)}" class="fine" style="font-size:0.78rem">
+            <option value="solar">☀ Solar</option>
+            <option value="pond">💧 Pond</option>
+            <option value="planting">🌱 Planting</option>
+          </select>
+          <label class="fine" style="display:flex;align-items:center;gap:0.3rem" data-planning-winter-wrap="${esc(id)}">
+            <input type="checkbox" data-planning-winter="${esc(id)}" />
+            Winter-priority zones
+          </label>
+          <span class="fine" style="opacity:0.75">Click the terrain to test a spot; optimal zones are pre-highlighted</span>
+        </span>
+      </div>
       <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
         <span class="mono" style="font-size:0.72rem">Mapped features</span>${semanticControls}
       </div>
@@ -2872,6 +2890,101 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const groupRoads = new THREE.Group(); groupRoads.name = 'roads';
     scene.add(groupRoads);
 
+    // --- Interactive planning mode (interactive-planning-mode-instructions.md) ---
+    // A second *mode* on the same twin, not a separate rendering pipeline:
+    // terrain/canopy/existing-structure layers above are untouched: this
+    // just toggles an overlay of pre-computed optimal-location zones and a
+    // click-to-place live-evaluation popup on top of them.
+    const groupPlanningOverlay = new THREE.Group(); groupPlanningOverlay.name = 'planning-overlay';
+    groupPlanningOverlay.visible = false;
+    const groupProposed = new THREE.Group(); groupProposed.name = 'planning-proposed'; // accepted click-to-place features (ghost/translucent, per the existing-vs-proposed convention)
+    scene.add(groupPlanningOverlay, groupProposed);
+    const planningState = { enabled: false, featureType: 'solar', winter: false, proposals: [] };
+
+    const latLonToLocal = (lat, lon) => {
+      const gc = ((lon - west) / (east - west)) * (cols - 1);
+      const gr = ((north - lat) / (north - south)) * (rows - 1);
+      return { x: gridToLocalX(gc), z: gridToLocalZ(gr), y: elevToLocalY(elevAtRC(gr, gc), exaggerate) };
+    };
+    const localToLatLon = (x, z) => {
+      const gc = (x / meshW + 0.5) * (cols - 1);
+      const gr = (z / meshD + 0.5) * (rows - 1);
+      return { lat: north - (gr / (rows - 1)) * (north - south), lon: west + (gc / (cols - 1)) * (east - west) };
+    };
+
+    function addPlanningFootprint(ring, color, opacity, label) {
+      // Triangle fan from the first vertex — correct for the small convex
+      // rectangles/hulls these overlays actually receive (solar candidate
+      // cells, DEM-screened hull shapes), without the local/world axis
+      // bookkeeping a THREE.Shape + rotateX round-trip would need.
+      const closed = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1]
+        ? ring.slice(0, -1) : ring;
+      const pts = closed.map(([lon, lat]) => latLonToLocal(lat, lon));
+      if (pts.length < 3) return;
+      const positions = [];
+      for (let i = 1; i < pts.length - 1; i++) {
+        const a = pts[0], b = pts[i], c = pts[i + 1];
+        positions.push(a.x, a.y + 0.015, a.z, b.x, b.y + 0.015, b.z, c.x, c.y + 0.015, c.z);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      geo.computeVertexNormals();
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: false });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.userData.planningLabel = label;
+      groupPlanningOverlay.add(mesh);
+    }
+
+    function addPlanningMarker(p, color, radius, opacity, label) {
+      const geo = new THREE.SphereGeometry(Math.max(radius, 0.04), 14, 14);
+      const mat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(p.x, p.y + radius, p.z);
+      mesh.userData.planningLabel = label;
+      groupPlanningOverlay.add(mesh);
+    }
+
+    const buildPlanningOverlay = () => {
+      while (groupPlanningOverlay.children.length) {
+        const c = groupPlanningOverlay.children[0];
+        groupPlanningOverlay.remove(c);
+        c.geometry?.dispose(); c.material?.dispose();
+      }
+      if (!planningState.enabled) return;
+
+      if (planningState.featureType === 'solar') {
+        // Top annual-insolation zones by default; winter-specific top zones
+        // as a toggle, since the best annual spot and the best winter spot
+        // (passive heating / greenhouse siting) are frequently different.
+        const zones = planningState.winter
+          ? (report?.solar_horizon_shading?.winter_candidate_zones || [])
+          : (report?.solar_horizon_shading?.candidate_zones || []);
+        const color = planningState.winter ? 0xffb703 : 0xffe066;
+        for (const z of zones) {
+          const ring = z.geometry?.coordinates?.[0];
+          if (ring?.length) {
+            addPlanningFootprint(ring, color, 0.55,
+              `Solar candidate — ${Math.round(z.annual_insolation_hours)} annual hrs / ${z.winter_insolation_hours.toFixed(1)} winter hrs`);
+          }
+        }
+      } else if (planningState.featureType === 'pond') {
+        // Short DEM-convergence + keyline-keypoint candidate list, each
+        // already run through the full water-balance model and ranked by
+        // net annual balance server-side (pond-water-balance.js) — not an
+        // exhaustive parcel-wide search.
+        const candidates = report?.pond_candidate_zones?.candidate_zones || [];
+        for (const c of candidates) {
+          const p = latLonToLocal(c.lat, c.lon);
+          addPlanningMarker(p, c.top_pick ? 0x1a9bb5 : 0x6fd0e6, c.top_pick ? 0.16 : 0.11, c.top_pick ? 0.9 : 0.6,
+            `Pond candidate #${c.rank}${c.top_pick ? ' (top pick)' : ''} — net ${Math.round(c.net_annual_balance_m3)} m³/yr (${(c.source || '').replace(/_/g, ' ')})`);
+        }
+      }
+      // Planting has no zone-level polygon suitability geometry yet (see
+      // lib/planning-evaluate.js) — its "optimal overlay" is just the top
+      // parcel-wide recommendation, surfaced in the click popup instead of
+      // a highlighted zone.
+    };
+
     // A dense zone's hull is convex (built by convexHull upstream), so
     // scaling its points toward the centroid by a factor < 1 is a correct,
     // cheap inset polygon — used to tell "deep interior" (one flat textured
@@ -3119,6 +3232,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildZoneOverlays();
         buildForestTexture();
         buildRoads();
+        buildPlanningOverlay();
       });
     }
 
@@ -3141,6 +3255,199 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         }
       });
     });
+
+    // --- Interactive planning mode: controls + click-to-place ---
+    let planningPopupEl = null;
+    const ensurePlanningPopup = () => {
+      if (planningPopupEl) return planningPopupEl;
+      planningPopupEl = document.createElement('div');
+      planningPopupEl.className = 'terrain-planning-popup';
+      planningPopupEl.style.cssText = 'position:absolute;z-index:6;max-width:270px;background:rgba(18,24,31,0.95);color:#e8ece4;border:1px solid #3a4550;border-radius:8px;padding:0.6rem 0.7rem;font-size:0.76rem;line-height:1.4;box-shadow:0 8px 22px rgba(0,0,0,0.4);display:none';
+      el.appendChild(planningPopupEl);
+      return planningPopupEl;
+    };
+    const hidePlanningPopup = () => { if (planningPopupEl) planningPopupEl.style.display = 'none'; };
+    const showPlanningPopup = (sx, sy, html) => {
+      const popup = ensurePlanningPopup();
+      popup.innerHTML = html;
+      popup.style.left = `${Math.max(4, Math.min(el.clientWidth - 280, sx + 8))}px`;
+      popup.style.top = `${Math.max(4, Math.min(el.clientHeight - 40, sy + 8))}px`;
+      popup.style.display = 'block';
+    };
+
+    const buildPlanningContext = (featureType) => {
+      const bbox = { west, south, east, north };
+      if (featureType === 'solar') {
+        return {
+          elevations, rows, cols, bbox,
+          latitude: latMid, longitude: (west + east) / 2,
+          canopy: report?.canopy,
+          dem_confidence: report?.hrdem_terrain?.available ? 'high' : 'insufficient',
+          data_source: report?.hrdem_terrain?.available ? report.hrdem_terrain.source : 'coarse fallback DEM',
+        };
+      }
+      if (featureType === 'pond') {
+        // The client already has the report's own monthly precipitation
+        // series (baked into the pond-water-balance result it renders
+        // elsewhere) — reuse that instead of re-fetching climate data just
+        // to run a point evaluation.
+        const monthlyRows = report?.pond_water_balance?.tiers?.[0]?.monthly_level_time_series || [];
+        const monthly_mm = Object.fromEntries(monthlyRows.map((m) => [m.month, m.precipitation_mm]));
+        return {
+          elevations, rows, cols, bbox,
+          precipitation: { monthly_mm },
+          parcel_area_m2: report?.footprint_ha ? report.footprint_ha * 10_000 : null,
+          soil_data: report?.soil_data,
+          canopy: report?.canopy,
+          wind_rose: report?.wind_rose,
+          solar: report?.solar,
+        };
+      }
+      // planting
+      return {
+        canopy: report?.canopy,
+        surface_water: report?.surface_water,
+        recommended_plantings: report?.planting_plan?.recommended,
+      };
+    };
+
+    const acceptProposal = (posInfo, result) => {
+      const p = latLonToLocal(posInfo.lat, posInfo.lon);
+      const colors = { solar: 0xffd23f, pond: 0x1a9bb5, planting: 0x5fbf5f };
+      const geo = new THREE.SphereGeometry(0.06, 14, 14);
+      // Translucent/ghost, matching the existing-vs-proposed convention
+      // used elsewhere for not-yet-built design elements.
+      const mat = new THREE.MeshBasicMaterial({ color: colors[planningState.featureType] || 0xffffff, transparent: true, opacity: 0.5 });
+      const marker = new THREE.Mesh(geo, mat);
+      marker.position.set(p.x, p.y + 0.08, p.z);
+      groupProposed.add(marker);
+      planningState.proposals.push({
+        feature_id: `proposed-${Date.now()}-${Math.round(Math.random() * 1e4)}`,
+        type: planningState.featureType,
+        position: { lat: posInfo.lat, lon: posInfo.lon },
+        user_params: {},
+        evaluation: result,
+        status: 'accepted',
+      });
+    };
+
+    const renderPlanningResult = (sx, sy, posInfo, result) => {
+      let bodyHtml;
+      let acceptable = false;
+      if (!result || result.available === false) {
+        bodyHtml = `<div>${esc(result?.reason || result?.error || 'No result available for this spot.')}</div>`;
+      } else if (planningState.featureType === 'solar') {
+        const p = result.point || {};
+        bodyHtml = `
+          <div style="font-weight:600;margin-bottom:0.25rem">☀ Solar at this point</div>
+          <div>Annual: <strong>${Math.round(p.annual_insolation_hours || 0)}</strong> hrs</div>
+          <div>Winter: <strong>${(p.winter_insolation_hours || 0).toFixed(1)}</strong> hrs · Summer: <strong>${(p.summer_insolation_hours || 0).toFixed(1)}</strong> hrs</div>
+          ${result.canopy_shading_note ? `<div class="fine" style="margin-top:0.3rem;opacity:0.8">${esc(result.canopy_shading_note)}</div>` : ''}
+          <div class="fine" style="margin-top:0.3rem;opacity:0.7">Confidence: ${esc(result.confidence || '—')}</div>`;
+        acceptable = true;
+      } else if (planningState.featureType === 'pond') {
+        const t = result.tiers?.[0] || {};
+        bodyHtml = `
+          <div style="font-weight:600;margin-bottom:0.25rem">💧 Pond at this point (${t.assumed_surface_area_m2 ?? '—'} m² assumed)</div>
+          <div>Net annual balance: <strong>${Math.round(t.net_annual_balance_m3 ?? 0)}</strong> m³/yr</div>
+          <div>Dry-period minimum: ${Math.round(t.dry_period_minimum_storage_m3 ?? 0)} m³ (${esc(t.dry_period_minimum_month || '—')})</div>
+          <div class="fine" style="margin-top:0.3rem;opacity:0.7">Confidence: ${esc(result.confidence || '—')}</div>`;
+        acceptable = true;
+      } else {
+        const recs = result.recommendations || [];
+        bodyHtml = `
+          <div style="font-weight:600;margin-bottom:0.25rem">🌱 Planting at this point</div>
+          ${result.zone_specific === false ? `<div class="fine" style="opacity:0.75;margin-bottom:0.3rem">${esc(result.note || '')}</div>` : ''}
+          <ol style="margin:0 0 0 1.1rem;padding:0">${recs.slice(0, 4).map((r) => `<li>${esc(r.common_name || r.id || 'plant')}${r.score != null ? ` (${r.score})` : ''}</li>`).join('')}</ol>`;
+        acceptable = recs.length > 0;
+      }
+
+      showPlanningPopup(sx, sy, `
+        ${bodyHtml}
+        <div style="display:flex;gap:0.4rem;margin-top:0.5rem">
+          ${acceptable ? `<button type="button" data-plan-accept class="btn-quiet" style="font-size:0.72rem">Accept</button>` : ''}
+          <button type="button" data-plan-discard class="btn-quiet" style="font-size:0.72rem">Discard</button>
+        </div>`);
+      const popup = ensurePlanningPopup();
+      popup.querySelector('[data-plan-accept]')?.addEventListener('click', () => {
+        acceptProposal(posInfo, result);
+        hidePlanningPopup();
+      });
+      popup.querySelector('[data-plan-discard]')?.addEventListener('click', hidePlanningPopup);
+    };
+
+    const handlePlanningClick = async (ev) => {
+      if (!planningState.enabled) return;
+      const rect = renderer.domElement.getBoundingClientRect();
+      const sx = ev.clientX - rect.left, sy = ev.clientY - rect.top;
+      const raycaster = new THREE.Raycaster();
+      raycaster.setFromCamera(
+        new THREE.Vector2((sx / rect.width) * 2 - 1, -(sy / rect.height) * 2 + 1),
+        camera
+      );
+      const hits = raycaster.intersectObject(terrainMesh, false);
+      if (!hits.length) return;
+      const { lat, lon } = localToLatLon(hits[0].point.x, hits[0].point.z);
+
+      showPlanningPopup(sx, sy, `<div>Evaluating ${esc(planningState.featureType)}…</div>`);
+      let result;
+      try {
+        const resp = await fetch('/api/plan/evaluate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            feature_type: planningState.featureType,
+            position: { lat, lon },
+            user_params: {},
+            context: buildPlanningContext(planningState.featureType),
+            cache_key: `${west},${south},${east},${north}`,
+          }),
+        });
+        result = await resp.json();
+      } catch (e) {
+        showPlanningPopup(sx, sy, `<div>Evaluation failed: ${esc(e.message || 'network error')}</div>`);
+        return;
+      }
+      renderPlanningResult(sx, sy, { lat, lon }, result);
+    };
+    // OrbitControls drags still end in a native 'click' on mouseup — only
+    // treat it as a planning click if the pointer barely moved, so orbiting
+    // the camera doesn't fire a spurious evaluation at the drag's end point.
+    let planningPointerDown = null;
+    renderer.domElement.addEventListener('pointerdown', (ev) => { planningPointerDown = { x: ev.clientX, y: ev.clientY }; });
+    renderer.domElement.addEventListener('click', (ev) => {
+      const moved = planningPointerDown ? Math.hypot(ev.clientX - planningPointerDown.x, ev.clientY - planningPointerDown.y) : 0;
+      if (moved > 5) return;
+      handlePlanningClick(ev);
+    });
+
+    const planningToggle = document.querySelector(`[data-planning-toggle="${ctrlId}"]`);
+    const planningFeaturePicker = document.querySelector(`[data-planning-feature-picker="${ctrlId}"]`);
+    const planningFeatureSelect = document.querySelector(`[data-planning-feature="${ctrlId}"]`);
+    const planningWinterWrap = document.querySelector(`[data-planning-winter-wrap="${ctrlId}"]`);
+    const planningWinterCheckbox = document.querySelector(`[data-planning-winter="${ctrlId}"]`);
+    const updatePlanningVisibility = () => {
+      if (planningFeaturePicker) planningFeaturePicker.style.display = planningState.enabled ? 'flex' : 'none';
+      if (planningWinterWrap) planningWinterWrap.style.display = planningState.featureType === 'solar' ? 'flex' : 'none';
+      groupPlanningOverlay.visible = planningState.enabled;
+    };
+    planningToggle?.addEventListener('change', () => {
+      planningState.enabled = !!planningToggle.checked;
+      updatePlanningVisibility();
+      buildPlanningOverlay();
+      if (!planningState.enabled) hidePlanningPopup();
+    });
+    planningFeatureSelect?.addEventListener('change', () => {
+      planningState.featureType = planningFeatureSelect.value;
+      updatePlanningVisibility();
+      buildPlanningOverlay();
+      hidePlanningPopup();
+    });
+    planningWinterCheckbox?.addEventListener('change', () => {
+      planningState.winter = !!planningWinterCheckbox.checked;
+      buildPlanningOverlay();
+    });
+    updatePlanningVisibility();
 
     // --- Semantic feature toggles (mapped features from semantic terrain) ---
     const surfaceWaterFeatures = [

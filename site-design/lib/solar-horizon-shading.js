@@ -111,13 +111,20 @@ export function computeSolarHorizonShading(opts = {}) {
     summer_insolation_hours: results.map((r) => r.summer_hours),
   } : null;
 
-  const candidateZones = extractCandidateZones(results, { rows, cols, stride, bbox });
+  // Default overlay ranks by annual insolation (spec: "top annual-insolation
+  // zones"); winter-ranked zones are a separate toggle for passive-heating /
+  // greenhouse siting, since the best annual spot and the best winter spot
+  // are frequently not the same place (e.g. a site shaded by a deciduous
+  // windbreak in summer but not winter).
+  const candidateZones = extractCandidateZones(results, { rows, cols, stride, bbox, rankBy: 'annual_hours' });
+  const winterCandidateZones = extractCandidateZones(results, { rows, cols, stride, bbox, rankBy: 'winter_hours' });
 
   return {
     available: true,
     solar_exposure_raster: raster,
     per_point: raster ? undefined : results.map(formatPointResult),
     candidate_zones: candidateZones,
+    winter_candidate_zones: winterCandidateZones,
     canopy_shading_assumption: canopyAssumption,
     canopy_shading_note: canopyAssumption === 'worst_case_evergreen'
       ? 'Canopy layer does not distinguish species — nearby trees are conservatively treated as evergreen/full shading year-round. This likely understates real winter sun access wherever deciduous trees dominate.'
@@ -282,15 +289,16 @@ function evergreenSeasonalHeight(heightM, month, canopyAssumption) {
   return heightM;
 }
 
-function extractCandidateZones(results, { rows, cols, stride, bbox }) {
+function extractCandidateZones(results, { rows, cols, stride, bbox, rankBy = 'annual_hours' }) {
   if (!results.length || results[0].point.r == null) return [];
-  const sorted = [...results].sort((a, b) => b.winter_hours - a.winter_hours);
+  const sorted = [...results].sort((a, b) => b[rankBy] - a[rankBy]);
   const topCount = Math.max(1, Math.min(5, Math.round(sorted.length * 0.05)));
   const top = sorted.slice(0, topCount);
   const cellHalfLon = ((bbox.east - bbox.west) / (cols - 1)) * stride / 2;
   const cellHalfLat = ((bbox.north - bbox.south) / (rows - 1)) * stride / 2;
+  const prefix = rankBy === 'winter_hours' ? 'solar-winter-zone' : 'solar-zone';
   return top.map((r, i) => ({
-    zone_id: `solar-zone-${i + 1}`,
+    zone_id: `${prefix}-${i + 1}`,
     geometry: {
       type: 'Polygon',
       coordinates: [[
