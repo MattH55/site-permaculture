@@ -180,6 +180,8 @@ app.post('/api/report', async (req, res) => {
       site_name: body.site_name,
       force: !!body.force,
       plant_goals: body.plant_goals || body.goals,
+      // Finish before typical Render/Cloudflare proxy cutoffs (~100s).
+      budget_ms: 70_000,
     });
     report._meta = {
       ...report._meta,
