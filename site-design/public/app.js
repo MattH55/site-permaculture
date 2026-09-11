@@ -2402,11 +2402,11 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:10px;height:10px;background:#c4a035;border-radius:2px;vertical-align:middle"></span>
           Swale hills
         </label>
-        ${(report?.canopy?.render_zones || []).some((z) => z.render_mode === 'billboard_impostor') ? `
+        ${report?.canopy?.available && ((report.canopy.render_zones || []).length || report.canopy.tree_count) ? `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
           <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
-          Dense forest (billboard trees)
+          Forest canopy
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="roads" />
@@ -3182,7 +3182,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // of this conversion, not a copy that can drift out of sync.
     const { metersPerSceneUnit } = groundSceneScale({ west, south, east, north }, meshSize);
     const renderZones = report?.canopy?.available ? (report.canopy.render_zones || []) : [];
-    const denseZones = renderZones.filter((z) => z.render_mode === 'billboard_impostor');
+    // Every canopy zone is a draped forest texture — sparse "instanced" and
+    // dense "billboard_impostor" alike. Individual tree meshes/billboards
+    // were reading as giant objects; the 3D view only wants a canopy surface.
+    const canopyZones = renderZones.filter((z) => z.geometry?.coordinates?.[0]?.length >= 4);
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
     scene.add(groupForest);
 
@@ -3289,24 +3292,25 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       // a highlighted zone.
     };
 
-    // A dense zone's hull is convex (built by convexHull upstream), so
-    // scaling its points toward the centroid by a factor < 1 is a correct,
-    // cheap inset polygon — used to tell "deep interior" (one flat textured
-    // zone) from "near the edge" (kept as per-tree billboards so the
-    // sparse/dense transition isn't a hard seam — spec Part 2 step 4).
+    // A zone's hull is convex (built by convexHull upstream), so scaling
+    // its points toward the centroid by a factor < 1 is a cheap inset —
+    // used to fade the canopy texture at the woodlot edge.
     const insetPolygon = (ring, factor) => {
       if (!ring.length) return ring;
       const cx = ring.reduce((s, p) => s + p[0], 0) / ring.length;
       const cy = ring.reduce((s, p) => s + p[1], 0) / ring.length;
       return ring.map(([x, y]) => [cx + (x - cx) * factor, cy + (y - cy) * factor]);
     };
-    const zoneRings = denseZones.map((z) => {
+    const zoneRings = canopyZones.map((z) => {
       const ring = z.geometry.coordinates[0];
       return { zone: z, ring, inset: insetPolygon(ring, 0.72) };
     });
 
-    // --- Dense-canopy areas: flat procedural canopy texture (no per-tree
-    // billboards) — a textured quad per grid cell, not individual trees. ---
+    // --- Canopy as a draped forest texture (no per-tree geometry). ---
+    // Individual trees (meshes or billboard cards) were scaling to real-world
+    // height in scene units and reading as giant objects. The canopy is a
+    // textured surface sitting on the terrain, lifted by CHM using the same
+    // heightScale as hills so it stays in visual proportion with the land.
     const buildForestTexture = () => {
       while (groupForest.children.length) {
         const c = groupForest.children[0];
@@ -3314,46 +3318,46 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         c.geometry?.dispose();
         c.material?.dispose();
       }
-      if (!denseZones.length) return;
 
-      // Sample every terrain-grid cell inside each dense zone once, tagging
-      // edge cells (outside the inset polygon) for the lighter/smaller
-      // treatment that blends the sparse/dense transition.
       const zoneCells = [];
-      for (const { zone, ring, inset } of zoneRings) {
+      const pushCell = (r, c, isEdge, heightM) => {
+        const x = gridToLocalX(c);
+        const z = gridToLocalZ(r);
+        const groundY = elevToLocalY(elevAtRC(r, c), exaggerate);
+        // Same vertical scale as the terrain mesh: 1 m of canopy = 1 m of
+        // relief. Cap so a bad CHM cell can't lift the carpet off the land.
+        const liftU = Math.min(
+          Math.max(heightM, 0.5) * heightScale * exaggerate,
+          meshSize * 0.22 * exaggerate
+        );
+        zoneCells.push({ r, c, x, groundY, z, isEdge, heightLiftU: liftU });
+      };
+
+      if (zoneRings.length) {
+        for (const { zone, ring, inset } of zoneRings) {
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const lng = west + (c / (cols - 1)) * (east - west);
+              const lat = north - (r / (rows - 1)) * (north - south);
+              if (!pointInPolygon2D(lng, lat, ring)) continue;
+              const isEdge = !pointInPolygon2D(lng, lat, inset);
+              const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
+              pushCell(r, c, isEdge, Math.max(chmH, 0.5));
+            }
+          }
+        }
+      } else if (report?.canopy?.chm) {
         for (let r = 0; r < rows; r++) {
           for (let c = 0; c < cols; c++) {
-            const lng = west + (c / (cols - 1)) * (east - west);
-            const lat = north - (r / (rows - 1)) * (north - south);
-            if (!pointInPolygon2D(lng, lat, ring)) continue;
-            const isEdge = !pointInPolygon2D(lng, lat, inset);
-            const x = gridToLocalX(c);
-            const z = gridToLocalZ(r);
-            const groundY = elevToLocalY(elevAtRC(r, c), exaggerate);
-            // Underlying CHM cell height (if we have the raster) drives
-            // subtle per-cell variation rather than one flat canopy height
-            // for the whole zone — spec Part 2 step 3.
-            const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
-            const heightM = Math.max(chmH, 0.5);
-            // Real-world scale, same tested formula as treeInstanceDimensions
-            // (tree-scale.js): metersPerSceneUnit is the ONE horizontal-to-
-            // scene conversion factor. Deliberately NOT heightScale/exaggerate
-            // — that factor compresses terrain RELIEF into the mesh's vertical
-            // budget and has nothing to do with a real object's height; tying
-            // canopy offset to it made the texture balloon with the terrain
-            // exaggeration slider (or shrink to a sliver on flat terrain).
-            let heightU = heightM / metersPerSceneUnit;
-            // Sanity cap: canopy offset never exceeds 12% of the mesh
-            // diagonal, so a bad CHM outlier can't blow the texture up.
-            const maxTreeU = Math.sqrt(meshW * meshW + meshD * meshD) * 0.12;
-            if (heightU > maxTreeU) heightU = maxTreeU;
-            zoneCells.push({ x, groundY, z, isEdge, heightM, heightU, idx: zoneCells.length });
+            const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols);
+            if (chmH == null || chmH < 0.75) continue;
+            pushCell(r, c, false, chmH);
           }
         }
       }
       if (!zoneCells.length) return;
 
-      renderProceduralForestQuads(groupForest, zoneCells, meshW, meshD, cols, rows, metersPerSceneUnit);
+      renderDrapedForestTexture(groupForest, zoneCells, meshW, meshD, cols, rows);
     };
     buildForestTexture();
 
@@ -4008,41 +4012,59 @@ function buildForestCanopyTexture() {
 }
 
 /**
- * Dense-canopy rendering: a textured quad per grid cell (a canopy texture
- * draped over the terrain), not individual tree geometry — deliberately no
- * per-tree billboards/instanced models here.
+ * Canopy rendering: one draped textured mesh over canopy cells, not
+ * individual tree geometry. Adjacent cells share a continuous surface so
+ * the forest reads as a 3D canopy texture sitting on the land.
  */
-function renderProceduralForestQuads(group, cells, meshW, meshD, cols, rows, metersPerSceneUnit) {
+function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows) {
   const canopyTex = buildForestCanopyTexture();
   const cellW = meshW / (cols - 1 || 1);
   const cellD = meshD / (rows - 1 || 1);
-  const quadGeo = new THREE.PlaneGeometry(Math.max(cellW * 1.35, 0.05), Math.max(cellD * 1.35, 0.05));
-  quadGeo.rotateX(-Math.PI / 2);
+  const uvScale = 0.35;
+  const zFight = 0.02;
 
-  const interiorCells = cells.filter((c) => !c.isEdge);
-  const edgeCells = cells.filter((c) => c.isEdge);
-  const m = new THREE.Matrix4();
-  const q = new THREE.Quaternion();
-  const v = new THREE.Vector3();
-  const s = new THREE.Vector3(1, 1, 1);
-  for (const [cellGroup, opacity] of [[interiorCells, 0.92], [edgeCells, 0.55]]) {
-    if (!cellGroup.length) continue;
-    const inst = new THREE.InstancedMesh(
-      quadGeo,
-      new THREE.MeshLambertMaterial({ map: canopyTex, transparent: true, opacity, side: THREE.DoubleSide, depthWrite: opacity > 0.8 }),
-      cellGroup.length
-    );
-    cellGroup.forEach((c, idx) => {
-      const canopyU = c.heightU != null ? c.heightU : Math.max(c.heightM, 0.3) / metersPerSceneUnit;
-      const scale = c.isEdge ? 0.6 + deterministicJitter(idx) * 0.3 : 0.85 + deterministicJitter(idx) * 0.3;
-      v.set(c.x, c.groundY + canopyU, c.z);
-      s.set(scale, 1, scale);
-      m.compose(v, q, s);
-      inst.setMatrixAt(idx, m);
+  const addLayer = (cellGroup, opacity) => {
+    if (!cellGroup.length) return;
+    const positions = [];
+    const uvs = [];
+    const indices = [];
+    let vert = 0;
+    for (const cell of cellGroup) {
+      const hw = cellW * 0.52;
+      const hd = cellD * 0.52;
+      const y = cell.groundY + cell.heightLiftU + zFight;
+      const u0 = cell.c * uvScale;
+      const v0 = cell.r * uvScale;
+      const corners = [
+        [cell.x - hw, y, cell.z - hd, u0, v0],
+        [cell.x + hw, y, cell.z - hd, u0 + uvScale, v0],
+        [cell.x + hw, y, cell.z + hd, u0 + uvScale, v0 + uvScale],
+        [cell.x - hw, y, cell.z + hd, u0, v0 + uvScale],
+      ];
+      for (const [px, py, pz, u, v] of corners) {
+        positions.push(px, py, pz);
+        uvs.push(u, v);
+      }
+      indices.push(vert, vert + 1, vert + 2, vert, vert + 2, vert + 3);
+      vert += 4;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    const mat = new THREE.MeshLambertMaterial({
+      map: canopyTex,
+      transparent: true,
+      opacity,
+      side: THREE.DoubleSide,
+      depthWrite: opacity > 0.7,
     });
-    inst.instanceMatrix.needsUpdate = true;
-    group.add(inst);
-  }
+    group.add(new THREE.Mesh(geo, mat));
+  };
+
+  addLayer(cells.filter((c) => !c.isEdge), 0.9);
+  addLayer(cells.filter((c) => c.isEdge), 0.5);
 }
 
 /** Deterministic 0..1 pseudo-random, seeded by an integer index. */
