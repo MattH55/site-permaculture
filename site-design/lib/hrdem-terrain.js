@@ -190,15 +190,17 @@ async function sampleCogWindow(href, bbox, size) {
     winH = r1 - r0;
   }
 
-  const ctrlTimeout = setTimeout(() => {}, FETCH_MS); // placeholder for API shape
-  clearTimeout(ctrlTimeout);
-
-  const rasters = await img.readRasters({
-    window: [c0, r0, c1, r1],
-    width: size,
-    height: size,
-    resampleMethod: 'bilinear',
-  });
+  const rasters = await Promise.race([
+    img.readRasters({
+      window: [c0, r0, c1, r1],
+      width: size,
+      height: size,
+      resampleMethod: 'bilinear',
+    }),
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('HRDEM raster read timed out')), 14_000);
+    }),
+  ]);
   const band = rasters[0];
   const elevations_m = new Array(size * size);
   let min = Infinity;
