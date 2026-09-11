@@ -104,6 +104,19 @@ app.use(corsForEmbed);
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1h' }));
 app.use('/schema', express.static(path.join(__dirname, 'schema'), { maxAge: '1d' }));
 
+/** Always emit JSON — never let stringify/NaN/circular fall through to an HTML 500. */
+function sendJson(res, status, body) {
+  if (res.headersSent) return;
+  const replacer = (_k, v) => (typeof v === 'number' && !Number.isFinite(v) ? null : v);
+  try {
+    const json = JSON.stringify(body, replacer);
+    res.status(status).type('application/json').send(json);
+  } catch (e) {
+    console.error('json serialize failed', e);
+    res.status(500).type('application/json').send(JSON.stringify({ error: 'Could not serialize response' }));
+  }
+}
+
 // Config for the browser (Maps key is public-restricted by HTTP referrer)
 app.get('/api/config', (_req, res) => {
   res.json({
@@ -160,7 +173,7 @@ app.post('/api/report', async (req, res) => {
   try {
     const body = req.body || {};
     if (!body.polygon) {
-      return res.status(400).json({ error: 'polygon required — draw your parcel on the map' });
+      return sendJson(res, 400, { error: 'polygon required — draw your parcel on the map' });
     }
     const report = await generateSiteReport({
       polygon: body.polygon,
@@ -172,10 +185,11 @@ app.post('/api/report', async (req, res) => {
       ...report._meta,
       duration_ms: Date.now() - started,
     };
-    res.json(report);
+    sendJson(res, 200, report);
   } catch (e) {
     console.error('report failed', e);
-    res.status(400).json({ error: e.message || 'report failed' });
+    if (res.headersSent) return;
+    sendJson(res, 400, { error: e.message || 'report failed' });
   }
 });
 
