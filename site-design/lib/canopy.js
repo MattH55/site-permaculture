@@ -25,6 +25,7 @@ import path from 'node:path';
 import { fromUrl } from 'geotiff';
 import { lonLatToEpsg3979 } from './vegetation-indices.js';
 import { cacheKey } from './geo.js';
+import { formFromDimensions } from './avi-species.js';
 
 const CACHE_DIR = path.join(import.meta.dirname, '..', 'data', 'cache', 'canopy');
 
@@ -842,6 +843,7 @@ function watershedToTrees(inv, m, n, maxH, bbox, ring, cellAreaM2, win, dataSour
       y: Math.round(lng * 1e6) / 1e6,
       height_m: round1(peakH),
       crown_radius_m: round1(crownRadiusM),
+      form: formFromDimensions(peakH, crownRadiusM),
       data_source: dataSource,
     });
   }

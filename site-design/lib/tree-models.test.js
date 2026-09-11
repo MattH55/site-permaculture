@@ -50,3 +50,33 @@ test('LICENSE.txt is present alongside the Nature Kit assets (CC0, kenney.nl)', 
   const text = fs.readFileSync(licensePath, 'utf8');
   assert.ok(/CC0|Creative Commons Zero/i.test(text), 'license text should mention CC0');
 });
+
+const PBR_DIR = path.join(import.meta.dirname, '..', 'public', 'assets', 'pbr');
+const PBR_FILES = [
+  'canopy/albedo.jpg',
+  'canopy/normal.jpg',
+  'canopy/roughness.jpg',
+  'walls/siding_albedo.jpg',
+  'walls/brick_albedo.jpg',
+  'walls/stucco_albedo.jpg',
+  'walls/metal_albedo.jpg',
+  'roofs/asphalt_albedo.jpg',
+  'roofs/metal_albedo.jpg',
+  'trees/pine_twig_diff.jpg',
+  'trees/deciduous_leaf_diff.jpg',
+  'trees/bark_diff.jpg',
+];
+
+for (const rel of PBR_FILES) {
+  test(`photoreal PBR asset "${rel}" is present`, () => {
+    const file = path.join(PBR_DIR, rel);
+    assert.ok(fs.existsSync(file), `missing ${file}`);
+    assert.ok(fs.statSync(file).size > 1000, `${rel} looks empty`);
+  });
+}
+
+test('PBR LICENSE.txt credits Poly Haven CC0', () => {
+  const text = fs.readFileSync(path.join(PBR_DIR, 'LICENSE.txt'), 'utf8');
+  assert.ok(/CC0/i.test(text));
+  assert.ok(/polyhaven/i.test(text));
+});

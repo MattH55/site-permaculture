@@ -3,7 +3,7 @@
  * Draw parcel on topo map → POST /api/report → design report
  */
 
-import { groundSceneScale } from './tree-scale.js';
+import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset, priorFromSubregion } from './tree-scale.js';
 
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
@@ -2407,6 +2407,11 @@ function terrain3dBlock(id, report) {
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
           <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
           Forest canopy
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
+          <span style="display:inline-block;width:10px;height:14px;background:#2f6e40;border-radius:2px 2px 1px 1px;vertical-align:middle"></span>
+          Trees
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="roads" />
@@ -3186,8 +3191,21 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // dense "billboard_impostor" alike. Individual tree meshes/billboards
     // were reading as giant objects; the 3D view only wants a canopy surface.
     const canopyZones = renderZones.filter((z) => z.geometry?.coordinates?.[0]?.length >= 4);
+    const denseCanopyZones = renderZones.filter((z) => z.render_mode === 'billboard_impostor' && z.geometry?.coordinates?.[0]?.length >= 4);
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
-    scene.add(groupForest);
+    const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
+    scene.add(groupForest, groupTrees);
+
+    const speciesPrior = priorFromSubregion(
+      report?.satellite?.avi?.natural_subregion?.name
+      || report?.vegetation_indices?.avi?.natural_subregion?.name
+      || report?.nrcan_vegetation?.avi?.natural_subregion?.name
+    );
+    const pbr = {
+      canopyAlbedo: null, canopyNormal: null, canopyRough: null,
+      wall: {}, roof: {},
+      tree: { conifer: null, deciduous: null, bark: null },
+    };
 
     // --- Roads layer ---
     const groupRoads = new THREE.Group(); groupRoads.name = 'roads';
@@ -3357,9 +3375,39 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
       if (!zoneCells.length) return;
 
-      renderDrapedForestTexture(groupForest, zoneCells, meshW, meshD, cols, rows);
+      renderDrapedForestTexture(groupForest, zoneCells, meshW, meshD, cols, rows, pbr);
     };
     buildForestTexture();
+
+    const buildSparseTrees = () => {
+      while (groupTrees.children.length) {
+        const c = groupTrees.children[0];
+        groupTrees.remove(c);
+        c.geometry?.dispose();
+        c.material?.dispose();
+      }
+      const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
+      if (!instances.length) return;
+      const denseRings = denseCanopyZones.map((z) => z.geometry.coordinates[0]);
+      const denseInsets = denseRings.map((ring) => insetPolygon(ring, 0.72));
+      const sparse = [];
+      for (const t of instances) {
+        const lat = t.x, lng = t.y;
+        let deepInterior = false;
+        for (let i = 0; i < denseRings.length; i++) {
+          if (pointInPolygon2D(lng, lat, denseRings[i]) && pointInPolygon2D(lng, lat, denseInsets[i])) {
+            deepInterior = true;
+            break;
+          }
+        }
+        if (!deepInterior) sparse.push(t);
+      }
+      sparse.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      renderPhotorealTreeBillboards(groupTrees, sparse.slice(0, 120), {
+        latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
+      });
+    };
+    buildSparseTrees();
 
     // --- Roads layer ---
     let roadsGeoJSON = null;
@@ -3422,15 +3470,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       console.warn('Roads layer fetch failed', e);
     });
 
-    // Detected structures (building-detection.js data) — real, not proposed:
-    // solid materials, same as existing/detected trees, never the ghost/
-    // translucent treatment used for the click-to-place planning overlay.
-    // Procedural extrusion (footprint straight up to height_m, flat cap) is
-    // the reliable renderer for every building here; an asset swap-in for
-    // recognized farm-structure types (barn/shed/garage) is left for when
-    // matching low-poly models are actually added under
-    // /assets/quaternius-farm/ — render_mode_hint is carried through from
-    // the report so that swap-in can key off it without a data-model change.
+    // Detected structures — solid (existing), never ghost/proposed.
+    // Primary path: footprint extrusion + PBR atlas + inferred gable/flat
+    // roof. Missing height → box LOD. Quaternius farm GLBs are the
+    // degraded-data visual fallback when present under /assets/quaternius-farm/.
     const buildBuildings = () => {
       while (groupBuildings.children.length) {
         const c = groupBuildings.children[0];
@@ -3440,45 +3483,17 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
       const buildings = report?.buildings?.available ? (report.buildings.buildings || []) : [];
       if (!buildings.length) return;
-
-      const wallMat = new THREE.MeshLambertMaterial({ color: 0xb8a892 });
-      const roofMat = new THREE.MeshLambertMaterial({ color: 0x6b4a3a });
-
-      for (const b of buildings) {
-        const ring = b.geometry?.coordinates?.[0];
-        if (!Array.isArray(ring) || ring.length < 4) continue;
-        const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
-        if (closed.length < 3) continue;
-
-        const pts = closed.map(([lon, lat]) => latLonToLocal(lat, lon));
-        const heightM = Math.max(Number(b.height_m) || 3, 2);
-        // Real-world scale (metersPerSceneUnit), same tested formula used
-        // for canopy — a building's real height, not tied to terrain
-        // exaggeration.
-        const heightU = heightM / metersPerSceneUnit;
-
-        // Shape is authored in an (x, -z) plane so that, after rotating the
-        // extrusion -90° about X, its footprint lands back on the true
-        // ground (x, z) plane with the extrusion running up +Y.
-        const shape = new THREE.Shape();
-        shape.moveTo(pts[0].x, -pts[0].z);
-        for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, -pts[i].z);
-        shape.closePath();
-
-        const geo = new THREE.ExtrudeGeometry(shape, { depth: heightU, bevelEnabled: false, curveSegments: 1 });
-        geo.rotateX(-Math.PI / 2);
-
-        // Single reference ground height at the footprint centroid — planning-
-        // level, not terrain-following per vertex (footprints are small
-        // relative to DEM relief).
-        const centroid = pts.reduce((s, p) => ({ x: s.x + p.x / pts.length, y: s.y + p.y / pts.length, z: s.z + p.z / pts.length }), { x: 0, y: 0, z: 0 });
-        const mesh = new THREE.Mesh(geo, [wallMat, roofMat]);
-        mesh.position.y = centroid.y;
-        mesh.userData.buildingType = b.building_type;
-        groupBuildings.add(mesh);
-      }
+      renderPhotorealBuildings(groupBuildings, buildings, {
+        latLonToLocal, metersPerSceneUnit, pbr,
+      });
     };
     buildBuildings();
+
+    loadPhotorealPbr(pbr).then(() => {
+      buildForestTexture();
+      buildSparseTrees();
+      buildBuildings();
+    });
 
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
@@ -3585,6 +3600,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildParcelBoundary();
         buildZoneOverlays();
         buildForestTexture();
+        buildSparseTrees();
         buildRoads();
         buildBuildings();
         buildPlanningOverlay();
@@ -3605,6 +3621,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupSwale.visible = !!cb.checked;
         } else if (layer === 'forest-texture') {
           groupForest.visible = !!cb.checked;
+        } else if (layer === 'trees') {
+          groupTrees.visible = !!cb.checked;
         } else if (layer === 'roads') {
           groupRoads.visible = !!cb.checked;
         } else if (layer === 'buildings') {
@@ -4012,12 +4030,11 @@ function buildForestCanopyTexture() {
 }
 
 /**
- * Canopy rendering: one draped textured mesh over canopy cells, not
- * individual tree geometry. Adjacent cells share a continuous surface so
- * the forest reads as a 3D canopy texture sitting on the land.
+ * Canopy rendering: draped photoreal PBR texture (Poly Haven aerial_grass_rock)
+ * with the procedural blotch texture as an offline fallback.
  */
-function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows) {
-  const canopyTex = buildForestCanopyTexture();
+function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows, pbr = {}) {
+  const canopyTex = pbr.canopyAlbedo || buildForestCanopyTexture();
   const cellW = meshW / (cols - 1 || 1);
   const cellD = meshD / (rows - 1 || 1);
   const uvScale = 0.35;
@@ -4053,18 +4070,274 @@ function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows) {
     geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
     geo.setIndex(indices);
     geo.computeVertexNormals();
-    const mat = new THREE.MeshLambertMaterial({
+    const matOpts = {
       map: canopyTex,
       transparent: true,
       opacity,
       side: THREE.DoubleSide,
       depthWrite: opacity > 0.7,
-    });
+    };
+    const mat = pbr.canopyAlbedo
+      ? new THREE.MeshStandardMaterial({
+          ...matOpts,
+          normalMap: pbr.canopyNormal || undefined,
+          roughnessMap: pbr.canopyRough || undefined,
+          roughness: 0.92,
+          metalness: 0,
+        })
+      : new THREE.MeshLambertMaterial(matOpts);
     group.add(new THREE.Mesh(geo, mat));
   };
 
-  addLayer(cells.filter((c) => !c.isEdge), 0.9);
+  addLayer(cells.filter((c) => !c.isEdge), 0.92);
   addLayer(cells.filter((c) => c.isEdge), 0.5);
+}
+
+function loadTexture(url, repeat = 1) {
+  return new Promise((resolve) => {
+    if (!url || typeof THREE === 'undefined') return resolve(null);
+    const loader = new THREE.TextureLoader();
+    loader.load(
+      url,
+      (tex) => {
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        tex.repeat.set(repeat, repeat);
+        tex.anisotropy = 4;
+        resolve(tex);
+      },
+      undefined,
+      () => resolve(null)
+    );
+  });
+}
+
+async function loadPhotorealPbr(pbr) {
+  const [canopyA, canopyN, canopyR, siding, brick, stucco, metalW, asphalt, metalR, pine, dec, bark] = await Promise.all([
+    loadTexture('/assets/pbr/canopy/albedo.jpg', 4),
+    loadTexture('/assets/pbr/canopy/normal.jpg', 4),
+    loadTexture('/assets/pbr/canopy/roughness.jpg', 4),
+    loadTexture('/assets/pbr/walls/siding_albedo.jpg', 2),
+    loadTexture('/assets/pbr/walls/brick_albedo.jpg', 2),
+    loadTexture('/assets/pbr/walls/stucco_albedo.jpg', 2),
+    loadTexture('/assets/pbr/walls/metal_albedo.jpg', 2),
+    loadTexture('/assets/pbr/roofs/asphalt_albedo.jpg', 2),
+    loadTexture('/assets/pbr/roofs/metal_albedo.jpg', 2),
+    loadTexture('/assets/pbr/trees/pine_twig_diff.jpg', 1),
+    loadTexture('/assets/pbr/trees/deciduous_leaf_diff.jpg', 1),
+    loadTexture('/assets/pbr/trees/bark_diff.jpg', 1),
+  ]);
+  pbr.canopyAlbedo = canopyA;
+  pbr.canopyNormal = canopyN;
+  pbr.canopyRough = canopyR;
+  pbr.wall = { siding, brick, stucco, metal: metalW };
+  pbr.roof = { asphalt_shingle: asphalt, metal: metalR };
+  pbr.tree = { conifer: pine, deciduous: dec, bark };
+}
+
+function crossedBillboardGeometry() {
+  const geo = new THREE.BufferGeometry();
+  const w = 0.55, h = 1;
+  const positions = new Float32Array([
+    -w, 0, 0, w, 0, 0, w, h, 0, -w, 0, 0, w, h, 0, -w, h, 0,
+    0, 0, -w, 0, 0, w, 0, h, w, 0, 0, -w, 0, h, w, 0, h, -w,
+  ]);
+  const uvs = new Float32Array([
+    0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1,
+    0, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1,
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function bakeTreeCardTexture(map, kind) {
+  const size = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, size, size);
+  ctx.beginPath();
+  if (kind === 'conifer') {
+    ctx.moveTo(size * 0.5, size * 0.02);
+    ctx.lineTo(size * 0.86, size * 0.40);
+    ctx.lineTo(size * 0.70, size * 0.40);
+    ctx.lineTo(size * 0.92, size * 0.68);
+    ctx.lineTo(size * 0.68, size * 0.68);
+    ctx.lineTo(size * 0.96, size * 0.94);
+    ctx.lineTo(size * 0.04, size * 0.94);
+    ctx.lineTo(size * 0.32, size * 0.68);
+    ctx.lineTo(size * 0.08, size * 0.68);
+    ctx.lineTo(size * 0.30, size * 0.40);
+    ctx.lineTo(size * 0.14, size * 0.40);
+    ctx.closePath();
+  } else {
+    ctx.ellipse(size * 0.5, size * 0.36, size * 0.42, size * 0.36, 0, 0, Math.PI * 2);
+    ctx.rect(size * 0.45, size * 0.62, size * 0.10, size * 0.36);
+  }
+  ctx.clip();
+  if (map?.image) ctx.drawImage(map.image, 0, 0, size, size);
+  else {
+    ctx.fillStyle = kind === 'conifer' ? '#2d5c32' : '#3d8a4a';
+    ctx.fillRect(0, 0, size, size);
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.needsUpdate = true;
+  return tex;
+}
+
+function treeFoliageMaterial(map, kind, fallbackColor) {
+  const card = bakeTreeCardTexture(map, kind);
+  return new THREE.MeshLambertMaterial({
+    map: card,
+    color: 0xffffff,
+    transparent: true,
+    alphaTest: 0.35,
+    side: THREE.DoubleSide,
+    depthWrite: true,
+  });
+}
+
+function renderPhotorealTreeBillboards(group, trees, opts) {
+  if (!trees.length) return;
+  const { latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior } = opts;
+  const buckets = { conifer: [], deciduous: [] };
+  for (const t of trees) {
+    buckets[resolveTreeAsset(t, { prior })].push(t);
+  }
+  const colors = { conifer: 0x2d5c32, deciduous: 0x3d8a4a };
+  const m = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const v = new THREE.Vector3();
+  const s = new THREE.Vector3();
+  for (const [asset, list] of Object.entries(buckets)) {
+    if (!list.length) continue;
+    const inst = new THREE.InstancedMesh(
+      crossedBillboardGeometry(),
+      treeFoliageMaterial(pbr?.tree?.[asset], asset, colors[asset]),
+      list.length
+    );
+    list.forEach((t, i) => {
+      const p = latLonToLocal(t.x, t.y);
+      const dims = treeInstanceDimensions(t, metersPerSceneUnit);
+      const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
+      const wU = Math.min(dims.crownU * 2, hU * 0.85);
+      v.set(p.x, p.y, p.z);
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), deterministicJitter(i * 17) * Math.PI * 2);
+      s.set(wU / 1.1, hU, wU / 1.1);
+      m.compose(v, q, s);
+      inst.setMatrixAt(i, m);
+    });
+    inst.instanceMatrix.needsUpdate = true;
+    inst.userData.kind = 'sparse-trees';
+    group.add(inst);
+  }
+}
+
+function wallTextureFor(pbr, kind) {
+  return pbr?.wall?.[kind] || pbr?.wall?.siding || null;
+}
+function roofTextureFor(pbr, kind) {
+  return pbr?.roof?.[kind] || pbr?.roof?.asphalt_shingle || null;
+}
+
+function renderPhotorealBuildings(group, buildings, opts) {
+  const { latLonToLocal, metersPerSceneUnit, pbr } = opts;
+  const fallbackWall = new THREE.MeshLambertMaterial({ color: 0xb8a892 });
+  const fallbackRoof = new THREE.MeshLambertMaterial({ color: 0x6b4a3a });
+
+  for (const b of buildings) {
+    const ring = b.geometry?.coordinates?.[0] || b.footprint?.coordinates?.[0];
+    if (!Array.isArray(ring) || ring.length < 4) continue;
+    const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+    if (closed.length < 3) continue;
+    const pts = closed.map(([lon, lat]) => latLonToLocal(lat, lon));
+    const heightM = Math.max(Number(b.height_m) || 3, 2);
+    const heightU = heightM / metersPerSceneUnit;
+    const centroid = pts.reduce((s, p) => ({ x: s.x + p.x / pts.length, y: s.y + p.y / pts.length, z: s.z + p.z / pts.length }), { x: 0, y: 0, z: 0 });
+
+    const wallMap = wallTextureFor(pbr, b.wall_material);
+    const roofMap = roofTextureFor(pbr, b.roof_material);
+    const wallMat = wallMap
+      ? new THREE.MeshStandardMaterial({ map: wallMap, roughness: 0.88, metalness: b.wall_material === 'metal' ? 0.45 : 0.02 })
+      : fallbackWall;
+    const roofMat = roofMap
+      ? new THREE.MeshStandardMaterial({ map: roofMap, roughness: b.roof_material === 'metal' ? 0.45 : 0.92, metalness: b.roof_material === 'metal' ? 0.55 : 0.02 })
+      : fallbackRoof;
+
+    if (b.lod === 'box') {
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      for (const p of pts) {
+        minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+        minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+      }
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(Math.max(maxX - minX, 0.02), heightU, Math.max(maxZ - minZ, 0.02)),
+        wallMat
+      );
+      box.position.set((minX + maxX) / 2, centroid.y + heightU / 2, (minZ + maxZ) / 2);
+      box.userData.buildingType = b.building_type;
+      group.add(box);
+      continue;
+    }
+
+    const wallH = b.roof_type === 'gable' ? heightU * 0.78 : heightU;
+    const shape = new THREE.Shape();
+    shape.moveTo(pts[0].x, -pts[0].z);
+    for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i].x, -pts[i].z);
+    shape.closePath();
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false, curveSegments: 1 });
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(geo, [wallMat, b.roof_type === 'gable' ? wallMat : roofMat]);
+    mesh.position.y = centroid.y;
+    mesh.userData.buildingType = b.building_type;
+    group.add(mesh);
+
+    if (b.roof_type === 'gable') {
+      const gable = makeGableRoofGeometry(pts, centroid.y + wallH, heightU - wallH);
+      if (gable) {
+        const roof = new THREE.Mesh(gable, roofMat);
+        roof.userData.buildingType = b.building_type;
+        group.add(roof);
+      }
+    }
+  }
+}
+
+function makeGableRoofGeometry(pts, eaveY, riseU) {
+  if (pts.length < 3 || riseU <= 0) return null;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of pts) {
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x);
+    minZ = Math.min(minZ, p.z); maxZ = Math.max(maxZ, p.z);
+  }
+  const alongX = (maxX - minX) >= (maxZ - minZ);
+  const ridgeY = eaveY + riseU;
+  const positions = [];
+  const push = (a, b, c) => positions.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
+  if (alongX) {
+    const midZ = (minZ + maxZ) / 2;
+    const r1 = { x: minX, y: ridgeY, z: midZ };
+    const r2 = { x: maxX, y: ridgeY, z: midZ };
+    push({ x: minX, y: eaveY, z: minZ }, { x: maxX, y: eaveY, z: minZ }, r2);
+    push({ x: minX, y: eaveY, z: minZ }, r2, r1);
+    push({ x: maxX, y: eaveY, z: maxZ }, { x: minX, y: eaveY, z: maxZ }, r1);
+    push({ x: maxX, y: eaveY, z: maxZ }, r1, r2);
+  } else {
+    const midX = (minX + maxX) / 2;
+    const r1 = { x: midX, y: ridgeY, z: minZ };
+    const r2 = { x: midX, y: ridgeY, z: maxZ };
+    push({ x: minX, y: eaveY, z: minZ }, { x: minX, y: eaveY, z: maxZ }, r2);
+    push({ x: minX, y: eaveY, z: minZ }, r2, r1);
+    push({ x: maxX, y: eaveY, z: maxZ }, { x: maxX, y: eaveY, z: minZ }, r1);
+    push({ x: maxX, y: eaveY, z: maxZ }, r1, r2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.computeVertexNormals();
+  return geo;
 }
 
 /** Deterministic 0..1 pseudo-random, seeded by an integer index. */

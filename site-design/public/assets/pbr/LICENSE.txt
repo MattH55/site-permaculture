@@ -1,0 +1,9 @@
+Poly Haven CC0 textures (https://polyhaven.com)
+License: Creative Commons Zero (CC0) — public domain, no attribution required.
+Credit is appreciated: polyhaven.com
+
+Used in this folder:
+  canopy/   aerial_grass_rock (albedo, normal, roughness)
+  walls/    blue_painted_planks, brick_4, beige_wall_001, blue_metal_plate
+  roofs/    bitumen, box_profile_metal_sheet
+  trees/    pine_tree_01 twig maps, jacaranda_tree leaf maps, bark_willow
