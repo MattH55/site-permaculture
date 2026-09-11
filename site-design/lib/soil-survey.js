@@ -583,8 +583,8 @@ function sampleGridPoints(lat, lng, bbox, n) {
 async function querySoilGridsPoint(lat, lng) {
   const urls = [
     `${SOILGRIDS}?lon=${lng.toFixed(5)}&lat=${lat.toFixed(5)}` +
-      `&property=soc&property=clay&property=sand&property=silt&property=phh2o` +
-      `&depth=0-5cm&depth=5-15cm&value=mean`,
+      `&property=soc&property=clay&property=sand&property=silt&property=phh2o&property=bdod` +
+      `&depth=0-5cm&depth=5-15cm&depth=15-30cm&depth=30-60cm&depth=60-100cm&depth=100-200cm&value=mean`,
     `${SOILGRIDS}?lon=${lng.toFixed(5)}&lat=${lat.toFixed(5)}` +
       `&property=clay&property=phh2o&property=soc` +
       `&depth=0-5cm&value=mean`,
@@ -654,6 +654,19 @@ async function querySoilGridsPoint(lat, lng) {
 
   if (clay == null && sand == null && soc == null && phh2o == null) return null;
 
+  const by_depth = {};
+  for (const layer of layers) {
+    const factor = layer.unit_measure?.d_factor || 1;
+    for (const d of layer.depths || []) {
+      const raw = d.values?.mean;
+      if (raw == null || !Number.isFinite(raw)) continue;
+      const label = String(d.label || d.range || '').toLowerCase().replace(/\s+/g, '');
+      if (!label) continue;
+      if (!by_depth[label]) by_depth[label] = {};
+      by_depth[label][layer.name] = raw / factor;
+    }
+  }
+
   return {
     clay_pct: clay,
     sand_pct: sand,
@@ -661,7 +674,8 @@ async function querySoilGridsPoint(lat, lng) {
     ph_h2o: phh2o,
     soc_g_kg: soc,
     texture_class: textureFromFractions(sand, silt, clay),
-    depth: '0–15 cm (0–5 + 5–15 mean)',
+    depth: Object.keys(by_depth).length > 2 ? '0–200 cm SoilGrids profile' : '0–15 cm (0–5 + 5–15 mean)',
+    by_depth,
     resolution_m: 250,
     confidence: 'low-moderate',
   };

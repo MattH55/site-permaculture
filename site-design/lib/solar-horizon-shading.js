@@ -109,6 +109,8 @@ export function computeSolarHorizonShading(opts = {}) {
     annual_insolation_hours: results.map((r) => r.annual_hours),
     winter_insolation_hours: results.map((r) => r.winter_hours),
     summer_insolation_hours: results.map((r) => r.summer_hours),
+    growing_season_insolation_hours: results.map((r) => r.growing_season_hours),
+    spring_insolation_hours: results.map((r) => r.spring_hours),
   } : null;
 
   // Default overlay ranks by annual insolation (spec: "top annual-insolation
@@ -146,6 +148,8 @@ function formatPointResult(r) {
     annual_insolation_hours: r.annual_hours,
     winter_insolation_hours: r.winter_hours,
     summer_insolation_hours: r.summer_hours,
+    growing_season_insolation_hours: r.growing_season_hours,
+    spring_insolation_hours: r.spring_hours,
     sunrise_delay_min_solstice: r.sunrise_delay_min,
     sunset_delay_min_solstice: r.sunset_delay_min,
   };
@@ -237,13 +241,19 @@ function insolationHours({ horizon, sunPaths, point, trees, canopyAssumption }) 
 
   const winter = byLabel.winter_solstice ?? 0;
   const summer = byLabel.summer_solstice ?? 0;
-  const springAutumnAvg = ((byLabel.spring_equinox ?? 0) + (byLabel.autumn_equinox ?? 0)) / 2;
+  const spring = byLabel.spring_equinox ?? 0;
+  const autumn = byLabel.autumn_equinox ?? 0;
+  const springAutumnAvg = (spring + autumn) / 2;
   // Average the four representative dates (each ~a quarter-year apart) and
   // scale by 365 for an annual estimate.
   const avgDailyHours = (winter + summer + 2 * springAutumnAvg) / 4;
+  // Frost-free / planting window: equinoxes + summer, not the winter total.
+  const growingSeasonDaily = (spring + summer + autumn) / 3;
   return {
     winter_hours: round1(winter),
     summer_hours: round1(summer),
+    spring_hours: round1(spring),
+    growing_season_hours: round1(growingSeasonDaily),
     annual_hours: round1(avgDailyHours * 365),
     sunrise_delay_min: sunriseDelayMin != null ? Math.max(0, sunriseDelayMin) : null,
     sunset_delay_min: sunsetDelayMin != null ? Math.max(0, sunsetDelayMin) : null,
@@ -317,6 +327,8 @@ function extractCandidateZones(results, { rows, cols, stride, bbox, rankBy = 'an
     annual_insolation_hours: r.annual_hours,
     winter_insolation_hours: r.winter_hours,
     summer_insolation_hours: r.summer_hours,
+    growing_season_insolation_hours: r.growing_season_hours,
+    spring_insolation_hours: r.spring_hours,
     sunrise_delay_min_solstice: r.sunrise_delay_min,
     sunset_delay_min_solstice: r.sunset_delay_min,
   }));

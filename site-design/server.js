@@ -21,6 +21,7 @@ import { fetchGeoOverlays } from './lib/geo-overlays.js';
 import { fetchRoadsLayer } from './lib/roads-layer.js';
 import { evaluatePlanningClick } from './lib/planning-evaluate.js';
 import { computeZoneSectorOverlay } from './lib/zone-sector.js';
+import { writeLabOverride } from './lib/soil-profile.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -136,6 +137,24 @@ app.post('/api/design', (req, res) => {
  * Map path: draw polygon → live geospatial layers → rules → report
  * Body: { polygon: { paths: [[lng,lat],...] } | GeoJSON, site_name?: string, force?: boolean }
  */
+app.post('/api/soil-test', (req, res) => {
+  try {
+    const body = req.body || {};
+    const parcelId = body.parcel_id || body.cache_key;
+    if (!parcelId) return res.status(400).json({ error: 'parcel_id required' });
+    const rec = writeLabOverride(parcelId, {
+      texture: body.texture,
+      ph: body.ph,
+      organic_matter_pct: body.organic_matter_pct ?? body.organic_matter,
+      nutrients: body.nutrients,
+    });
+    if (!rec) return res.status(500).json({ error: 'could not cache soil test' });
+    res.json({ ok: true, lab_test_override: rec });
+  } catch (e) {
+    res.status(400).json({ error: e.message || 'soil-test failed' });
+  }
+});
+
 app.post('/api/report', async (req, res) => {
   const started = Date.now();
   try {

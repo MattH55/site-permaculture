@@ -208,7 +208,9 @@ export function buildSiteConditionProfile(site = {}, extras = {}) {
       soil_zone: ss?.land_system?.soil_zone || null,
       clay_pct: num(ss?.sample_summary?.mean_clay_pct) ?? num(ss?.characteristics?.clay_pct_mean),
       sand_pct: num(ss?.sample_summary?.mean_sand_pct) ?? num(ss?.characteristics?.sand_pct_mean),
+      profile: extras.soil_profile || site.soil_profile || null,
     },
+    growing_season_sun_hours: num(extras.growing_season_sun_hours) ?? num(site.growing_season_sun_hours),
     water: {
       annual_precip_mm: precip,
       regime: waterRegime,

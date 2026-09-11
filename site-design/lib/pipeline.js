@@ -57,6 +57,15 @@ import { getStructureFootprints } from './structures.js';
 import { computePlantableArea } from './plantable-area.js';
 import { computeBuildingDetection } from './building-detection.js';
 import { computeFireSmartAssessments } from './firesmart-zones.js';
+import { buildSoilProfile } from './soil-profile.js';
+import { computeFlowAccumulation } from './flow-accumulation.js';
+import {
+  estimateCanopyVolume,
+  estimateCutFill,
+  viewCorridorCheck,
+  computeRoofFaceSolar,
+  enrichPlantingZones,
+} from './report-site-layers.js';
 
 const cache = new Map();
 
@@ -655,6 +664,77 @@ export async function generateSiteReport(input = {}) {
     cols: hrdem_terrain?.cols || 0,
     bbox,
     parcel_id: key,
+  });
+
+  const demElev = hrdem_terrain?.elevations_m || layers.elevation?.elevations || [];
+  const demRows = hrdem_terrain?.rows || layers.elevation?.rows || 0;
+  const demCols = hrdem_terrain?.cols || layers.elevation?.cols || 0;
+  const flowForSoil = computeFlowAccumulation({ elevations: demElev, rows: demRows, cols: demCols, bbox });
+  record.soil_profile = buildSoilProfile({
+    soil_data,
+    soilgrids_point: soil_data.soil_units?.[0]?.soilgrids || null,
+    flow: flowForSoil,
+    slope_pct: t.slope_percent,
+    annual_precip_mm: climate.annual_precipitation_mm || layers.climate?.annual_precipitation_mm,
+    parcel_id: key,
+    elevations: demElev,
+    rows: demRows,
+    cols: demCols,
+    bbox,
+  });
+  record.canopy_volume = estimateCanopyVolume(canopy, bbox);
+  record.cut_fill = estimateCutFill({
+    elevations: demElev,
+    rows: demRows,
+    cols: demCols,
+    bbox,
+    footprints: record.buildings?.buildings || [],
+  });
+  const originPt = record.buildings?.buildings?.[0]
+    ? (() => {
+      const ring = record.buildings.buildings[0].geometry?.coordinates?.[0] || [];
+      if (ring.length < 3) return { lat: centre.latitude, lon: centre.longitude };
+      return {
+        lon: ring.reduce((s, p) => s + p[0], 0) / ring.length,
+        lat: ring.reduce((s, p) => s + p[1], 0) / ring.length,
+      };
+    })()
+    : { lat: centre.latitude, lon: centre.longitude };
+  record.view_corridors = viewCorridorCheck({
+    elevations: demElev,
+    rows: demRows,
+    cols: demCols,
+    bbox,
+    origin: originPt,
+  });
+  record.roof_solar = computeRoofFaceSolar(
+    record.buildings,
+    {
+      elevations: demElev,
+      rows: demRows,
+      cols: demCols,
+      bbox,
+      latitude: centre.latitude,
+      longitude: centre.longitude,
+      canopy,
+      dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
+    },
+    record.solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt
+  );
+  record.planting_zones = enrichPlantingZones({
+    plantable_area: record.plantable_area,
+    soil_profile: record.soil_profile,
+    solar_horizon_shading: record.solar_horizon_shading,
+    site: siteInput,
+    planting_extras: {
+      fecundity: record.fecundity,
+      hardiness: record.hardiness,
+      soil_survey: record.soil_survey,
+      satellite: satellite?.available ? satellite : null,
+      wetlands,
+      tree_cover: treeCover,
+      soil_profile: record.soil_profile,
+    },
   });
 
   // Service packages + action menu for "Build Your Plan" UI — placed after
