@@ -4,10 +4,8 @@
  * enrichment. See report-layer-soil-solar-planting-instructions.md.
  */
 
-import { planPlantings } from './planting.js';
-import { computeSolarHorizonShading, horizonProfile } from './solar-horizon-shading.js';
+import { horizonProfile } from './solar-horizon-shading.js';
 import { scoreBand, weakestConfidence, round0, round1 } from './suitability-common.js';
-import { buildSiteConditionProfile } from './site-condition-profile.js';
 
 const BDFT_PER_M3 = 424; // rough conversion, planning estimate only
 
@@ -129,7 +127,7 @@ export function viewCorridorCheck(opts = {}) {
   };
 }
 
-export function computeRoofFaceSolar(buildings, solarOpts, meanDailyKwh) {
+export function computeRoofFaceSolar(buildings, solarOpts = {}, meanDailyKwh) {
   const list = buildings?.available ? (buildings.buildings || []) : [];
   if (!list.length) return { available: false, roofs: [] };
   const faces = [];
@@ -139,14 +137,13 @@ export function computeRoofFaceSolar(buildings, solarOpts, meanDailyKwh) {
     }
   }
   if (!faces.length) return { available: false, roofs: [] };
-  const shading = computeSolarHorizonShading({
-    ...solarOpts,
-    candidatePoints: faces.map((f) => f.centroid),
-  });
-  const per = shading.per_point || [];
+  // Sample the already-computed parcel solar raster — do not re-run horizon
+  // shading (that second pass was blowing /api/report past host timeouts).
+  const raster = solarOpts.solar_exposure_raster || solarOpts.solar_raster || null;
   const kwhPerHour = meanDailyKwh != null ? meanDailyKwh / 12 : 0.18;
-  const roofs = faces.map((f, i) => {
-    const hours = per[i]?.annual_insolation_hours ?? 0;
+  const roofs = faces.map((f) => {
+    const sampled = sampleSolarAt(raster, f.centroid.lat, f.centroid.lon, 'annual_insolation_hours') ?? 0;
+    const hours = round1(sampled * roofOrientationFactor(f.aspect_deg, f.tilt_deg));
     const kwh = round1(hours * kwhPerHour);
     return {
       footprint_id: f.building.footprint_id,
@@ -166,10 +163,21 @@ export function computeRoofFaceSolar(buildings, solarOpts, meanDailyKwh) {
     roofs,
     best_face: best,
     kwh_conversion_note: meanDailyKwh != null
-      ? 'kWh/m² scaled from NRCan mean daily insolation × modelled sun hours.'
+      ? 'kWh/m² scaled from NRCan mean daily insolation × modelled sun hours, adjusted for roof aspect/tilt.'
       : 'kWh/m² uses a 0.18 kW/m² mean-irradiance proxy when no municipality insolation is available.',
-    confidence: shading.confidence || 'moderate',
+    confidence: raster ? 'moderate' : 'low',
+    method: 'Sample solar_exposure_raster at roof centroid, then scale by aspect/tilt (south + ~30° tilt = 1.0).',
   };
+}
+
+/** South-facing ~30° tilt ≈ 1.0; north faces drop toward 0.3. */
+export function roofOrientationFactor(aspectDeg, tiltDeg) {
+  const aspect = Number.isFinite(aspectDeg) ? aspectDeg : 180;
+  const tilt = Number.isFinite(tiltDeg) ? tiltDeg : 30;
+  const aspectRad = ((aspect - 180) * Math.PI) / 180;
+  const aspectF = 0.65 + 0.35 * Math.cos(aspectRad);
+  const tiltF = 0.85 + 0.15 * Math.cos(((tilt - 30) * Math.PI) / 180);
+  return aspectF * tiltF;
 }
 
 export function roofFacesFromBuilding(b) {
@@ -209,8 +217,7 @@ export function enrichPlantingZones(opts = {}) {
   const zones = opts.plantable_area?.planting_zones || [];
   const soilProfile = opts.soil_profile || {};
   const solar = opts.solar_horizon_shading?.solar_exposure_raster;
-  const site = opts.site || {};
-  const extras = opts.planting_extras || {};
+  const catalog = (opts.planting_plan?.recommended || []).slice(0, 5);
 
   return zones.map((z) => {
     const ring = z.geometry?.coordinates?.[0] || [];
@@ -247,27 +254,18 @@ export function enrichPlantingZones(opts = {}) {
     if (z.constraints?.includes('steep_terracing_required')) score -= 8;
     score = Math.max(0, Math.min(100, score));
     const suitability_band = scoreBand(score) || 'fair';
+    const factors = compactFactors(scp, z);
 
-    let recommended = [];
-    try {
-      const profile = buildSiteConditionProfile(site, {
-        ...extras,
-        frostPoolingHint: frostPocket ? (z.frost_risk_level === 'high' ? 'high' : 'moderate') : 'low',
-      });
-      if (growingSun != null) profile.growing_season_sun_hours = growingSun;
-      profile.soil = { ...profile.soil, ...scp.soil };
-      const plan = planPlantings(site, { ...extras, profile, limit: 5 });
-      recommended = (plan.recommended || []).slice(0, 5).map((p) => ({
-        species_or_guild: p.common_name || p.name || p.id || p.species_or_guild,
-        latin: p.latin_name || p.latin || null,
-        confidence: p.score >= 75 ? 'high' : p.score >= 55 ? 'moderate' : 'low',
-        score: p.score,
-        suitability: p.suitability,
-        driving_factors: compactFactors(scp, z),
-      }));
-    } catch {
-      recommended = [];
-    }
+    // Reuse the parcel planting plan — calling planPlantings() per zone
+    // re-scored the catalog and was a common cause of /api/report timeouts.
+    const recommended = catalog.map((p) => ({
+      species_or_guild: p.common_name || p.name || p.id || p.species_or_guild,
+      latin: p.latin_name || p.latin || null,
+      confidence: p.score >= 75 ? 'high' : p.score >= 55 ? 'moderate' : 'low',
+      score: p.score,
+      suitability: p.suitability,
+      driving_factors: factors,
+    }));
 
     return {
       geometry: z.geometry,
@@ -276,7 +274,7 @@ export function enrichPlantingZones(opts = {}) {
       suitability_score: score,
       site_condition_profile: scp,
       recommended_plantings: recommended,
-      driving_factors: compactFactors(scp, z),
+      driving_factors: factors,
       confidence: z.confidence || weakestConfidence(['moderate', soilProfile.confidence]),
       constraints: z.constraints || [],
     };

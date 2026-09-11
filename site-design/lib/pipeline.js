@@ -669,27 +669,32 @@ export async function generateSiteReport(input = {}) {
   const demElev = hrdem_terrain?.elevations_m || layers.elevation?.elevations || [];
   const demRows = hrdem_terrain?.rows || layers.elevation?.rows || 0;
   const demCols = hrdem_terrain?.cols || layers.elevation?.cols || 0;
-  const flowForSoil = computeFlowAccumulation({ elevations: demElev, rows: demRows, cols: demCols, bbox });
-  record.soil_profile = buildSoilProfile({
-    soil_data,
-    soilgrids_point: soil_data.soil_units?.[0]?.soilgrids || null,
-    flow: flowForSoil,
-    slope_pct: t.slope_percent,
-    annual_precip_mm: climate.annual_precipitation_mm || layers.climate?.annual_precipitation_mm,
-    parcel_id: key,
-    elevations: demElev,
-    rows: demRows,
-    cols: demCols,
-    bbox,
-  });
-  record.canopy_volume = estimateCanopyVolume(canopy, bbox);
-  record.cut_fill = estimateCutFill({
+  // Report extras must never fail or stall the whole /api/report payload.
+  const flowForSoil = safeExtra('flow', { available: false }, () =>
+    computeFlowAccumulation({ elevations: demElev, rows: demRows, cols: demCols, bbox })
+  );
+  record.soil_profile = safeExtra('soil_profile', { available: false, reason: 'soil profile skipped' }, () =>
+    buildSoilProfile({
+      soil_data,
+      soilgrids_point: soil_data.soil_units?.[0]?.soilgrids || null,
+      flow: flowForSoil,
+      slope_pct: t.slope_percent,
+      annual_precip_mm: climate.annual_precipitation_mm || layers.climate?.annual_precipitation_mm,
+      parcel_id: key,
+      elevations: demElev,
+      rows: demRows,
+      cols: demCols,
+      bbox,
+    })
+  );
+  record.canopy_volume = safeExtra('canopy_volume', { available: false }, () => estimateCanopyVolume(canopy, bbox));
+  record.cut_fill = safeExtra('cut_fill', { available: false, pads: [] }, () => estimateCutFill({
     elevations: demElev,
     rows: demRows,
     cols: demCols,
     bbox,
     footprints: record.buildings?.buildings || [],
-  });
+  }));
   const originPt = record.buildings?.buildings?.[0]
     ? (() => {
       const ring = record.buildings.buildings[0].geometry?.coordinates?.[0] || [];
@@ -700,42 +705,24 @@ export async function generateSiteReport(input = {}) {
       };
     })()
     : { lat: centre.latitude, lon: centre.longitude };
-  record.view_corridors = viewCorridorCheck({
+  record.view_corridors = safeExtra('view_corridors', { available: false }, () => viewCorridorCheck({
     elevations: demElev,
     rows: demRows,
     cols: demCols,
     bbox,
     origin: originPt,
-  });
-  record.roof_solar = computeRoofFaceSolar(
+  }));
+  record.roof_solar = safeExtra('roof_solar', { available: false, roofs: [] }, () => computeRoofFaceSolar(
     record.buildings,
-    {
-      elevations: demElev,
-      rows: demRows,
-      cols: demCols,
-      bbox,
-      latitude: centre.latitude,
-      longitude: centre.longitude,
-      canopy,
-      dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
-    },
+    { solar_exposure_raster: record.solar_horizon_shading?.solar_exposure_raster },
     record.solar?.mean_daily_global_insolation_kwh_m2?.south_latitude_tilt
-  );
-  record.planting_zones = enrichPlantingZones({
+  ));
+  record.planting_zones = safeExtra('planting_zones', [], () => enrichPlantingZones({
     plantable_area: record.plantable_area,
     soil_profile: record.soil_profile,
     solar_horizon_shading: record.solar_horizon_shading,
-    site: siteInput,
-    planting_extras: {
-      fecundity: record.fecundity,
-      hardiness: record.hardiness,
-      soil_survey: record.soil_survey,
-      satellite: satellite?.available ? satellite : null,
-      wetlands,
-      tree_cover: treeCover,
-      soil_profile: record.soil_profile,
-    },
-  });
+    planting_plan,
+  }));
 
   // Service packages + action menu for "Build Your Plan" UI — placed after
   // buildings/firesmart resolve above so a flagged FireSmart risk can pull
@@ -1054,5 +1041,14 @@ function putCache(key, report) {
   if (cache.size > CACHE_MAX) {
     const oldest = [...cache.entries()].sort((a, b) => a[1].at - b[1].at)[0];
     if (oldest) cache.delete(oldest[0]);
+  }
+}
+
+function safeExtra(label, fallback, fn) {
+  try {
+    return fn();
+  } catch (err) {
+    console.warn(`[pipeline] ${label} skipped:`, err?.message || err);
+    return fallback;
   }
 }

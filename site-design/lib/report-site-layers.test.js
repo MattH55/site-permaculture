@@ -5,6 +5,8 @@ import {
   estimateCutFill,
   roofFacesFromBuilding,
   enrichPlantingZones,
+  computeRoofFaceSolar,
+  roofOrientationFactor,
 } from './report-site-layers.js';
 
 const bbox = { west: -113.01, south: 53.5, east: -113.00, north: 53.51 };
@@ -82,4 +84,55 @@ test('enrichPlantingZones bands a steep frosty patch poorer than a gentle one', 
   assert.ok(zones[0].suitability_score > zones[1].suitability_score);
   assert.equal(zones[1].site_condition_profile.frost_pocket, true);
   assert.ok(['poor', 'fair', 'good', 'excellent'].includes(zones[0].suitability_band));
+});
+
+test('computeRoofFaceSolar samples the existing raster and prefers the south face', () => {
+  const ring = [
+    [bbox.west, bbox.south],
+    [bbox.east, bbox.south],
+    [bbox.east, bbox.north],
+    [bbox.west, bbox.north],
+    [bbox.west, bbox.south],
+  ];
+  const raster = {
+    rows: 2,
+    cols: 2,
+    bbox,
+    annual_insolation_hours: [6, 6, 6, 6],
+  };
+  const r = computeRoofFaceSolar(
+    {
+      available: true,
+      buildings: [{
+        footprint_id: 'a',
+        building_type: 'house',
+        roof_type: 'gable',
+        geometry: { coordinates: [ring] },
+      }],
+    },
+    { solar_exposure_raster: raster },
+    4
+  );
+  assert.equal(r.available, true);
+  assert.equal(r.roofs.length, 2);
+  assert.ok(r.best_face);
+  assert.ok(r.best_face.annual_kwh_m2 > 0);
+  assert.ok(roofOrientationFactor(180, 30) > roofOrientationFactor(0, 30));
+});
+
+test('enrichPlantingZones reuses planting_plan instead of requiring a site catalog', () => {
+  const zones = enrichPlantingZones({
+    plantable_area: {
+      planting_zones: [{
+        geometry: { type: 'Polygon', coordinates: [[[-113, 53], [-113.001, 53], [-113.001, 53.001], [-113, 53.001], [-113, 53]]] },
+        area_m2: 400,
+        avg_slope_pct: 2,
+        frost_risk_level: 'none',
+        soil_texture_class: 'loam',
+      }],
+    },
+    planting_plan: { recommended: [{ common_name: 'Saskatoon', latin_name: 'Amelanchier alnifolia', score: 80 }] },
+  });
+  assert.equal(zones[0].recommended_plantings.length, 1);
+  assert.equal(zones[0].recommended_plantings[0].species_or_guild, 'Saskatoon');
 });
