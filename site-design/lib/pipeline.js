@@ -93,31 +93,55 @@ export async function generateSiteReport(input = {}) {
   const centre = centroid(ring);
   const areaHa = polygonAreaHa(ring);
 
-  const layersP = gatherSiteLayers({
-    ring,
-    bbox,
-    site_name: input.site_name,
-  });
-  const proximityP = gatherProximity(centre, bbox);
+  const waveMs = Math.min(28_000, Math.max(8_000, remaining() - 22_000));
+  const layersP = withTimeout(
+    gatherSiteLayers({
+      ring,
+      bbox,
+      site_name: input.site_name,
+    }),
+    waveMs,
+    {
+      terrain: { slope_percent: 2, aspect: 'flat', elevation_m: null, landform_position: 'mid_slope' },
+      soils: {},
+      climate: {},
+      wetlands: {},
+      watershed: {},
+      wetAreas: {},
+      elevation: { elevations: [], rows: 0, cols: 0 },
+      preset: {},
+      alberta: true,
+      _timed_out: true,
+    }
+  );
+  const proximityP = withTimeout(gatherProximity(centre, bbox), waveMs, {});
   const soilP = layersP.then((layers) =>
-    getSoilData(bbox, layers.soils || {}).catch((e) => ({
-      soil_data_source: null,
-      soil_units: [],
-      error: e.message,
-    }))
+    withTimeout(
+      getSoilData(bbox, layers.soils || {}).catch((e) => ({
+        soil_data_source: null,
+        soil_units: [],
+        error: e.message,
+      })),
+      8_000,
+      { soil_data_source: null, soil_units: [], error: 'timeout' }
+    )
   );
   const landP = Promise.all([proximityP, layersP]).then(([px, layers]) =>
-    assessLandValue(centre, {
-      footprint_ha: Math.round(areaHa * 1000) / 1000,
-      nearest_city: px.nearest_city,
-      nearest_settlement: px.nearest_settlement,
-      cli_class: layers.soils?.cli_class || null,
-    }).catch((e) => ({
-      land_value_source: 'none',
-      error: e.message,
-      disclaimer:
-        'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
-    }))
+    withTimeout(
+      assessLandValue(centre, {
+        footprint_ha: Math.round(areaHa * 1000) / 1000,
+        nearest_city: px.nearest_city,
+        nearest_settlement: px.nearest_settlement,
+        cli_class: layers.soils?.cli_class || null,
+      }).catch((e) => ({
+        land_value_source: 'none',
+        error: e.message,
+        disclaimer:
+          'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
+      })),
+      8_000,
+      { land_value_source: 'none', error: 'timeout' }
+    )
   );
 
   const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, canopy, surface_water, soil_data, land_value, provincialContours, depthToWater, predictedStreams] = await Promise.all([
@@ -154,26 +178,38 @@ export async function generateSiteReport(input = {}) {
       error: e.message,
       features: [],
     })),
-    fetchSatelliteIndices(
-      { type: 'Polygon', coordinates: [ring] },
-      '2024-05-01',
-      '2026-10-31'
-    ).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
+    withTimeout(
+      fetchSatelliteIndices(
+        { type: 'Polygon', coordinates: [ring] },
+        '2024-05-01',
+        '2026-10-31'
+      ).catch((e) => ({
+        available: false,
+        error: e.message,
+      })),
+      Math.min(18_000, waveMs),
+      { available: false, error: 'timeout' }
+    ),
     assessBiodiversity(centre).catch((e) => ({
       available: false,
       error: e.message,
     })),
-    sampleHrdemTerrain(bbox, { size: 64, prefer: 'dtm' }).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
-    buildCanopyLayer(bbox, { size: 64, ring, force: input.force }).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
+    withTimeout(
+      sampleHrdemTerrain(bbox, { size: 64, prefer: 'dtm' }).catch((e) => ({
+        available: false,
+        error: e.message,
+      })),
+      Math.min(16_000, waveMs),
+      { available: false, error: 'timeout' }
+    ),
+    withTimeout(
+      buildCanopyLayer(bbox, { size: 64, ring, force: input.force }).catch((e) => ({
+        available: false,
+        error: e.message,
+      })),
+      Math.min(16_000, waveMs),
+      { available: false, error: 'timeout' }
+    ),
     getSurfaceWaterLayer(bbox).catch((e) => ({ available: false, water_bodies: [], predicted_streams: [], error: e.message })),
     soilP,
     landP,
@@ -1043,4 +1079,11 @@ function safeExtra(label, fallback, fn) {
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    Promise.resolve(promise).catch(() => fallback),
+    sleep(ms).then(() => fallback),
+  ]);
 }

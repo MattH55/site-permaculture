@@ -37,7 +37,7 @@ const SOILGRIDS = 'https://rest.isric.org/soilgrids/v2.0/properties/query';
 
 const CACHE_DIR = path.join(__dirname, '..', 'data', 'cache', 'satellite');
 const CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days
-const FETCH_TIMEOUT_MS = 45_000;
+const FETCH_TIMEOUT_MS = 12_000;
 const MAX_S2_SCENES = 5;
 const MAX_LANDSAT_YEARS = 5;
 
