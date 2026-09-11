@@ -96,6 +96,7 @@ async function buildFromAgrasid(covered, totalPoints) {
       depth_to_bedrock_cm: null, // SoilGrids v2.0 dropped bedrock-depth properties
       land_capability_code: agrasid?.land_capability_code || null,
       soil_zone: landSystem?.soil_zone || null,
+      soilgrids: sg || null,
       confidence: 'high',
     };
   }));
@@ -137,6 +138,7 @@ async function buildFromSoilGrids(centre, opts) {
       ph: s.mean_ph ?? null,
       organic_carbon_pct: s.mean_soc_g_kg != null ? round1(s.mean_soc_g_kg / 10) : null,
       depth_to_bedrock_cm: null, // SoilGrids v2.0 has no bedrock-depth property
+      soilgrids: grid.samples?.[0] || null,
       confidence: 'moderate_low',
     }],
     sample_count: grid.samples?.length || 0,

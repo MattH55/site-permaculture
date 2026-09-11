@@ -2424,6 +2424,36 @@ function terrain3dBlock(id, report) {
           <span style="display:inline-block;width:10px;height:10px;background:#b8a892;border-radius:2px;vertical-align:middle"></span>
           Buildings
         </label>` : ''}
+        ${report?.planting_zones?.length ? `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="planting-zones" />
+          <span style="display:inline-block;width:10px;height:10px;background:#5a8f3a;border-radius:2px;vertical-align:middle"></span>
+          Planting zones
+        </label>` : ''}
+        ${report?.solar_horizon_shading?.solar_exposure_raster ? `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <select data-terrain-heatmap="${esc(id)}" class="fine" style="font-size:0.78rem">
+            <option value="off">Heatmap off</option>
+            <option value="annual">Solar install (annual)</option>
+            <option value="growing">Planting sun (season)</option>
+            <option value="erosion">Erosion risk</option>
+          </select>
+        </label>` : ''}
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+          <span>Shadow</span>
+          <select data-terrain-shadow="${esc(id)}" class="fine" style="font-size:0.78rem">
+            <option value="default">Default light</option>
+            <option value="spring-am">Spring morning</option>
+            <option value="spring-noon">Spring noon</option>
+            <option value="spring-pm">Spring afternoon</option>
+            <option value="summer-am">Summer morning</option>
+            <option value="summer-noon">Summer noon</option>
+            <option value="summer-pm">Summer afternoon</option>
+            <option value="winter-am">Winter morning</option>
+            <option value="winter-noon">Winter noon</option>
+            <option value="winter-pm">Winter afternoon</option>
+          </select>
+        </label>
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Exag</span>
           <input type="range" min="0.5" max="6" step="0.1" value="1" data-terrain-exag="${esc(id)}" style="width:90px;vertical-align:middle" />
@@ -3213,7 +3243,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // --- Detected structures (building-detection-3d-instructions.md) ---
     const groupBuildings = new THREE.Group(); groupBuildings.name = 'buildings';
-    scene.add(groupBuildings);
+    const groupPlantingZones = new THREE.Group(); groupPlantingZones.name = 'planting-zones';
+    const groupHeatmap = new THREE.Group(); groupHeatmap.name = 'heatmap';
+    scene.add(groupBuildings, groupPlantingZones, groupHeatmap);
 
     // --- Interactive planning mode (interactive-planning-mode-instructions.md) ---
     // A second *mode* on the same twin, not a separate rendering pipeline:
@@ -3495,6 +3527,119 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       buildBuildings();
     });
 
+    const plantingBandHex = { excellent: 0x2f6e40, good: 0x5a8f3a, fair: 0xc4a035, poor: 0xa33b2b };
+    const buildPlantingZones = () => {
+      while (groupPlantingZones.children.length) {
+        const c = groupPlantingZones.children[0];
+        groupPlantingZones.remove(c);
+        c.geometry?.dispose(); c.material?.dispose();
+      }
+      for (const z of report?.planting_zones || []) {
+        const ring = z.geometry?.coordinates?.[0];
+        if (!ring?.length) continue;
+        const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+        const pts = closed.map(([lon, lat]) => latLonToLocal(lat, lon));
+        if (pts.length < 3) continue;
+        const positions = [];
+        for (let i = 1; i < pts.length - 1; i++) {
+          const a = pts[0], b = pts[i], c = pts[i + 1];
+          positions.push(a.x, a.y + 0.02, a.z, b.x, b.y + 0.02, b.z, c.x, c.y + 0.02, c.z);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.computeVertexNormals();
+        const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: plantingBandHex[z.suitability_band] || 0x777777,
+          transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
+        }));
+        mesh.userData.plantingZone = z;
+        groupPlantingZones.add(mesh);
+      }
+    };
+    buildPlantingZones();
+
+    const heatmapColor = (t) => {
+      const u = Math.max(0, Math.min(1, t));
+      return new THREE.Color().setHSL(0.33 * (1 - u), 0.75, 0.42);
+    };
+    const buildHeatmap = (mode) => {
+      while (groupHeatmap.children.length) {
+        const c = groupHeatmap.children[0];
+        groupHeatmap.remove(c);
+        c.geometry?.dispose(); c.material?.dispose();
+      }
+      groupHeatmap.visible = mode !== 'off';
+      if (mode === 'off') return;
+      let values, rowsH, colsH, bboxH;
+      if (mode === 'erosion' && report?.soil_profile?.erosion_raster?.values) {
+        ({ values, rows: rowsH, cols: colsH, bbox: bboxH } = report.soil_profile.erosion_raster);
+      } else {
+        const ras = report?.solar_horizon_shading?.solar_exposure_raster;
+        if (!ras) return;
+        values = mode === 'growing' ? ras.growing_season_insolation_hours : ras.annual_insolation_hours;
+        rowsH = ras.rows; colsH = ras.cols; bboxH = ras.bbox;
+      }
+      if (!values?.length || !rowsH || !colsH) return;
+      const finite = values.filter((v) => Number.isFinite(v));
+      const vmin = Math.min(...finite);
+      const vmax = Math.max(...finite) || 1;
+      const cellW = meshW / (colsH - 1 || 1);
+      const cellD = meshD / (rowsH - 1 || 1);
+      const geo = new THREE.PlaneGeometry(Math.max(cellW, 0.04), Math.max(cellD, 0.04));
+      geo.rotateX(-Math.PI / 2);
+      const inst = new THREE.InstancedMesh(
+        geo,
+        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false }),
+        finite.length
+      );
+      const m = new THREE.Matrix4();
+      const q = new THREE.Quaternion();
+      const v = new THREE.Vector3();
+      const s = new THREE.Vector3(1, 1, 1);
+      let n = 0;
+      for (let r = 0; r < rowsH; r++) {
+        for (let c = 0; c < colsH; c++) {
+          const val = values[r * colsH + c];
+          if (!Number.isFinite(val)) continue;
+          const lon = (bboxH?.west ?? west) + (c / (colsH - 1)) * ((bboxH?.east ?? east) - (bboxH?.west ?? west));
+          const lat = (bboxH?.north ?? north) - (r / (rowsH - 1)) * ((bboxH?.north ?? north) - (bboxH?.south ?? south));
+          const p = latLonToLocal(lat, lon);
+          v.set(p.x, p.y + 0.025, p.z);
+          m.compose(v, q, s);
+          inst.setMatrixAt(n, m);
+          const t = mode === 'erosion' ? val / 100 : (val - vmin) / (vmax - vmin || 1);
+          inst.setColorAt(n, heatmapColor(t));
+          n++;
+        }
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      inst.count = n;
+      groupHeatmap.add(inst);
+    };
+
+    const shadowPos = {
+      default: [meshSize * 0.5, meshSize * 2, meshSize * 0.3],
+      'spring-am': [-meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
+      'spring-noon': [0, meshSize * 2.2, -meshSize * 0.15],
+      'spring-pm': [meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
+      'summer-am': [-meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
+      'summer-noon': [0, meshSize * 2.6, 0],
+      'summer-pm': [meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
+      'winter-am': [-meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
+      'winter-noon': [0, meshSize * 0.85, meshSize * 0.55],
+      'winter-pm': [meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
+    };
+    document.querySelectorAll(`[data-terrain-heatmap="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => buildHeatmap(sel.value));
+    });
+    document.querySelectorAll(`[data-terrain-shadow="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const p = shadowPos[sel.value] || shadowPos.default;
+        dirLight.position.set(p[0], p[1], p[2]);
+      });
+    });
+
     // --- Contour lines ---
     contourLinesGroup = new THREE.Group();
     contourLinesGroup.name = 'contours';
@@ -3603,6 +3748,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildSparseTrees();
         buildRoads();
         buildBuildings();
+        buildPlantingZones();
         buildPlanningOverlay();
       });
     }
@@ -3627,6 +3773,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupRoads.visible = !!cb.checked;
         } else if (layer === 'buildings') {
           groupBuildings.visible = !!cb.checked;
+        } else if (layer === 'planting-zones') {
+          groupPlantingZones.visible = !!cb.checked;
         }
       });
     });
@@ -5332,6 +5480,135 @@ function demographicsSection(demo) {
       </p>
       <div class="summary-grid">${rows}</div>
       <p class="fine"><a href="${esc(demo.source_url || 'https://www12.statcan.gc.ca/')}" target="_blank" rel="noopener">Source: Statistics Canada</a></p>
+    </section>`;
+}
+
+function soilProfileSection(sp) {
+  if (!sp) return '';
+  const top = sp.topsoil_0_30cm || {};
+  const sub = sp.subsoil_30cm_plus || {};
+  const lab = sp.lab_test_override;
+  return `
+    <section class="report-block">
+      <h2>Soil profile (topsoil vs subsoil)</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Surface 0–30 cm for gardens/annuals · 30 cm+ for tree roots, drainage, and foundations.
+        ${lab ? '<strong>Lab test override in effect</strong> — modeled values are retained but not used for this parcel.' : 'Modeled from AGRASID / SoilGrids; a lab test overrides these numbers when submitted.'}
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Topsoil texture</span><strong>${esc(top.texture || '—')}</strong></div>
+        <div class="stat"><span class="k">Topsoil pH</span><strong>${esc(top.ph ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Topsoil OC</span><strong>${top.organic_carbon_pct != null ? `${esc(top.organic_carbon_pct)}%` : '—'}</strong></div>
+        <div class="stat"><span class="k">Subsoil texture</span><strong>${esc(sub.texture || '—')}</strong></div>
+        <div class="stat"><span class="k">Subsoil bulk density</span><strong>${esc(sub.bulk_density ?? '—')}</strong></div>
+        <div class="stat"><span class="k">Survey drainage</span><strong>${esc(sp.drainage_class_survey || '—')}</strong></div>
+        <div class="stat"><span class="k">TWI-adjusted drainage</span><strong>${esc(sp.twi_adjusted_drainage || '—')}</strong></div>
+        <div class="stat"><span class="k">Drainage driver</span><strong>${esc(sp.drainage_driver || '—')}</strong></div>
+        <div class="stat"><span class="k">Erosion risk</span><strong>${esc(sp.erosion_risk_band || '—')} (${esc(sp.erosion_risk_score ?? '—')})</strong></div>
+      </div>
+      <p class="fine">${esc(sp.note || '')} TWI and erosion are screening proxies, not a soil survey replacement.</p>
+    </section>`;
+}
+
+function dualSolarHeatmapSection(sh, roof, frost) {
+  if (!sh?.available) return '';
+  const raster = sh.solar_exposure_raster;
+  const best = roof?.best_face;
+  const frostN = frost?.risk_zones?.length || 0;
+  return `
+    <section class="report-block">
+      <h2>Solar hours — install vs planting</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Same horizon-shading model, two framings. Toggle the 3D twin heatmaps to compare a solar pad against a garden bed.
+        ${frostN ? ` ${esc(frostN)} frost-pocket zone${frostN === 1 ? '' : 's'} flagged — sunny + frost-prone is a poor garden site.` : ''}
+        ${sh.canopy_shading_note ? ` ${esc(sh.canopy_shading_note)}` : ''}
+      </p>
+      <div class="summary-grid">
+        <div class="stat"><span class="k">Annual sun (install)</span><strong>${raster?.annual_insolation_hours?.length ? 'heatmap in 3D twin' : '—'}</strong></div>
+        <div class="stat"><span class="k">Growing-season daily hours</span><strong>${raster?.growing_season_insolation_hours?.length ? 'heatmap in 3D twin' : '—'}</strong></div>
+        ${best ? `<div class="stat"><span class="k">Best roof face</span><strong>${esc(best.building_type || 'roof')} · ${esc(best.annual_kwh_m2)} kWh/m²·yr</strong></div>` : ''}
+      </div>
+      ${roof?.roofs?.length ? `
+        <table class="data-table" style="margin-top:0.6rem;font-size:0.82rem">
+          <thead><tr><th>Building</th><th>Face</th><th>Aspect</th><th>Tilt</th><th>kWh/m²·yr</th></tr></thead>
+          <tbody>
+            ${roof.roofs.map((f) => `<tr${f.best_oriented_face ? ' style="font-weight:600"' : ''}>
+              <td>${esc(f.building_type || f.footprint_id || '—')}</td>
+              <td>${esc(f.face_id)}${f.best_oriented_face ? ' ★' : ''}</td>
+              <td>${esc(f.aspect_deg)}°</td>
+              <td>${esc(f.tilt_deg)}°</td>
+              <td>${esc(f.annual_kwh_m2)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <p class="fine">${esc(roof.kwh_conversion_note || '')}</p>
+      ` : ''}
+    </section>`;
+}
+
+function plantingZonesSection(zones) {
+  if (!Array.isArray(zones) || !zones.length) return '';
+  return `
+    <section class="report-block">
+      <h2>Planting-zone suitability</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Open ground after canopy/water/structure exclusions, banded poor–excellent.
+        Click a zone in the 3D twin for crops/guilds, driving factors, and confidence.
+      </p>
+      ${zones.slice(0, 8).map((z, i) => `
+        <article class="panel" style="margin:0.45rem 0;padding:0.7rem 0.85rem;border-left:4px solid ${plantingBandColor(z.suitability_band)}">
+          <strong>Zone ${i + 1}</strong> · ${esc(z.suitability_band)} (${esc(z.suitability_score)})
+          · ${esc(z.area_m2)} m²
+          <p class="fine" style="margin:0.25rem 0 0">
+            Soil ${esc(z.site_condition_profile?.soil?.texture || '—')}
+            · season sun ${esc(z.site_condition_profile?.growing_season_sun_hours ?? '—')} h/d
+            · frost ${z.site_condition_profile?.frost_pocket ? 'yes' : 'no'}
+            · slope ${esc(z.site_condition_profile?.slope_pct ?? '—')}%
+            · water ${esc(z.site_condition_profile?.distance_to_water_m ?? '—')} m
+            · confidence ${esc(z.confidence || '—')}
+          </p>
+          ${z.recommended_plantings?.length ? `<p class="fine" style="margin:0.2rem 0 0"><strong>Top fits:</strong> ${z.recommended_plantings.map((p) => esc(p.species_or_guild)).join(' · ')}</p>` : ''}
+        </article>
+      `).join('')}
+    </section>`;
+}
+
+function plantingBandColor(band) {
+  return { excellent: '#2f6e40', good: '#5a8f3a', fair: '#c4a035', poor: '#a33b2b' }[band] || '#777';
+}
+
+function siteModelLayersSection(r) {
+  const bits = [];
+  const cv = r.canopy_volume;
+  if (cv?.available) {
+    bits.push(`
+      <div class="stat"><span class="k">Canopy volume</span><strong>${esc(cv.canopy_volume_m3)} m³</strong></div>
+      <div class="stat"><span class="k">Board-feet (rough)</span><strong>${esc(cv.board_feet_estimate)}</strong></div>
+    `);
+  }
+  const cf = r.cut_fill;
+  if (cf?.available) {
+    bits.push(`
+      <div class="stat"><span class="k">Pad cut</span><strong>${esc(cf.total_cut_m3)} m³</strong></div>
+      <div class="stat"><span class="k">Pad fill</span><strong>${esc(cf.total_fill_m3)} m³</strong></div>
+    `);
+  }
+  const vc = r.view_corridors;
+  if (vc?.available) {
+    bits.push(`
+      <div class="stat"><span class="k">Open views</span><strong>${esc((vc.open_compass || []).join(', ') || '—')}</strong></div>
+      <div class="stat"><span class="k">Blocked views</span><strong>${esc((vc.blocked_compass || []).join(', ') || 'none')}</strong></div>
+    `);
+  }
+  if (!bits.length) return '';
+  return `
+    <section class="report-block">
+      <h2>Site-model derivatives</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Cut/fill, view corridors, and canopy volume are planning screens from the same DTM/CHM as the 3D twin — not a survey or timber cruise.
+      </p>
+      <div class="summary-grid">${bits.join('')}</div>
+      ${cv?.note ? `<p class="fine">${esc(cv.note)}</p>` : ''}
     </section>`;
 }
 
@@ -10170,7 +10447,9 @@ function getReportSectionList() {
     { label: 'Provincial elevation contours', skip: !r.provincial_contours },
     { label: 'Wind & shelterbelt', skip: !r.wind },
     { label: 'Biodiversity', skip: !r.biodiversity },
-    { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests) },
+    { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests || r.soil_profile) },
+    { label: 'Planting zones', skip: !(r.planting_zones?.length) },
+    { label: 'Solar hours heatmap', skip: !r.solar_horizon_shading?.available },
     { label: 'Water collection budget', skip: !r.water_collection },
     { label: 'Geology & minerals', skip: !r.minerals },
     { label: 'Small water sources', skip: !r.small_water },
@@ -10713,6 +10992,8 @@ function buildFindingsHtml(r, ctx, opts = {}) {
     topologySection(topo, a),
     precipitationSection(r.precipitation || r.hydrology || r.climate),
     soilSurveySection(r.soil_survey || a.soil_survey),
+    soilProfileSection(r.soil_profile),
+    siteModelLayersSection(r),
     hardinessFloodZoningSection(hardiness, flood, zoning, r),
     temperatureSection(r.temperature || a.temperature),
   ]
@@ -10757,6 +11038,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
   // ── Energy: solar (+ wind as energy climate) ──
   const energyBody = [
     solarSection(solar),
+    dualSolarHeatmapSection(r.solar_horizon_shading, r.roof_solar, r.frost_pockets),
     windSection(r.climate, r, r.wind_rose),
   ]
     .filter(Boolean)
@@ -10765,6 +11047,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
   // ── Vegetation & food (assessment, not shopping list) ──
   const vegBody = [
     treeCoverSection(r.tree_cover),
+    plantingZonesSection(r.planting_zones),
     fecunditySection(r.fecundity),
   ]
     .filter(Boolean)
