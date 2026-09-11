@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { groundSceneScale, treeInstanceDimensions } from '../public/tree-scale.js';
+import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset } from '../public/tree-scale.js';
 
 test('groundSceneScale: a 10m-tall tree measures ~10m after scaling, on a small lot', () => {
   // ~110m-wide lot (0.001° lng at this latitude ≈ 111m * cos(lat))
@@ -45,4 +45,14 @@ test('treeInstanceDimensions: no double-scaling — dimensions scale linearly wi
   const a = treeInstanceDimensions(tree, 50);
   const b = treeInstanceDimensions(tree, 100);
   assert.ok(Math.abs(a.heightU / b.heightU - 2) < 1e-9, 'doubling metersPerSceneUnit should halve heightU, not compound');
+});
+
+test('cappedTreeHeightU: never exceeds the mesh-fraction cap', () => {
+  assert.equal(cappedTreeHeightU(5, 10, 0.08), 0.8);
+  assert.ok(Math.abs(cappedTreeHeightU(0.2, 10, 0.08) - 0.2) < 1e-9);
+});
+
+test('resolveTreeAsset: AVI SW → conifer, PB → deciduous', () => {
+  assert.equal(resolveTreeAsset({ avi_species: 'SW' }), 'conifer');
+  assert.equal(resolveTreeAsset({ avi_species: 'PB' }), 'deciduous');
 });

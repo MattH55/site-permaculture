@@ -80,7 +80,8 @@ function computeUncached(opts) {
 function buildOne(fp, opts, chmRaster) {
   const ring = fp.geometry?.coordinates?.[0] || [];
   const { area_m2, aspectRatio } = footprintShape(ring);
-  const heightM = sampleFootprintHeight(ring, fp.centroid, chmRaster);
+  const heightSamples = sampleFootprintHeights(ring, fp.centroid, chmRaster);
+  const heightM = percentile(heightSamples, 0.9);
 
   const tagged = fp.building_type_tag && fp.building_type_tag !== 'yes';
   const buildingType = tagged ? normalizeTag(fp.building_type_tag) : inferType(area_m2, aspectRatio);
@@ -88,15 +89,26 @@ function buildOne(fp, opts, chmRaster) {
 
   const footprintConfidence = fp.source === 'MICROSOFT_FOOTPRINTS' ? 'high' : 'moderate';
   const heightConfidence = heightM != null ? (opts.canopy?.confidence || 'moderate') : 'unavailable';
+  const materials = inferMaterials(buildingType, area_m2);
+  const roofType = inferRoofType(ring, fp.roof_shape_tag, heightSamples, aspectRatio);
+  // Missing/unreliable height → box LOD (the degraded-data path). Quaternius
+  // farm assets are the visual fallback when present under
+  // /assets/quaternius-farm/; until then the box is a flat-capped extrusion.
+  const lod = heightM != null ? 'detailed' : 'box';
 
   return {
     footprint_id: fp.footprint_id,
     geometry: fp.geometry,
+    footprint: fp.geometry,
     area_m2: round0(area_m2),
     height_m: heightM != null ? round1(heightM) : null,
     building_type: buildingType,
     type_confidence: typeConfidence,
     roof_shape: fp.roof_shape_tag || null,
+    roof_type: roofType,
+    wall_material: materials.wall,
+    roof_material: materials.roof,
+    lod,
     // Advisory only — public/app.js makes the authoritative asset-vs-
     // extrusion call at render time, since that depends on whether a
     // matching GLB variant is actually available and fits the footprint's
@@ -151,20 +163,95 @@ function normalizeTag(tag) {
   return 'unknown';
 }
 
-/** Sample the CHM raster at the footprint centroid and each vertex, take the max. */
-function sampleFootprintHeight(ring, centroid, chmRaster) {
-  if (!chmRaster) return null;
+/**
+ * Sample CHM (DSM − DTM) inside the footprint. Vertices + centroid plus a
+ * coarse interior grid (point-in-polygon). Height is the 90th percentile of
+ * those samples so a single DSM spike does not inflate the extrusion.
+ */
+function sampleFootprintHeights(ring, centroid, chmRaster) {
+  if (!chmRaster) return [];
   const samples = [];
-  if (centroid) {
-    const v = sampleRasterAtLatLon(chmRaster, centroid.lat, centroid.lon);
-    if (v != null) samples.push(v);
-  }
-  for (const [lon, lat] of ring) {
+  const push = (lat, lon) => {
     const v = sampleRasterAtLatLon(chmRaster, lat, lon);
-    if (v != null) samples.push(v);
+    if (v != null && Number.isFinite(v) && v > 0) samples.push(v);
+  };
+  if (centroid) push(centroid.lat, centroid.lon);
+  for (const [lon, lat] of ring) push(lat, lon);
+
+  let minLon = Infinity, maxLon = -Infinity, minLat = Infinity, maxLat = -Infinity;
+  for (const [lon, lat] of ring) {
+    minLon = Math.min(minLon, lon); maxLon = Math.max(maxLon, lon);
+    minLat = Math.min(minLat, lat); maxLat = Math.max(maxLat, lat);
   }
-  if (!samples.length) return null;
-  return Math.max(...samples);
+  const steps = 5;
+  for (let i = 0; i < steps; i++) {
+    for (let j = 0; j < steps; j++) {
+      const lon = minLon + ((i + 0.5) / steps) * (maxLon - minLon);
+      const lat = minLat + ((j + 0.5) / steps) * (maxLat - minLat);
+      if (pointInRing(lon, lat, ring)) push(lat, lon);
+    }
+  }
+  return samples;
 }
 
-export const _internal = { footprintShape, inferType, normalizeTag };
+function percentile(values, p) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))));
+  return sorted[idx];
+}
+
+function inferRoofType(ring, roofShapeTag, heightSamples, aspectRatio) {
+  const tagged = String(roofShapeTag || '').toLowerCase();
+  if (['flat', 'flat_roof'].includes(tagged)) return 'flat';
+  if (['gable', 'gabled', 'hip', 'hipped', 'gambrel', 'pitched'].includes(tagged)) return 'gable';
+  if (!isRoughlyRectangular(ring, aspectRatio)) return 'flat';
+  if (heightSamples.length >= 4) {
+    const mean = heightSamples.reduce((s, v) => s + v, 0) / heightSamples.length;
+    if (mean > 0.5) {
+      const variance = heightSamples.reduce((s, v) => s + (v - mean) ** 2, 0) / heightSamples.length;
+      if (Math.sqrt(variance) / mean > 0.12) return 'gable';
+    }
+  }
+  return 'flat';
+}
+
+function isRoughlyRectangular(ring, aspectRatio) {
+  const closed = ring.length > 1 && ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
+  if (closed.length < 4 || closed.length > 6) return false;
+  return aspectRatio >= 1.15 && aspectRatio <= 4.5;
+}
+
+function inferMaterials(buildingType, area_m2) {
+  if (buildingType === 'shed' || area_m2 < SHED_MAX_AREA_M2) {
+    return { wall: 'metal', roof: 'metal' };
+  }
+  if (buildingType === 'barn' || buildingType === 'farm_auxiliary') {
+    return { wall: 'siding', roof: 'metal' };
+  }
+  if (buildingType === 'garage') {
+    return { wall: 'siding', roof: 'asphalt_shingle' };
+  }
+  if (area_m2 > 180) return { wall: 'brick', roof: 'asphalt_shingle' };
+  return { wall: 'siding', roof: 'asphalt_shingle' };
+}
+
+function pointInRing(px, py, ring) {
+  if (!ring || ring.length < 3) return true;
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi + 1e-12) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+export const _internal = {
+  footprintShape,
+  inferType,
+  normalizeTag,
+  inferRoofType,
+  inferMaterials,
+  percentile,
+};

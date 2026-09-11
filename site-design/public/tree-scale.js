@@ -56,3 +56,35 @@ export function treeInstanceDimensions(tree, metersPerSceneUnit) {
   const canopyH = heightU * 0.65;
   return { heightU, crownU, trunkH, canopyH, trunkRadiusU: crownU * 0.18 };
 }
+
+/**
+ * Cap a tree's scene-unit height so a real 20 m tree cannot occupy a huge
+ * fraction of a small parcel mesh. `meshSize` matches terrain3dBlock (10).
+ */
+export function cappedTreeHeightU(heightU, meshSize = 10, maxFraction = 0.08) {
+  const cap = meshSize * maxFraction;
+  return Math.min(Math.max(heightU, 0.001), cap);
+}
+
+const CONIFER_CODES = new Set(['SW', 'SB', 'SE', 'PL', 'PJ', 'PF', 'PA', 'FB', 'FD', 'LT', 'LA', 'S', 'P']);
+const DECIDUOUS_CODES = new Set(['AW', 'PB', 'BW', 'PO', 'BP', 'A']);
+
+/** Client-side copy of lib/avi-species.js — public/ cannot import from lib/. */
+export function resolveTreeAsset(tree = {}, opts = {}) {
+  const code = String(tree.avi_species || tree.species_code || '').trim().toUpperCase();
+  if (CONIFER_CODES.has(code)) return 'conifer';
+  if (DECIDUOUS_CODES.has(code)) return 'deciduous';
+  if (tree.form === 'conifer' || tree.form === 'deciduous') return tree.form;
+  const h = Number(tree.height_m) || 0;
+  const r = Number(tree.crown_radius_m) || 0;
+  if (h > 0 && r > 0 && h / r >= 5) return 'conifer';
+  if (opts.prior === 'conifer' || opts.prior === 'deciduous') return opts.prior;
+  return h >= 14 ? 'conifer' : 'deciduous';
+}
+
+export function priorFromSubregion(name) {
+  if (!name) return null;
+  if (/boreal|foothills|montane|subalpine|mixedwood|shield/i.test(String(name))) return 'conifer';
+  if (/parkland|grassland|prairie/i.test(String(name))) return 'deciduous';
+  return null;
+}

@@ -69,3 +69,36 @@ test('inferType buckets by area/aspect per the documented thresholds', () => {
   assert.equal(_internal.inferType(120, 1.3), 'house');
   assert.equal(_internal.inferType(200, 2.5), 'barn');
 });
+
+test('untagged house gets siding + asphalt, shed gets metal, barn gets metal roof', () => {
+  assert.deepEqual(_internal.inferMaterials('shed', 12), { wall: 'metal', roof: 'metal' });
+  assert.deepEqual(_internal.inferMaterials('barn', 200), { wall: 'siding', roof: 'metal' });
+  assert.deepEqual(_internal.inferMaterials('house', 140), { wall: 'siding', roof: 'asphalt_shingle' });
+});
+
+test('OSM gable tag wins; otherwise rectangular + height variation → gable', () => {
+  const ring = squareRing(-113.995, 53.005, 0.0003);
+  assert.equal(_internal.inferRoofType(ring, 'gable', [4, 4, 4], 1.4), 'gable');
+  assert.equal(_internal.inferRoofType(ring, 'flat', [4, 6, 8], 1.4), 'flat');
+  assert.equal(_internal.inferRoofType(ring, null, [4, 4.1, 4.05, 3.95], 1.4), 'flat');
+  assert.equal(_internal.inferRoofType(ring, null, [3, 5, 7, 6], 1.5), 'gable');
+});
+
+test('missing CHM height marks lod=box (degraded-data path)', () => {
+  const ring = squareRing(-113.995, 53.005, 0.0003);
+  const structures = {
+    available: true,
+    footprints: [{ footprint_id: 'ms-1', source: 'MICROSOFT_FOOTPRINTS', geometry: { type: 'Polygon', coordinates: [ring] }, centroid: { lat: 53.005, lon: -113.995 } }],
+  };
+  const result = computeBuildingDetection({ structures, bbox });
+  assert.equal(result.buildings[0].lod, 'box');
+  assert.equal(result.buildings[0].roof_type, 'flat');
+  assert.ok(result.buildings[0].wall_material);
+});
+
+test('percentile 0.9 ignores a single spike', () => {
+  const values = [4, 4.2, 4.1, 4.3, 4.0, 20];
+  const p = _internal.percentile(values, 0.9);
+  assert.ok(p < 20, `90th percentile should not be the spike, got ${p}`);
+  assert.ok(p >= 4);
+});
