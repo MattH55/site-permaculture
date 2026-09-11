@@ -1,0 +1,204 @@
+{
+  "version": "2026-09",
+  "note": "Curated Alberta expected-species ranges for planning screens. Game species stand in for FWMIS management-unit presence; at-risk entries use published COSEWIC/SARA range descriptions. Not ACIMS element occurrences — those locations are withheld.",
+  "species": [
+    {
+      "common_name": "White-tailed Deer",
+      "scientific_name": "Odocoileus virginianus",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["ungulate"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Mule Deer",
+      "scientific_name": "Odocoileus hemionus",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["ungulate"],
+      "lat_min": 49, "lat_max": 56, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Moose",
+      "scientific_name": "Alces alces",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["ungulate"],
+      "lat_min": 51, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Elk",
+      "scientific_name": "Cervus canadensis",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["ungulate"],
+      "lat_min": 49, "lat_max": 55, "lon_min": -120, "lon_max": -112
+    },
+    {
+      "common_name": "Coyote",
+      "scientific_name": "Canis latrans",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["predator"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Black Bear",
+      "scientific_name": "Ursus americanus",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["predator"],
+      "lat_min": 51, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Cougar",
+      "scientific_name": "Puma concolor",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["predator"],
+      "lat_min": 49, "lat_max": 54.5, "lon_min": -120, "lon_max": -113.5
+    },
+    {
+      "common_name": "Grizzly Bear",
+      "scientific_name": "Ursus arctos",
+      "taxon_group": "mammal",
+      "conservation_status": "Special Concern (COSEWIC)",
+      "range_source": "COSEWIC",
+      "guilds": ["predator", "sar"],
+      "lat_min": 50.5, "lat_max": 54.5, "lon_min": -120, "lon_max": -114.5
+    },
+    {
+      "common_name": "Gray Wolf",
+      "scientific_name": "Canis lupus",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["predator"],
+      "lat_min": 54, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "American Beaver",
+      "scientific_name": "Castor canadensis",
+      "taxon_group": "mammal",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["wetland"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Woodland Caribou",
+      "scientific_name": "Rangifer tarandus caribou",
+      "taxon_group": "mammal",
+      "conservation_status": "Threatened (COSEWIC / SARA)",
+      "range_source": "COSEWIC",
+      "guilds": ["ungulate", "sar"],
+      "lat_min": 55, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Trumpeter Swan",
+      "scientific_name": "Cygnus buccinator",
+      "taxon_group": "bird",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["wetland"],
+      "lat_min": 52, "lat_max": 55, "lon_min": -119, "lon_max": -110
+    },
+    {
+      "common_name": "Mallard",
+      "scientific_name": "Anas platyrhynchos",
+      "taxon_group": "bird",
+      "conservation_status": null,
+      "range_source": "EBIRD_STATUS_TRENDS",
+      "guilds": ["wetland"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Ferruginous Hawk",
+      "scientific_name": "Buteo regalis",
+      "taxon_group": "bird",
+      "conservation_status": "Threatened (COSEWIC)",
+      "range_source": "COSEWIC",
+      "guilds": ["sar"],
+      "lat_min": 49, "lat_max": 51.5, "lon_min": -114, "lon_max": -110
+    },
+    {
+      "common_name": "Greater Sage-Grouse",
+      "scientific_name": "Centrocercus urophasianus",
+      "taxon_group": "bird",
+      "conservation_status": "Endangered (COSEWIC / SARA)",
+      "range_source": "COSEWIC",
+      "guilds": ["sar"],
+      "lat_min": 49, "lat_max": 50.5, "lon_min": -111.5, "lon_max": -110
+    },
+    {
+      "common_name": "Piping Plover",
+      "scientific_name": "Charadrius melodus",
+      "taxon_group": "bird",
+      "conservation_status": "Endangered (COSEWIC / SARA)",
+      "range_source": "COSEWIC",
+      "guilds": ["wetland", "sar"],
+      "lat_min": 49, "lat_max": 52.5, "lon_min": -114, "lon_max": -110
+    },
+    {
+      "common_name": "Sharp-tailed Grouse",
+      "scientific_name": "Tympanuchus phasianellus",
+      "taxon_group": "bird",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": [],
+      "lat_min": 49, "lat_max": 52, "lon_min": -114, "lon_max": -110
+    },
+    {
+      "common_name": "Boreal Chorus Frog",
+      "scientific_name": "Pseudacris maculata",
+      "taxon_group": "amphibian",
+      "conservation_status": null,
+      "range_source": "FWMIS",
+      "guilds": ["wetland"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Western Tiger Salamander",
+      "scientific_name": "Ambystoma mavortium",
+      "taxon_group": "amphibian",
+      "conservation_status": "Special Concern (COSEWIC)",
+      "range_source": "COSEWIC",
+      "guilds": ["wetland", "sar"],
+      "lat_min": 49, "lat_max": 52, "lon_min": -114, "lon_max": -110
+    },
+    {
+      "common_name": "Hunt's Bumble Bee",
+      "scientific_name": "Bombus huntii",
+      "taxon_group": "insect",
+      "conservation_status": null,
+      "range_source": "IUCN_REDLIST_FALLBACK",
+      "guilds": ["pollinator"],
+      "lat_min": 49, "lat_max": 56, "lon_min": -120, "lon_max": -110
+    },
+    {
+      "common_name": "Monarch",
+      "scientific_name": "Danaus plexippus",
+      "taxon_group": "insect",
+      "conservation_status": "Endangered (COSEWIC)",
+      "range_source": "COSEWIC",
+      "guilds": ["pollinator", "sar"],
+      "lat_min": 49, "lat_max": 54, "lon_min": -114.5, "lon_max": -110
+    },
+    {
+      "common_name": "Canadian Tiger Swallowtail",
+      "scientific_name": "Papilio canadensis",
+      "taxon_group": "insect",
+      "conservation_status": null,
+      "range_source": "IUCN_REDLIST_FALLBACK",
+      "guilds": ["pollinator"],
+      "lat_min": 49, "lat_max": 60, "lon_min": -120, "lon_max": -110
+    }
+  ]
+}

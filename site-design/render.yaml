@@ -16,7 +16,7 @@ services:
   # Change to "starter" for always-on production deployment
     plan: free
     region: oregon
-    buildCommand: npm install
+    buildCommand: npm install ; node scripts/ingest-plant-intelligence.mjs
     startCommand: npm start
     healthCheckPath: /healthz
     envVars:

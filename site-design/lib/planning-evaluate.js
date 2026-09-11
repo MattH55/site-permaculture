@@ -23,6 +23,9 @@
 
 import { computeSolarHorizonShading } from './solar-horizon-shading.js';
 import { modelPondWaterBalance } from './pond-water-balance.js';
+import { recommendPlants } from './plant-intelligence/recommend.js';
+import { buildSiteEnvironment } from './plant-intelligence/site-environment.js';
+import { loadCanonical } from './plant-intelligence/store.js';
 
 /**
  * @param {object} params
@@ -122,15 +125,39 @@ function evaluatePlantingPoint(position, context) {
     return { available: false, reason: 'This point falls on mapped surface water — not plantable ground.' };
   }
 
-  const topPlantings = (context.recommended_plantings || context.planting_plan?.recommended || [])
-    .slice(0, 8);
+  const report = context.report || context;
+  const site = buildSiteEnvironment({
+    report,
+    lat: position.lat,
+    lon: position.lon,
+    area_m2: context.area_m2 || 100,
+  });
+  let spatial = null;
+  try {
+    if ((loadCanonical().plants || []).length) {
+      spatial = recommendPlants(site, {
+        max_results: 6,
+        purpose: context.purpose || null,
+        rank: context.rank || 'overall',
+      });
+    }
+  } catch {
+    spatial = null;
+  }
+  const topPlantings = spatial?.recommendations?.length
+    ? spatial.recommendations
+    : (context.recommended_plantings || context.planting_plan?.recommended || []).slice(0, 6);
   if (!topPlantings.length) {
     return { available: false, reason: 'No planting recommendations are available for this parcel yet.' };
   }
   return {
     available: true,
-    zone_specific: false,
-    note: 'Parcel-wide top recommendations — this build does not yet break planting suitability down by zone/polygon, so the same ranked list is shown wherever you click on open ground.',
+    zone_specific: true,
+    site_environment: site,
+    rank: spatial?.rank || 'legacy_parcel_list',
+    note: spatial
+      ? 'Point site-environment (solar, soil, climate) scored against the plant-intelligence catalog. Cost, utility, and market return are separate from biological suitability.'
+      : 'Plant-intelligence catalog not ingested on this host — showing parcel-wide planting plan.',
     recommendations: topPlantings,
   };
 }

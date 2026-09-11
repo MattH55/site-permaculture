@@ -13,6 +13,9 @@ data/crops/vendor-listings.json
 data/solar/municip_MJ.csv
 data/spatial-cache/**/*.json
 data/cache/satellite/
+data/cache/wildlife/
+data/plant-intelligence/raw/
+data/plant-intelligence/canonical.json
 data/land-value/_xlsx/
 data/land-value/*.xlsx
 data/land-value/*.zip

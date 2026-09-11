@@ -1,0 +1,79 @@
+{
+  "disclaimer": "Vendor locations for delivery estimates. Not endorsements.",
+  "vendors": [
+    {
+      "vendor_id": "cheyenne_tree_farm",
+      "name": "Cheyenne Tree Farm",
+      "kind": "retail_nursery",
+      "latitude": 53.351,
+      "longitude": -113.421,
+      "municipality": "Beaumont",
+      "province": "AB",
+      "postal_code": "T4X 1K8",
+      "delivery_radius_km": 80,
+      "pickup": true,
+      "home_url": "https://cheyennetree.ca/",
+      "price_list_url": "https://cheyennetree.ca/wp-content/uploads/2024/03/2024-Retail-Price-List.pdf"
+    },
+    {
+      "vendor_id": "treetime",
+      "name": "TreeTime.ca",
+      "kind": "mail_order_nursery",
+      "latitude": 53.546,
+      "longitude": -113.49,
+      "municipality": "Edmonton",
+      "province": "AB",
+      "delivery_radius_km": 2000,
+      "pickup": false,
+      "home_url": "https://treetime.ca/"
+    },
+    {
+      "vendor_id": "greenland",
+      "name": "Greenland Garden Centre",
+      "kind": "retail_nursery",
+      "latitude": 53.541,
+      "longitude": -113.312,
+      "municipality": "Sherwood Park",
+      "province": "AB",
+      "delivery_radius_km": 60,
+      "pickup": true,
+      "home_url": "https://www.greenlandgarden.com/"
+    },
+    {
+      "vendor_id": "plantworld",
+      "name": "Plant World (Edmonton)",
+      "kind": "retail_nursery",
+      "latitude": 53.631,
+      "longitude": -113.582,
+      "municipality": "Edmonton",
+      "province": "AB",
+      "delivery_radius_km": 40,
+      "pickup": true,
+      "home_url": "https://plantworld.ca/"
+    },
+    {
+      "vendor_id": "wildaboutflowers",
+      "name": "Wild About Flowers",
+      "kind": "native_nursery",
+      "latitude": 50.03,
+      "longitude": -110.68,
+      "municipality": "Medicine Hat area",
+      "province": "AB",
+      "delivery_radius_km": 400,
+      "pickup": true,
+      "home_url": "https://www.wildaboutflowers.ca/"
+    },
+    {
+      "vendor_id": "ttseeds",
+      "name": "T&T Seeds",
+      "kind": "seed_supplier",
+      "latitude": 49.895,
+      "longitude": -97.138,
+      "municipality": "Winnipeg",
+      "province": "MB",
+      "delivery_radius_km": 2500,
+      "pickup": false,
+      "home_url": "https://www.ttseeds.com/"
+    }
+  ]
+}
