@@ -76,6 +76,10 @@ const CACHE_MAX = 200;
  * @param {{ polygon: object, site_name?: string, force?: boolean }} input
  */
 export async function generateSiteReport(input = {}) {
+  const startedAt = Date.now();
+  const budgetMs = Number(input.budget_ms) || Number(process.env.REPORT_BUDGET_MS) || 70_000;
+  const remaining = () => budgetMs - (Date.now() - startedAt);
+
   const ring = normalizePolygon(input.polygon);
   const bbox = bboxFromRing(ring);
   const key = cacheKey(bbox);
@@ -87,14 +91,38 @@ export async function generateSiteReport(input = {}) {
   }
 
   const centre = centroid(ring);
+  const areaHa = polygonAreaHa(ring);
 
-  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, canopy, surface_water] = await Promise.all([
-    gatherSiteLayers({
-      ring,
-      bbox,
-      site_name: input.site_name,
-    }),
-    gatherProximity(centre, bbox),
+  const layersP = gatherSiteLayers({
+    ring,
+    bbox,
+    site_name: input.site_name,
+  });
+  const proximityP = gatherProximity(centre, bbox);
+  const soilP = layersP.then((layers) =>
+    getSoilData(bbox, layers.soils || {}).catch((e) => ({
+      soil_data_source: null,
+      soil_units: [],
+      error: e.message,
+    }))
+  );
+  const landP = Promise.all([proximityP, layersP]).then(([px, layers]) =>
+    assessLandValue(centre, {
+      footprint_ha: Math.round(areaHa * 1000) / 1000,
+      nearest_city: px.nearest_city,
+      nearest_settlement: px.nearest_settlement,
+      cli_class: layers.soils?.cli_class || null,
+    }).catch((e) => ({
+      land_value_source: 'none',
+      error: e.message,
+      disclaimer:
+        'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
+    }))
+  );
+
+  const [layers, proximity, nearest_crimes, hardiness, flood, temperature, wildlife, semantic_terrain, satellite, biodiversity, hrdem_terrain, canopy, surface_water, soil_data, land_value, provincialContours, depthToWater, predictedStreams] = await Promise.all([
+    layersP,
+    proximityP,
     fetchNearestEpsCrimes(centre, { limit: 20, search_radius_m: 8000 }).catch(
       (e) => ({
         available: false,
@@ -147,18 +175,34 @@ export async function generateSiteReport(input = {}) {
       error: e.message,
     })),
     getSurfaceWaterLayer(bbox).catch((e) => ({ available: false, water_bodies: [], predicted_streams: [], error: e.message })),
+    soilP,
+    landP,
+    queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] })),
+    queryDepthToWater(centre).catch(() => null),
+    queryPredictedStreams(bbox).catch(() => ({ available: false, count: null })),
   ]);
 
-  const areaHa = polygonAreaHa(ring);
   const t = layers.terrain;
   const soils = layers.soils || {};
-  const soil_data = await getSoilData(bbox, soils).catch((e) => ({ soil_data_source: null, soil_units: [], error: e.message }));
   const primarySoil = soil_data.soil_units?.[0] || {};
   const climate = layers.climate || {};
   const wetlands = layers.wetlands || {};
   const watershed = layers.watershed || {};
   const wetAreas = layers.wetAreas || {};
   const terrain_derivatives = deriveKeylineAndFrost(hrdem_terrain, bbox, layers.elevation);
+
+  // Kick off slow extras immediately so they overlap solar/fecundity CPU.
+  const nearestCityDist = proximity.nearest_city?.distance_km || null;
+  const bgAccessP = assessAccess(centre, nearestCityDist).catch(() => null);
+  const bgGbifP = queryGbig(bbox).catch(() => null);
+  const bgStructuresP = getStructureFootprints(bbox).catch(() => null);
+  const bgWindP = getWindRose(centre)
+    .then(async (wr) => {
+      const wa = await getWindAtlasBaseline(centre, { wind_rose: wr }).catch(() => null);
+      return { wr, wa };
+    })
+    .catch(() => null);
+  const bgMineralsP = fetchMinerals(bbox, { centre }).catch(() => null);
 
   const topology = buildTopologyView(
     layers.elevation?.elevations || [],
@@ -174,12 +218,6 @@ export async function generateSiteReport(input = {}) {
     elevation_m: t.elevation_m,
     search_radius_km: 5,
   });
-
-  // Wet Areas Mapping — depth-to-water + predicted streams
-  const [depthToWater, predictedStreams] = await Promise.all([
-    queryDepthToWater(centre).catch(() => null),
-    queryPredictedStreams(bbox).catch(() => ({ available: false, count: null })),
-  ]);
 
   // Contour lines reduced from the same sampled elevation grid — feeds the
   // rate engine's swale-meterage estimate (see lib/quote.js, lib/rate-engine.js).
@@ -210,19 +248,6 @@ export async function generateSiteReport(input = {}) {
     slope_percent: t.slope_percent,
     nearest_name: nearestName || layers.preset?.municipality,
   });
-
-  // Land value — informational only (does NOT feed placement rules)
-  const land_value = await assessLandValue(centre, {
-    footprint_ha: Math.round(areaHa * 1000) / 1000,
-    nearest_city: proximity.nearest_city,
-    nearest_settlement: proximity.nearest_settlement,
-    cli_class: soils.cli_class || null,
-  }).catch((e) => ({
-    land_value_source: 'none',
-    error: e.message,
-    disclaimer:
-      'Land value assessment failed for this parcel. Planning context only — not an appraisal.',
-  }));
 
   // Zoning portal lookup (designation not auto-assigned — municipal bylaws)
   const zoning = resolveZoningContext(centre, {
@@ -375,67 +400,21 @@ export async function generateSiteReport(input = {}) {
   record.zoning = zoning;
   record.temperature = temperature;
   record.wildlife = wildlife;
+  record.biodiversity = biodiversity;
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
 
-  // These run concurrently with each other and with whatever else the
-  // pipeline does next, but — unlike a true fire-and-forget — they are
-  // collected into `backgroundPromises` and explicitly awaited below,
-  // before `record` is spread into the final `report` object. Previously
-  // this was pure fire-and-forget with no such gate: fields fed by a fast
-  // source (GBIF, biodiversity, wind rose, minerals — a few seconds) only
-  // ever landed in the response by the accident of enough slower awaited
-  // work happening later in this function; assessAccess (OSRM + Overpass,
-  // ~15-20s) never won that race and record.access silently stayed on its
-  // "Loading..." placeholder in every real response.
-  const backgroundPromises = [];
-  backgroundPromises.push(
-    queryGbig(bbox).then((gbif) => {
-      record.gbif_species = gbif;
-    }).catch(() => {})
-  );
-
-  const nearestCityDist = proximity.nearest_city?.distance_km || null;
-  backgroundPromises.push(
-    assessAccess(centre, nearestCityDist).then((access) => {
-      record.access = access;
-    }).catch(() => {})
-  );
-
-  backgroundPromises.push(
-    assessBiodiversity(centre).then((bio) => {
-      record.biodiversity = bio;
-    }).catch(() => {})
-  );
-
-  // Structure footprints (Microsoft Canadian Building Footprints + OSM,
-  // merged) — fetched once and shared by the plantable-area exclusion
-  // layer, the building-detection/3D layer, and the pond/solar/wind
-  // suitability layers' structure hard-exclusions below (see
-  // building-detection-3d-instructions.md's integration notes).
-  backgroundPromises.push(
-    getStructureFootprints(bbox).then((structures) => {
-      record.structures = structures;
-    }).catch(() => {})
-  );
-
-  backgroundPromises.push(
-    getWindRose(centre).then((wr) => {
-      record.wind_rose = wr;
-      // Global Wind Atlas regional baseline (wind-atlas.js) — sampled once
-      // per parcel for the wind suitability layer below; falls back to this
-      // same wind rose's mean speed if the atlas itself is unreachable.
-      return getWindAtlasBaseline(centre, { wind_rose: wr }).then((wa) => {
-        record.wind_atlas = wa;
-      });
-    }).catch(() => {})
-  );
-
-  backgroundPromises.push(
-    fetchMinerals(bbox, { centre }).then((m) => {
-      record.minerals = m;
-    }).catch(() => {})
-  );
+  const backgroundPromises = [
+    bgGbifP.then((gbif) => { if (gbif) record.gbif_species = gbif; }),
+    bgAccessP.then((access) => { if (access) record.access = access; }),
+    bgStructuresP.then((structures) => { if (structures) record.structures = structures; }),
+    bgWindP.then((pair) => {
+      if (!pair) return;
+      record.wind_rose = pair.wr;
+      if (pair.wa) record.wind_atlas = pair.wa;
+    }),
+    bgMineralsP.then((m) => { if (m) record.minerals = m; }),
+  ];
   record.access = { available: true, nearest_road: { available: false }, nearest_supermarket: { available: false }, trip_costs_to_supermarket: [], gas_price_cad_l: 1.45, methodology: 'Loading...' };
     record.demographics = demographicsHeuristic(centre);
     record.ats = latLngToAts(centre);
@@ -461,7 +440,7 @@ export async function generateSiteReport(input = {}) {
   // Real horizon-vs-sun-path solar exposure (terrain self-shading + canopy
   // shadow-casting), replacing the aspect/slope insolation guess. Reuses
   // the same HRDEM grid + canopy tree instances already sampled above.
-  record.solar_horizon_shading = computeSolarHorizonShading({
+  record.solar_horizon_shading = safeExtra('solar_horizon', { available: false, solar_exposure_raster: null }, () => computeSolarHorizonShading({
     elevations: hrdem_terrain?.elevations_m || [],
     rows: hrdem_terrain?.rows || 0,
     cols: hrdem_terrain?.cols || 0,
@@ -471,10 +450,8 @@ export async function generateSiteReport(input = {}) {
     canopy,
     dem_confidence: hrdem_terrain?.available ? 'high' : 'insufficient',
     data_source: hrdem_terrain?.available ? hrdem_terrain.source : 'coarse fallback DEM',
-  });
+  }));
 
-  // Provincial contours — await for report, then attach to record
-  const provincialContours = await queryProvincialContours(bbox, { limit: 1500 }).catch(() => ({ features: [] }));
   record._provincial_contours = provincialContours;
 
   // Fecundity assessment — infer from available pipeline data
@@ -535,12 +512,19 @@ export async function generateSiteReport(input = {}) {
     });
   }
 
-  // Wait for the concurrent background layers (access/roads, GBIF,
-  // biodiversity, wind rose, minerals) so their real results — not the
-  // placeholders set above — make it into the response. allSettled: a slow
-  // or failed source degrades that one field, it never fails the report.
-  await Promise.allSettled(backgroundPromises);
+  // Wait for background layers, but never past the host time budget.
+  // Access/OSRM can take 15–20s; if we wait forever the proxy returns HTML
+  // and the client shows a failed report.
+  const bgWait = Math.max(250, remaining() - 12_000);
+  await Promise.race([
+    Promise.allSettled(backgroundPromises),
+    sleep(bgWait),
+  ]);
 
+  const skipHeavy = remaining() < 8_000;
+  if (skipHeavy) {
+    record._budget_trimmed = true;
+  } else {
   // Full pond catchment water balance (SCS/NRCS Curve Number runoff, direct
   // rainfall, exposure-modulated evaporation, seepage) run over the same
   // three standard pond-size tiers as pond-hydrology.js, sited at that
@@ -723,6 +707,7 @@ export async function generateSiteReport(input = {}) {
     solar_horizon_shading: record.solar_horizon_shading,
     planting_plan,
   }));
+  }
 
   // Service packages + action menu for "Build Your Plan" UI — placed after
   // buildings/firesmart resolve above so a flagged FireSmart risk can pull
@@ -815,6 +800,9 @@ export async function generateSiteReport(input = {}) {
       pipeline: 'bbox-live-v8-phase3',
       cache: 'miss',
       cache_key: key,
+      budget_ms: budgetMs,
+      budget_trimmed: !!record._budget_trimmed,
+      elapsed_ms: Date.now() - startedAt,
     },
   };
 
@@ -1051,4 +1039,8 @@ function safeExtra(label, fallback, fn) {
     console.warn(`[pipeline] ${label} skipped:`, err?.message || err);
     return fallback;
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
