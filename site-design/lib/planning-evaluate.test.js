@@ -55,15 +55,20 @@ test('pond: evaluates the clicked point with a user-adjustable assumed surface a
   assert.ok(Array.isArray(result.assumptions) && result.assumptions.length > 0);
 });
 
-test('planting: falls back to parcel-wide recommendations on open ground, flagged as not zone-specific', () => {
+test('planting: open ground returns recommendations (spatial catalog or parcel fallback)', () => {
   const result = evaluatePlanningClick({
     feature_type: 'planting',
     position: { lat: 53.005, lon: -113.995 },
     context: { ...baseContext, recommended_plantings: [{ id: 'saskatoon', common_name: 'Saskatoon', score: 88 }] },
   });
   assert.equal(result.available, true);
-  assert.equal(result.zone_specific, false);
-  assert.equal(result.recommendations[0].id, 'saskatoon');
+  assert.ok(result.recommendations.length);
+  if (result.zone_specific) {
+    assert.ok(result.site_environment);
+    assert.ok(result.recommendations[0].plant || result.recommendations[0].id || result.recommendations[0].scientific_name);
+  } else {
+    assert.equal(result.recommendations[0].id, 'saskatoon');
+  }
 });
 
 test('planting: refuses a point inside dense canopy', () => {

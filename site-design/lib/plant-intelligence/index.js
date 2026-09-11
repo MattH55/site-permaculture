@@ -1,0 +1,12 @@
+export { ingestEcoCrop, ECOCROP_CSV } from './ingest-ecocrop.js';
+export { ingestLocalCatalogs } from './ingest-local.js';
+export { mergePlants } from './merge.js';
+export { matchGbifName, fetchGbifOccurrences, canonicalName } from './taxonomy.js';
+export { scorePlant, DEFAULT_WEIGHTS } from './suitability.js';
+export { recommendPlants, siteFromQuery } from './recommend.js';
+export { loadCanonical, saveCanonical, CANONICAL_PATH } from './store.js';
+export { SOURCES } from './provenance.js';
+export { buildSiteEnvironment } from './site-environment.js';
+export { nearbyVendors, pricesForTaxon, bestOffer, freshnessLabel } from './products.js';
+export { enrichRecommendation, rankRecommendations, establishmentCost, utilityValue } from './economics.js';
+export { simulatePlanting, saveScenario, getScenario } from './simulate.js';

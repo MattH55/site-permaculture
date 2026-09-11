@@ -182,6 +182,50 @@ export const PACKAGE_CATALOG = {
     fixed_price_cad: 1200,
     fixed_label: 'FireSmart vegetation-management assessment + first-pass fuel reduction (planning estimate)',
   },
+  deer_wildlife_fence: {
+    id: 'deer_wildlife_fence',
+    category: 'shelter',
+    label: 'Deer / wildlife fence',
+    blurb: 'Browse protection for plantings where ungulates are expected or confirmed nearby.',
+    cta: 'Plan wildlife fence',
+    href: 'mailto:matt.halma@gmail.com',
+    effort: 'medium',
+    fixed_price_cad: 6_800,
+    fixed_label: 'Wildlife fence / browse-protection planning estimate',
+  },
+  wildlife_camera_monitoring: {
+    id: 'wildlife_camera_monitoring',
+    category: 'shelter',
+    label: 'Wildlife camera monitoring',
+    blurb: 'Trail cameras and livestock-guardian practice where predators are expected or confirmed.',
+    cta: 'Plan monitoring',
+    href: 'mailto:matt.halma@gmail.com',
+    effort: 'low',
+    fixed_price_cad: 1_400,
+    fixed_label: 'Wildlife camera / monitoring kit (planning estimate)',
+  },
+  pollinator_habitat: {
+    id: 'pollinator_habitat',
+    category: 'food',
+    label: 'Pollinator habitat',
+    blurb: 'Native bee and butterfly plantings where pollinator indicator species are expected or confirmed.',
+    cta: 'Plan pollinator habitat',
+    href: 'mailto:matt.halma@gmail.com',
+    effort: 'low',
+    fixed_price_cad: 2_400,
+    fixed_label: 'Pollinator habitat patch (planning estimate)',
+  },
+  riparian_wetland_restoration: {
+    id: 'riparian_wetland_restoration',
+    category: 'water',
+    label: 'Riparian / wetland restoration',
+    blurb: 'Edge plantings and buffers where wetland/riparian wildlife overlap surface water.',
+    cta: 'Plan riparian buffer',
+    href: 'mailto:matt.halma@gmail.com',
+    effort: 'medium',
+    fixed_price_cad: 4_500,
+    fixed_label: 'Riparian buffer / wetland restoration (planning estimate)',
+  },
 };
 
 /** Display order and labels for the four pillars. */
@@ -487,23 +531,79 @@ export function recommendServicePackages(ctx = {}) {
   // flagged risk — reason is the specific per-zone contributing_factors
   // from firesmart-zones.js, not a generic "consider FireSmart" note
   // (firesmart-zone-assessment-instructions.md, step 5).
+  const wildlife = ctx.wildlife || {};
+  const sarFlagged = (wildlife.species_at_risk_flagged || []).length > 0;
+  const wildlifePkgs = wildlife.triggers?.packages || [];
+
   const riskyBuildings = (ctx.firesmart?.assessments || []).filter((a) => a.overall_risk_rating === 'high' || a.overall_risk_rating === 'extreme');
   if (riskyBuildings.length) {
     packages.push(
       packageRec('firesmart_fuel_reduction', {
         priority: 2,
         confidence: 'moderate',
-        reason: riskyBuildings
-          .flatMap((a) => a.contributing_factors)
-          .filter((f) => !f.startsWith('No significant'))
-          .slice(0, 4)
-          .join(' '),
+        reason: [
+          riskyBuildings
+            .flatMap((a) => a.contributing_factors)
+            .filter((f) => !f.startsWith('No significant'))
+            .slice(0, 4)
+            .join(' '),
+          sarFlagged
+            ? 'Species-at-risk range overlaps this parcel — do not clear or thin until a habitat assessment confirms it is allowed.'
+            : '',
+        ].filter(Boolean).join(' '),
         site_facts: {
           buildings_flagged: riskyBuildings.length,
           worst_rating: riskyBuildings.some((a) => a.overall_risk_rating === 'extreme') ? 'extreme' : 'high',
+          species_at_risk: sarFlagged,
         },
         price: fixedPrice(PACKAGE_CATALOG.firesmart_fuel_reduction),
-        default_selected: riskyBuildings.some((a) => a.overall_risk_rating === 'extreme'),
+        // SAR: never auto-select a removal/clearing package.
+        default_selected: !sarFlagged && riskyBuildings.some((a) => a.overall_risk_rating === 'extreme'),
+      })
+    );
+  }
+
+  if (wildlifePkgs.includes('deer_wildlife_fence')) {
+    packages.push(
+      packageRec('deer_wildlife_fence', {
+        priority: 3,
+        confidence: 'moderate',
+        reason: 'Ungulates (deer/elk/moose) are expected or confirmed nearby — browse protection for new plantings.',
+        price: fixedPrice(PACKAGE_CATALOG.deer_wildlife_fence),
+        default_selected: true,
+      })
+    );
+  }
+  if (wildlifePkgs.includes('wildlife_camera_monitoring')) {
+    packages.push(
+      packageRec('wildlife_camera_monitoring', {
+        priority: 4,
+        confidence: 'moderate',
+        reason: 'Predators (cougar/bear/coyote) are expected or confirmed nearby — monitoring and livestock-guardian practice.',
+        price: fixedPrice(PACKAGE_CATALOG.wildlife_camera_monitoring),
+        default_selected: true,
+      })
+    );
+  }
+  if (wildlifePkgs.includes('pollinator_habitat')) {
+    packages.push(
+      packageRec('pollinator_habitat', {
+        priority: 4,
+        confidence: 'moderate',
+        reason: 'Native bees or butterflies are expected or confirmed — pollinator habitat package.',
+        price: fixedPrice(PACKAGE_CATALOG.pollinator_habitat),
+        default_selected: true,
+      })
+    );
+  }
+  if (wildlifePkgs.includes('riparian_wetland_restoration')) {
+    packages.push(
+      packageRec('riparian_wetland_restoration', {
+        priority: 3,
+        confidence: 'moderate',
+        reason: 'Wetland/riparian-associated species overlap mapped water — restore the edge, do not clear it.',
+        price: fixedPrice(PACKAGE_CATALOG.riparian_wetland_restoration),
+        default_selected: !sarFlagged,
       })
     );
   }

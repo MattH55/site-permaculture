@@ -2416,13 +2416,17 @@ function terrain3dBlock(id, report) {
           Planting zones
         </label>` : ''}
         ${report?.solar_horizon_shading?.solar_exposure_raster ? `
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
           <select data-terrain-heatmap="${esc(id)}" class="fine" style="font-size:0.78rem">
-            <option value="off">Heatmap off</option>
-            <option value="annual">Solar install (annual)</option>
+            <option value="annual" selected>Solar incidence (annual)</option>
             <option value="growing">Planting sun (season)</option>
             <option value="erosion">Erosion risk</option>
+            <option value="off">Color off</option>
           </select>
+          <span class="fine" title="Blue = least sun, gold = most sun" style="display:inline-flex;align-items:center;gap:0.3rem">
+            <span style="width:72px;height:8px;border-radius:4px;background:linear-gradient(90deg,#1a3a7a,#3aa0c8,#f0c040,#fff4c8);display:inline-block"></span>
+            sun
+          </span>
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <span>Shadow</span>
@@ -2814,6 +2818,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.computeVertexNormals();
+    const baseTerrainColors = colors.slice();
+    let heatmapMode = report?.solar_horizon_shading?.solar_exposure_raster ? 'annual' : 'off';
 
     // Satellite imagery texture from Esri World Imagery tiles
     let satelliteTexture = null;
@@ -2965,7 +2971,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
                 }
                 
                 materialWithSat.map = satelliteTexture;
-                materialWithSat.vertexColors = false; // Use texture instead of vertex colors
+                // Keep vertex colors on when solar incidence is painted so the
+                // whole parcel is tinted (map × color). Off = imagery only.
+                materialWithSat.vertexColors = heatmapMode !== 'off';
                 materialWithSat.needsUpdate = true;
                 terrainMesh.material = materialWithSat;
               }
@@ -3543,18 +3551,71 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     buildPlantingZones();
 
-    const heatmapColor = (t) => {
+    const solarIncidenceColor = (t, out) => {
       const u = Math.max(0, Math.min(1, t));
-      return new THREE.Color().setHSL(0.33 * (1 - u), 0.75, 0.42);
-    };
-    const buildHeatmap = (mode) => {
-      while (groupHeatmap.children.length) {
-        const c = groupHeatmap.children[0];
-        groupHeatmap.remove(c);
-        c.geometry?.dispose(); c.material?.dispose();
+      // Blue (least sun) → gold → pale yellow (most sun) across the whole mesh.
+      if (u < 0.5) {
+        const k = u * 2;
+        out.r = 0.10 + k * 0.84;
+        out.g = 0.23 + k * 0.53;
+        out.b = 0.48 + k * (-0.23);
+      } else {
+        const k = (u - 0.5) * 2;
+        out.r = 0.94 + k * 0.06;
+        out.g = 0.76 + k * 0.19;
+        out.b = 0.25 + k * 0.53;
       }
-      groupHeatmap.visible = mode !== 'off';
-      if (mode === 'off') return;
+      return out;
+    };
+    const erosionColor = (t, out) => {
+      const u = Math.max(0, Math.min(1, t));
+      out.setHSL(0.33 * (1 - u), 0.75, 0.42);
+      return out;
+    };
+    const sampleRasterBilinear = (values, rowsH, colsH, bboxH, lat, lon) => {
+      if (!values?.length || !rowsH || !colsH || !bboxH) return null;
+      const u = (lon - bboxH.west) / ((bboxH.east - bboxH.west) || 1);
+      const v = (bboxH.north - lat) / ((bboxH.north - bboxH.south) || 1);
+      if (u < -0.02 || u > 1.02 || v < -0.02 || v > 1.02) return null;
+      const cf = Math.max(0, Math.min(colsH - 1, u * (colsH - 1)));
+      const rf = Math.max(0, Math.min(rowsH - 1, v * (rowsH - 1)));
+      const c0 = Math.min(colsH - 2, Math.floor(cf));
+      const r0 = Math.min(rowsH - 2, Math.floor(rf));
+      const fc = cf - c0;
+      const fr = rf - r0;
+      const at = (rr, cc) => {
+        const x = values[rr * colsH + cc];
+        return Number.isFinite(x) ? x : null;
+      };
+      const i00 = at(r0, c0);
+      const i10 = at(r0, c0 + 1);
+      const i01 = at(r0 + 1, c0);
+      const i11 = at(r0 + 1, c0 + 1);
+      const parts = [i00, i10, i01, i11].filter((x) => x != null);
+      if (!parts.length) return null;
+      const a = i00 ?? parts[0];
+      const b = i10 ?? a;
+      const c = i01 ?? a;
+      const d = i11 ?? b;
+      return a * (1 - fr) * (1 - fc) + b * (1 - fr) * fc + c * fr * (1 - fc) + d * fr * fc;
+    };
+    const tmpColor = new THREE.Color();
+    const paintTerrainIncidence = (mode) => {
+      heatmapMode = mode;
+      const attr = geometry.attributes.color;
+      if (!attr) return;
+      const arr = attr.array;
+      const useSat = terrainMesh?.material === materialWithSat && materialWithSat.map;
+      if (mode === 'off') {
+        arr.set(baseTerrainColors);
+        attr.needsUpdate = true;
+        materialWithSat.vertexColors = false;
+        materialNoSat.vertexColors = true;
+        materialWithSat.needsUpdate = true;
+        if (useSat) terrainMesh.material = materialWithSat;
+        groupHeatmap.visible = false;
+        return;
+      }
       let values, rowsH, colsH, bboxH;
       if (mode === 'erosion' && report?.soil_profile?.erosion_raster?.values) {
         ({ values, rows: rowsH, cols: colsH, bbox: bboxH } = report.soil_profile.erosion_raster);
@@ -3562,46 +3623,41 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         const ras = report?.solar_horizon_shading?.solar_exposure_raster;
         if (!ras) return;
         values = mode === 'growing' ? ras.growing_season_insolation_hours : ras.annual_insolation_hours;
-        rowsH = ras.rows; colsH = ras.cols; bboxH = ras.bbox;
+        rowsH = ras.rows; colsH = ras.cols; bboxH = ras.bbox || { west, south, east, north };
       }
       if (!values?.length || !rowsH || !colsH) return;
       const finite = values.filter((v) => Number.isFinite(v));
-      const vmin = Math.min(...finite);
-      const vmax = Math.max(...finite) || 1;
-      const cellW = meshW / (colsH - 1 || 1);
-      const cellD = meshD / (rowsH - 1 || 1);
-      const geo = new THREE.PlaneGeometry(Math.max(cellW, 0.04), Math.max(cellD, 0.04));
-      geo.rotateX(-Math.PI / 2);
-      const inst = new THREE.InstancedMesh(
-        geo,
-        new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.55, depthWrite: false }),
-        finite.length
-      );
-      const m = new THREE.Matrix4();
-      const q = new THREE.Quaternion();
-      const v = new THREE.Vector3();
-      const s = new THREE.Vector3(1, 1, 1);
-      let n = 0;
-      for (let r = 0; r < rowsH; r++) {
-        for (let c = 0; c < colsH; c++) {
-          const val = values[r * colsH + c];
-          if (!Number.isFinite(val)) continue;
-          const lon = (bboxH?.west ?? west) + (c / (colsH - 1)) * ((bboxH?.east ?? east) - (bboxH?.west ?? west));
-          const lat = (bboxH?.north ?? north) - (r / (rowsH - 1)) * ((bboxH?.north ?? north) - (bboxH?.south ?? south));
-          const p = latLonToLocal(lat, lon);
-          v.set(p.x, p.y + 0.025, p.z);
-          m.compose(v, q, s);
-          inst.setMatrixAt(n, m);
-          const t = mode === 'erosion' ? val / 100 : (val - vmin) / (vmax - vmin || 1);
-          inst.setColorAt(n, heatmapColor(t));
-          n++;
+      const vmin = finite.length ? Math.min(...finite) : 0;
+      const vmax = finite.length ? Math.max(...finite) : 1;
+      const span = (vmax - vmin) || 1;
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const lon = west + (c / (cols - 1)) * (east - west);
+          const lat = north - (r / (rows - 1)) * (north - south);
+          const val = sampleRasterBilinear(values, rowsH, colsH, bboxH, lat, lon);
+          const i = (r * cols + c) * 3;
+          if (val == null) {
+            arr[i] = baseTerrainColors[i];
+            arr[i + 1] = baseTerrainColors[i + 1];
+            arr[i + 2] = baseTerrainColors[i + 2];
+            continue;
+          }
+          const t = mode === 'erosion' ? val / 100 : (val - vmin) / span;
+          if (mode === 'erosion') erosionColor(t, tmpColor);
+          else solarIncidenceColor(t, tmpColor);
+          arr[i] = tmpColor.r;
+          arr[i + 1] = tmpColor.g;
+          arr[i + 2] = tmpColor.b;
         }
       }
-      inst.instanceMatrix.needsUpdate = true;
-      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-      inst.count = n;
-      groupHeatmap.add(inst);
+      attr.needsUpdate = true;
+      materialWithSat.vertexColors = true;
+      materialNoSat.vertexColors = true;
+      materialWithSat.needsUpdate = true;
+      materialNoSat.needsUpdate = true;
+      groupHeatmap.visible = false;
     };
+    const buildHeatmap = (mode) => paintTerrainIncidence(mode);
 
     const shadowPos = {
       default: [meshSize * 0.5, meshSize * 2, meshSize * 0.3],
@@ -3618,6 +3674,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     document.querySelectorAll(`[data-terrain-heatmap="${ctrlId}"]`).forEach((sel) => {
       sel.addEventListener('change', () => buildHeatmap(sel.value));
     });
+    if (heatmapMode !== 'off') paintTerrainIncidence(heatmapMode);
     document.querySelectorAll(`[data-terrain-shadow="${ctrlId}"]`).forEach((sel) => {
       sel.addEventListener('change', () => {
         const p = shadowPos[sel.value] || shadowPos.default;
@@ -3811,11 +3868,14 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           solar: report?.solar,
         };
       }
-      // planting
+      // planting — pass the report so site_environment can sample solar/soil/climate
       return {
+        report,
         canopy: report?.canopy,
         surface_water: report?.surface_water,
+        planting_plan: report?.planting_plan,
         recommended_plantings: report?.planting_plan?.recommended,
+        area_m2: 100,
       };
     };
 
@@ -3863,10 +3923,19 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         acceptable = true;
       } else {
         const recs = result.recommendations || [];
+        const fmtRec = (r) => {
+          if (r.plant) {
+            const bio = Math.round((r.biological?.suitability || 0) * 100);
+            const cost = r.commercial?.establishment_cost_cad != null ? ` · ~$${r.commercial.establishment_cost_cad}` : '';
+            const fresh = r.commercial?.freshness && r.commercial.freshness !== 'no_observation' ? ` ${r.commercial.freshness}` : '';
+            return `${esc(r.plant.common_name || r.plant.scientific_name)} · ${bio}% bio${cost}${esc(fresh)}`;
+          }
+          return `${esc(r.common_name || r.id || 'plant')}${r.score != null ? ` (${r.score})` : ''}`;
+        };
         bodyHtml = `
           <div style="font-weight:600;margin-bottom:0.25rem">🌱 Planting at this point</div>
-          ${result.zone_specific === false ? `<div class="fine" style="opacity:0.75;margin-bottom:0.3rem">${esc(result.note || '')}</div>` : ''}
-          <ol style="margin:0 0 0 1.1rem;padding:0">${recs.slice(0, 4).map((r) => `<li>${esc(r.common_name || r.id || 'plant')}${r.score != null ? ` (${r.score})` : ''}</li>`).join('')}</ol>`;
+          <div class="fine" style="opacity:0.75;margin-bottom:0.3rem">${esc(result.note || '')}</div>
+          <ol style="margin:0 0 0 1.1rem;padding:0">${recs.slice(0, 4).map((r) => `<li>${fmtRec(r)}</li>`).join('')}</ol>`;
         acceptable = recs.length > 0;
       }
 
@@ -5262,38 +5331,64 @@ function monthlyTempBars(months) {
 
 function wildlifeSection(wl) {
   if (!wl || !wl.available) return '';
+  const expected = wl.expected_species || [];
+  const obs = wl.observations_nearby || [];
+  const sar = wl.species_at_risk_flagged || [];
   const deer = wl.white_tailed_deer;
-  if (!deer) return '';
+  const recList = (deer?.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
 
-  const recList = (deer.recommendations || []).map((r) => `<li>${esc(r)}</li>`).join('');
-  const sightings = wl.recent_sightings && typeof wl.recent_sightings === 'object' && !Array.isArray(wl.recent_sightings) ? wl.recent_sightings : null;
+  if (!expected.length && !obs.length && !deer) return '';
+
+  const expectedRows = expected.slice(0, 12).map((s) => `
+    <tr>
+      <td>${esc(s.common_name || '—')}</td>
+      <td><em>${esc(s.scientific_name || '')}</em></td>
+      <td>${esc(s.taxon_group || '—')}</td>
+      <td>${esc(s.range_source || '—')}</td>
+      <td>${esc(s.confidence || '—')}</td>
+      <td>${esc(s.conservation_status || '—')}</td>
+    </tr>`).join('');
+
+  const obsRows = obs.slice(0, 12).map((o) => `
+    <tr>
+      <td>${esc(o.common_name || o.scientific_name || '—')}</td>
+      <td>${esc(o.observed_date || '—')}</td>
+      <td>${esc(o.source || '—')}</td>
+      <td>${o.research_grade ? 'yes' : 'no'}</td>
+      <td>${o.location_precision === 'obscured' ? 'obscured' : (o.distance_from_parcel_m != null ? `${esc(o.distance_from_parcel_m)} m` : '—')}</td>
+    </tr>`).join('');
 
   return `
     <section class="report-block">
-      <h2>Wildlife — White-tailed Deer</h2>
+      <h2>Wildlife — expected vs confirmed nearby</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        iNaturalist research-grade observations (last 5 years) + Alberta county-level deer habitat heuristic.
-        Presence should be assumed for any rural Alberta property regardless of score.
+        <strong>Expected</strong> means a published range overlaps this parcel (could occur).
+        <strong>Confirmed nearby</strong> is a dated sighting within ${esc(wl.buffer_radius_m || 5000)} m.
+        Missing observations mean under-surveyed, not absent.
+        ${wl.sensitive_species_note ? esc(wl.sensitive_species_note) : ''}
       </p>
-
-      <div class="well-range-card" style="border-left-color:var(--caution)">
-        <span class="mono">Deer pressure assessment</span>
+      ${sar.length ? `<div class="flag" data-severity="caution" style="margin:0.6rem 0"><strong>Species at risk</strong><p>Range/habitat for ${sar.map((n) => `<em>${esc(n)}</em>`).join(', ')} overlaps this parcel. Provincial/federal species-at-risk regulations may apply — recommend a habitat assessment before major ground disturbance. Locations are not pinpointed.</p></div>` : ''}
+      ${expectedRows ? `
+        <h3 style="font-size:1rem;margin:0.8rem 0 0.35rem">Expected species</h3>
+        <table class="data-table" style="font-size:0.82rem">
+          <thead><tr><th>Common</th><th>Scientific</th><th>Group</th><th>Source</th><th>Confidence</th><th>Status</th></tr></thead>
+          <tbody>${expectedRows}</tbody>
+        </table>` : ''}
+      ${obsRows ? `
+        <h3 style="font-size:1rem;margin:0.8rem 0 0.35rem">Confirmed nearby</h3>
+        <table class="data-table" style="font-size:0.82rem">
+          <thead><tr><th>Species</th><th>Date</th><th>Source</th><th>Research-grade</th><th>Distance</th></tr></thead>
+          <tbody>${obsRows}</tbody>
+        </table>` : `<p class="fine">No recent crowd-sourced observations in the buffer — treat as under-surveyed, not species-absent.</p>`}
+      ${deer ? `
+      <div class="well-range-card" style="border-left-color:var(--caution);margin-top:0.8rem">
+        <span class="mono">Ungulate browse screen</span>
         <div class="well-range-value" style="font-size:clamp(1.3rem, 3vw, 1.8rem);color:var(--caution)">
           ${esc(deer.pressure_label)}
-          <span style="font-size:0.8rem;color:var(--ink-soft);margin-left:0.5rem">(score ${deer.pressure_score})</span>
         </div>
-        <p class="fine">
-          ${sightings
-            ? `${sightings.count} research-grade iNaturalist sightings in the search area${sightings.last_seen ? ` · last: ${esc(sightings.last_seen)}` : ''}`
-            : 'No recent iNaturalist sightings in search area'}
-          ${deer.by_taxon && Object.keys(deer.by_taxon).length
-            ? ` · species: ${Object.entries(deer.by_taxon).map(([k, v]) => `${esc(k)} (${v})`).join(', ')}`
-            : ''}
-        </p>
         ${recList ? `<ul class="wildlife-recs" style="margin:0.6rem 0 0;padding-left:1.2rem;font-size:0.92rem;color:var(--ink-soft);line-height:1.6">${recList}</ul>` : ''}
-      </div>
-
-      <p class="fine" style="margin-top:0.6rem">${esc(wl.methodology_note || '')}</p>
+      </div>` : ''}
+      <p class="fine" style="margin-top:0.6rem">${esc(wl.methodology_note || '')} ${esc(wl.acims_note || '')}</p>
     </section>`;
 }
 
@@ -5489,7 +5584,7 @@ function dualSolarHeatmapSection(sh, roof, frost) {
     <section class="report-block">
       <h2>Solar hours — install vs planting</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Same horizon-shading model, two framings. Toggle the 3D twin heatmaps to compare a solar pad against a garden bed.
+        Same horizon-shading model, two framings. The 3D twin is colored across the whole parcel (blue = least sun, gold = most). Switch annual vs growing-season in the twin controls.
         ${frostN ? ` ${esc(frostN)} frost-pocket zone${frostN === 1 ? '' : 's'} flagged — sunny + frost-prone is a poor garden site.` : ''}
         ${sh.canopy_shading_note ? ` ${esc(sh.canopy_shading_note)}` : ''}
       </p>

@@ -26,6 +26,7 @@ import { buildSiteRecord } from './rules.js';
 import { assessTemperature } from './climate.js';
 import { assessWildlife } from './wildlife.js';
 import { checkWildlifeSensitivity, queryGbig, lookupWmu } from './wildlife-enrich.js';
+import { wildlifeTriggers, wildlifeFlags } from './wildlife-layer.js';
 import { estimateTreeCover, generateTreeSampleGrid } from './trees.js';
 import { assessAccess } from './access.js';
 import { recommendServicePackages } from './service-packages.js';
@@ -169,10 +170,14 @@ export async function generateSiteReport(input = {}) {
       available: false,
       error: e.message,
     })),
-    assessWildlife(bbox, centre).catch((e) => ({
-      available: false,
-      error: e.message,
-    })),
+    withTimeout(
+      assessWildlife(bbox, centre).catch((e) => ({
+        available: false,
+        error: e.message,
+      })),
+      Math.min(18_000, waveMs),
+      { available: false, error: 'timeout', expected_species: [], observations_nearby: [], species_at_risk_flagged: [] }
+    ),
     fetchSemanticTerrain(bbox).catch((e) => ({
       available: false,
       error: e.message,
@@ -439,6 +444,20 @@ export async function generateSiteReport(input = {}) {
   record.biodiversity = biodiversity;
   record.wildlife_sensitivity = checkWildlifeSensitivity(centre);
   record.wmu = lookupWmu(centre);
+  if (wildlife?.available) {
+    wildlife.triggers = wildlifeTriggers({
+      expected: wildlife.expected_species || [],
+      observations: wildlife.observations_nearby || [],
+      sar: wildlife.species_at_risk_flagged || [],
+      surface_water,
+      wetlands,
+    });
+    wildlife.flags = wildlifeFlags(wildlife.triggers, wildlife.species_at_risk_flagged || []);
+    if (wildlife.flags?.length) {
+      record._meta = record._meta || {};
+      record._meta.flags = [...(record._meta.flags || []), ...wildlife.flags];
+    }
+  }
 
   const backgroundPromises = [
     bgGbifP.then((gbif) => { if (gbif) record.gbif_species = gbif; }),
@@ -759,6 +778,7 @@ export async function generateSiteReport(input = {}) {
     hydrology: siteInput.hydrology,
     service_quote: record.service_quote,
     firesmart: record.firesmart,
+    wildlife: record.wildlife,
     travel_km: proximity.nearest_settlement?.distance_km ?? proximity.nearest_city?.distance_km ?? 40,
     propertyLabel: siteInput.site_name,
   });
@@ -1040,8 +1060,8 @@ function buildProvenance(
   if (wildlife?.available) {
     rows.push({
       field: 'wildlife',
-      source_name: wildlife.source_name || 'iNaturalist + Alberta habitat heuristic',
-      source_date: new Date().toISOString().slice(0, 10),
+      source_name: wildlife.source_name || 'Alberta expected-range catalog + GBIF + iNaturalist',
+      source_date: wildlife.data_snapshot_date || new Date().toISOString().slice(0, 10),
       source_url: wildlife.source_url,
     });
   }

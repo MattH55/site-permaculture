@@ -22,6 +22,13 @@ import { fetchRoadsLayer } from './lib/roads-layer.js';
 import { evaluatePlanningClick } from './lib/planning-evaluate.js';
 import { computeZoneSectorOverlay } from './lib/zone-sector.js';
 import { writeLabOverride } from './lib/soil-profile.js';
+import { recommendPlants, siteFromQuery } from './lib/plant-intelligence/recommend.js';
+import { buildSiteEnvironment } from './lib/plant-intelligence/site-environment.js';
+import { nearbyVendors, pricesForTaxon, bestOffer } from './lib/plant-intelligence/products.js';
+import { establishmentCost, utilityValue, marketProfile } from './lib/plant-intelligence/economics.js';
+import { loadCanonical } from './lib/plant-intelligence/store.js';
+import { simulatePlanting, saveScenario, getScenario } from './lib/plant-intelligence/simulate.js';
+import { taxonIdFromName } from './lib/plant-intelligence/taxonomy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -699,6 +706,122 @@ app.post('/api/zone-sectors', (req, res) => {
 });
 
 app.get('/healthz', (_req, res) => res.send('ok'));
+
+function handlePlantRecommend(req, res) {
+  try {
+    const q = { ...req.query, ...(req.body || {}) };
+    const site = q.site || siteFromQuery(q);
+    const out = recommendPlants(site, {
+      max_results: q.max_results || q.limit,
+      purpose: q.purpose,
+      rank: q.rank || q.ranking,
+    });
+    res.json(out);
+  } catch (e) {
+    console.error('plants recommend failed', e);
+    res.status(400).json({ error: e.message || 'recommend failed' });
+  }
+}
+
+app.get('/api/plants/recommend', handlePlantRecommend);
+app.post('/api/plants/recommend', handlePlantRecommend);
+app.get('/api/sites/:siteId/plants', (req, res) => {
+  req.query.property_id = req.params.siteId;
+  handlePlantRecommend(req, res);
+});
+
+function findPlant(taxonId) {
+  const id = taxonIdFromName(taxonId) || taxonId;
+  return (loadCanonical().plants || []).find(
+    (p) => p.taxon?.id === taxonId || p.taxon?.id === id || p.taxon?.scientific_name === taxonId
+  ) || null;
+}
+
+app.get('/api/plants/:taxonId/prices', (req, res) => {
+  try {
+    const lat = req.query.latitude != null ? Number(req.query.latitude) : 53.55;
+    const lon = req.query.longitude != null ? Number(req.query.longitude) : -113.5;
+    const plant = findPlant(req.params.taxonId);
+    const sci = plant?.taxon?.scientific_name || req.params.taxonId;
+    res.json({
+      taxon_id: plant?.taxon?.id || req.params.taxonId,
+      scientific_name: sci,
+      observations: pricesForTaxon(sci, { latitude: lat, longitude: lon }),
+      best_offer: bestOffer(sci, { latitude: lat, longitude: lon }),
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/plants/:taxonId/economics', (req, res) => {
+  try {
+    const plant = findPlant(req.params.taxonId);
+    if (!plant) return res.status(404).json({ error: 'taxon not in canonical catalog — run npm run ingest:plants' });
+    const site = siteFromQuery(req.query);
+    const offer = bestOffer(plant.taxon.scientific_name, site);
+    const commercial = establishmentCost(plant, site, offer);
+    res.json({
+      plant: { taxon_id: plant.taxon.id, scientific_name: plant.taxon.scientific_name, common_name: plant.taxon.common_names?.[0] },
+      commercial,
+      utility: utilityValue(plant),
+      economic: marketProfile(plant, site, commercial),
+      note: 'Cost, utility, and market return are separate. Figures are scenario estimates, not forecasts.',
+    });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/vendors/nearby', (req, res) => {
+  try {
+    const latitude = Number(req.query.latitude ?? 53.55);
+    const longitude = Number(req.query.longitude ?? -113.5);
+    res.json({ vendors: nearbyVendors({ latitude, longitude, limit: req.query.limit }) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/site-environment', (req, res) => {
+  try {
+    const body = req.body || {};
+    res.json(buildSiteEnvironment(body));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/site-environment/:propertyId', (req, res) => {
+  try {
+    const q = { ...req.query, property_id: req.params.propertyId };
+    res.json({ property_id: req.params.propertyId, ...siteFromQuery(q) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/property/simulate-planting', (req, res) => {
+  try {
+    res.json(simulatePlanting(req.body || {}));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.post('/api/property/scenarios', (req, res) => {
+  try {
+    res.json(saveScenario(req.body || {}));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+app.get('/api/property/scenarios/:scenarioId', (req, res) => {
+  const rec = getScenario(req.params.scenarioId);
+  if (!rec) return res.status(404).json({ error: 'scenario not found' });
+  res.json(rec);
+});
 
 /**
  * Phase 3 — embed / partner API
