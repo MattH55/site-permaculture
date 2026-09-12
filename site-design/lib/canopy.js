@@ -773,30 +773,35 @@ function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
 }
 
 /**
- * Map each density-classified render zone onto the output schema from
- * billboard-impostor-trees-instructions.md. This only carries the mid/far
- * split — 'instanced' zones (individually placed trees) become the "mid"
- * tier's cross-billboard impostors, 'billboard_impostor' zones (dense cover)
- * become the "far" tier's tiled cluster texture. The "near" tier (full 3D
- * geometry for trees close to a structure) isn't classifiable here: it's a
+ * Map density-classified render zones onto a near/mid tier summary for
+ * billboard-impostor-trees-instructions.md. Only 'instanced' zones
+ * (individually placed trees) are represented here, as the "mid" tier's
+ * cross-billboard impostors — 'billboard_impostor' zones (dense cover) are
+ * left out entirely: the doc's proposed "far" tier for them (a tiled bake
+ * from real tree models) was tried and dropped per feedback, so dense zones
+ * keep rendering exactly as they did before this feature and have no
+ * tier-tagged entry here. The "near" tier (full 3D geometry for trees close
+ * to a structure) isn't classifiable in this module either: it's a
  * site-context distinction — proximity to a detected building — not a
- * canopy-density one, and building-detection output isn't available to this
- * module. It's applied client-side instead (see buildNearTrees() in
- * public/app.js), reclassifying a subset of "mid" trees at render time.
+ * canopy-density one, and building-detection output isn't available here.
+ * It's applied client-side instead (see buildNearTrees() in public/app.js),
+ * reclassifying a subset of these "mid" zones' trees at render time.
  * species_asset_id is left null: species-to-asset selection happens per-tree
  * client-side (resolveTreeAsset() in public/tree-scale.js), not per-zone.
  *
  * @param {ReturnType<typeof classifyCanopyRenderZones>} renderZones
  */
 function buildTreeRenderTiers(renderZones) {
-  return renderZones.map((z) => ({
-    geometry: z.geometry,
-    tier: z.render_mode === 'billboard_impostor' ? 'far' : 'mid',
-    render_mode: z.render_mode === 'billboard_impostor' ? 'tiled_texture' : 'billboard_impostor',
-    species_asset_id: null,
-    impostor_atlas: z.render_mode === 'billboard_impostor' ? null : 'nature-kit',
-    transition_blend_zone: true,
-  }));
+  return renderZones
+    .filter((z) => z.render_mode !== 'billboard_impostor')
+    .map((z) => ({
+      geometry: z.geometry,
+      tier: 'mid',
+      render_mode: 'billboard_impostor',
+      species_asset_id: null,
+      impostor_atlas: 'nature-kit + poly-haven-fir-sapling',
+      transition_blend_zone: true,
+    }));
 }
 
 /** Andrew's monotone chain convex hull. Input/output: [[x,y], ...]. */

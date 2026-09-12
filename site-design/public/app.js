@@ -3234,12 +3234,14 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       canopyAlbedo: null, canopyNormal: null, canopyRough: null,
       wall: {}, roof: {},
       tree: { conifer: null, deciduous: null, bark: null },
-      // Populated by loadTreeImpostorAssets(): cloned-geometry templates,
-      // baked cross-billboard atlases, and the top-down cluster texture —
-      // see billboard-impostor-trees-instructions.md.
+      // Populated by loadTreeImpostorAssets(): near-tier cloned-geometry
+      // templates and mid-tier cross-billboard atlases — see
+      // billboard-impostor-trees-instructions.md. The far tier (a tiled
+      // top-down cluster bake) was tried and dropped per feedback; dense
+      // canopy zones fall back to pbr.canopyAlbedo / the procedural texture,
+      // same as before this feature.
       treeTemplates: null,
       treeImpostorAtlas: { conifer: null, deciduous: null },
-      canopyClusterTex: null,
     };
 
     // --- Near/mid tier split (Step 3 of billboard-impostor-trees-instructions.md) ---
@@ -4290,18 +4292,15 @@ function buildForestCanopyTexture() {
 }
 
 /**
- * Canopy rendering (far tier): draped texture, no per-tree geometry.
- *
- * Texture source priority (billboard-impostor-trees-instructions.md, Step 3.3):
- * 1. pbr.canopyClusterTex — a top-down bake of the same nature-kit GLB tree
- *    models used for the near/mid tiers, so far-tier canopy reads as the same
- *    forest seen up close, just distant, instead of a different biome.
- * 2. pbr.canopyAlbedo — the old Poly Haven aerial-photo texture, kept as a
- *    fallback for when GLB baking is unavailable (WebGL2/GLTFLoader missing).
- * 3. The procedural blotch texture, for a fully offline fallback.
+ * Canopy rendering (dense zones): draped photoreal PBR texture (Poly Haven
+ * aerial_grass_rock) with the procedural blotch texture as an offline
+ * fallback. billboard-impostor-trees-instructions.md proposed a third "far"
+ * tier here — a tiled top-down bake of the same GLB tree models — but it
+ * didn't hold up visually and was dropped per feedback; this tier is
+ * unchanged from before that feature.
  */
 function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows, pbr = {}) {
-  const canopyTex = pbr.canopyClusterTex || pbr.canopyAlbedo || buildForestCanopyTexture();
+  const canopyTex = pbr.canopyAlbedo || buildForestCanopyTexture();
   const cellW = meshW / (cols - 1 || 1);
   const cellD = meshD / (rows - 1 || 1);
   const uvScale = 0.35;
@@ -4446,9 +4445,10 @@ function crossedBillboardGeometryAtlas() {
 
 /**
  * Real 3D tree models this project already ships (CC0 nature-kit pack) —
- * used both as near-tier full geometry and as the source models baked into
- * mid-tier billboard-impostor atlases and the far-tier cluster texture.
- * Two deciduous variants (generic + oak) give the mid/far tiers some visual
+ * used as near-tier full geometry for all three species, and as the source
+ * model baked into deciduous's mid-tier billboard-impostor atlas (conifer's
+ * atlas is instead a real photoreal bake — see loadTreeImpostorAssets()).
+ * Two deciduous variants (generic + oak) give the near tier some visual
  * variety instead of one silhouette repeated everywhere (Step 1 of
  * billboard-impostor-trees-instructions.md — this is a 2-model start, not
  * the full 6-10 species library the doc describes; conifer/deciduous is all
@@ -4500,6 +4500,12 @@ function bakeTreeImpostorAtlas(url, viewSize = 512) {
     const renderer = getImpostorRenderer();
     if (!template || !renderer) return null;
     renderer.setSize(viewSize, viewSize, false);
+    // No sRGB/tonemap here: this project's other PBR textures (walls, roofs,
+    // canopy) are all baked and consumed "gamma-naive" — the main viewer's
+    // renderer sets no outputEncoding — so this bake matches that convention
+    // rather than introducing a mismatched color-managed texture. The
+    // original ambient(0.65)+single-key(1.1) lighting read as an almost-black
+    // silhouette; these are just brighter plain lights, no encoding change.
 
     const box = new THREE.Box3().setFromObject(template);
     const size = new THREE.Vector3();
@@ -4512,10 +4518,13 @@ function bakeTreeImpostorAtlas(url, viewSize = 512) {
     const model = template.clone(true);
     model.position.sub(center);
     bakeScene.add(model);
-    bakeScene.add(new THREE.AmbientLight(0xffffff, 0.65));
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    bakeScene.add(new THREE.HemisphereLight(0xdcefff, 0x2c3a24, 0.9));
+    const key = new THREE.DirectionalLight(0xfff4e0, 1.6);
     key.position.set(1, 1.4, 1);
     bakeScene.add(key);
+    const fill = new THREE.DirectionalLight(0xcfe8ff, 0.5);
+    fill.position.set(-1, 0.6, -0.6);
+    bakeScene.add(fill);
 
     const cam = new THREE.OrthographicCamera(-radius, radius, radius, -radius, -radius * 4, radius * 4);
     const atlas = document.createElement('canvas');
@@ -4544,87 +4553,38 @@ function bakeTreeImpostorAtlas(url, viewSize = 512) {
   return p;
 }
 
-let _canopyClusterTexCache = null;
 /**
- * Bake the far-tier tiled canopy texture (Step 3.3): a top-down render of a
- * small cluster of the same GLB tree models, instead of a stock aerial-canopy
- * photo — so the far tier looks like the same forest as the near/mid tiers,
- * just distant. Cached at module scope like the atlas bake above.
- */
-function bakeTopDownClusterTexture(templates, size = 512) {
-  if (_canopyClusterTexCache) return _canopyClusterTexCache;
-  const renderer = getImpostorRenderer();
-  const kinds = [templates?.conifer, templates?.deciduous, templates?.deciduousB].filter(Boolean);
-  if (!renderer || !kinds.length) return null;
-  renderer.setSize(size, size, false);
-
-  const scene = new THREE.Scene();
-  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
-  const sun = new THREE.DirectionalLight(0xffffff, 0.9);
-  sun.position.set(0.6, 1, 0.4);
-  scene.add(sun);
-
-  const groundR = 6; // arbitrary local units; the texture tiles, so absolute scale doesn't matter
-  const count = 10; // "8-12 trees" per the instructions doc
-  const disposables = [];
-  for (let i = 0; i < count; i++) {
-    const template = kinds[Math.floor(deterministicJitter(i * 5 + 3) * kinds.length) % kinds.length];
-    const box = new THREE.Box3().setFromObject(template);
-    const srcH = Math.max(box.max.y - box.min.y, 0.001);
-    const targetH = 1.4 + deterministicJitter(i * 11 + 1) * 1.2;
-    const scale = targetH / srcH;
-    const model = template.clone(true);
-    model.scale.setScalar(scale);
-    const ang = deterministicJitter(i * 7 + 2) * Math.PI * 2;
-    const rad = deterministicJitter(i * 13 + 4) * groundR * 0.85;
-    model.position.set(Math.cos(ang) * rad, -box.min.y * scale, Math.sin(ang) * rad);
-    model.rotation.y = deterministicJitter(i * 17 + 6) * Math.PI * 2;
-    scene.add(model);
-    disposables.push(model);
-  }
-
-  const cam = new THREE.OrthographicCamera(-groundR, groundR, groundR, -groundR, 0.1, 50);
-  cam.position.set(0, 30, 0.001); // tiny z offset avoids a degenerate lookAt straight down
-  cam.lookAt(0, 0, 0);
-  renderer.setClearColor(0x3a6b3f, 1); // opaque understory-shadow tone so tile seams read as ground, not transparency
-  renderer.clear(true, true, true);
-  renderer.render(scene, cam);
-
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  canvas.getContext('2d').drawImage(renderer.domElement, 0, 0, size, size);
-  disposables.forEach((m) => m.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); }));
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-  _canopyClusterTexCache = tex;
-  return tex;
-}
-
-/**
- * Load the near/mid/far tier's shared GLB assets and bake the mid-tier
- * impostor atlases + far-tier cluster texture from them. Populates
- * pbr.treeTemplates / pbr.treeImpostorAtlas / pbr.canopyClusterTex in place;
- * a no-op (leaves those null, all tiers fall back to their prior behaviour)
- * if GLTFLoader/WebGL2 aren't available.
+ * Load the near/mid tier's shared tree assets. Populates pbr.treeTemplates
+ * (cloned-geometry templates for the near tier) and pbr.treeImpostorAtlas
+ * (mid-tier cross-billboard textures) in place.
+ *
+ * Conifer's mid-tier atlas is NOT baked at runtime: it's loaded from
+ * /assets/pbr/trees/conifer_impostor_atlas.png, a real photoreal atlas baked
+ * offline (once, in development) from Poly Haven's CC0 "fir_sapling" scan —
+ * see billboard-impostor-trees-instructions.md and public/assets/pbr/LICENSE.txt.
+ * Poly Haven's tree scans ship as 20-200MB+ meshes, unusable for a live
+ * per-visitor bake or as near-tier geometry, but baking one down to a small
+ * static image offline sidesteps that entirely: visitors only ever download
+ * the ~800KB result. No equivalent small deciduous scan was found, so
+ * deciduous keeps baking its atlas at runtime from the CC0 nature-kit GLB,
+ * same as before.
+ *
+ * A third "far" tier (a tiled top-down cluster bake for dense canopy zones)
+ * was tried here and dropped per feedback — see renderDrapedForestTexture().
  */
 async function loadTreeImpostorAssets(pbr) {
-  if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') return;
+  if (typeof THREE === 'undefined') return;
+  pbr.treeImpostorAtlas = pbr.treeImpostorAtlas || {};
+  pbr.treeImpostorAtlas.conifer = await loadTexture('/assets/pbr/trees/conifer_impostor_atlas.png', 1);
+
+  if (typeof THREE.GLTFLoader !== 'function') return;
   const [conifer, deciduous, deciduousB] = await Promise.all([
     loadTreeGlbTemplate(TREE_GLB_ASSETS.conifer),
     loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduous),
     loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduousB),
   ]);
   pbr.treeTemplates = { conifer, deciduous, deciduousB };
-  const [atlasConifer, atlasDeciduous] = await Promise.all([
-    bakeTreeImpostorAtlas(TREE_GLB_ASSETS.conifer),
-    bakeTreeImpostorAtlas(TREE_GLB_ASSETS.deciduous),
-  ]);
-  pbr.treeImpostorAtlas = { conifer: atlasConifer, deciduous: atlasDeciduous };
-  pbr.canopyClusterTex = bakeTopDownClusterTexture(pbr.treeTemplates);
+  pbr.treeImpostorAtlas.deciduous = await bakeTreeImpostorAtlas(TREE_GLB_ASSETS.deciduous);
 }
 
 /**
