@@ -152,7 +152,10 @@ function writeCached(key, result) {
  */
 export async function buildCanopyLayer(bbox, opts = {}) {
   if (!bbox || bbox.west == null) return unavailable('invalid_bbox');
-  const size = Math.min(Math.max(opts.size ?? 48, 16), 96);
+  // Use a higher-resolution canopy model by default.
+  // Increase from 48 to 96 cells per CHM raster by default for finer detail.
+  // Allow up to 128 to enable even higher-res if explicitly requested in the future.
+  const size = Math.min(Math.max(opts.size ?? 96, 16), 128);
   const window = Math.min(Math.max(opts.window ?? DEFAULT_WINDOW, 8), 64);
 
   const key = cacheKey(bbox);

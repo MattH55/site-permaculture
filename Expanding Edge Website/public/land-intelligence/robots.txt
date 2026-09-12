@@ -1,0 +1,22 @@
+# https://landintelligence.online/robots.txt
+
+User-agent: *
+Allow: /
+
+Disallow: /internet-access/data/
+Disallow: /internet-data/
+Disallow: /procurement-data/
+
+User-agent: GPTBot
+Allow: /
+Disallow: /internet-access/data/
+Disallow: /internet-data/
+Disallow: /procurement-data/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /internet-access/data/
+Disallow: /internet-data/
+Disallow: /procurement-data/
+
+Sitemap: https://landintelligence.online/sitemap.xml

@@ -1,0 +1,13 @@
+{
+  "name": "Alberta rural internet and emergency access",
+  "short_name": "AB access map",
+  "description": "CARI+ 24-hour emergency department access and measured broadband for Alberta dissemination areas.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#10160f",
+  "theme_color": "#10160f",
+  "lang": "en-CA",
+  "icons": [
+    { "src": "favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

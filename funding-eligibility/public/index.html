@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grant &amp; Cost-Share Eligibility Quiz | Expanding Edge</title>
+<meta name="description" content="Project-based funding match for Alberta, Saskatchewan, BC, Ontario, Quebec and federal programs. Describe what you want to do — we surface potential water, land, energy, waste and forestry opportunities.">
+<link rel="canonical" href="https://www.expandingedge.ca/grant-eligibility/">
+<meta name="theme-color" content="#20301F">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F7F8F3;--paper-dim:#EEF0E8;--ink:#16211b;--ink-soft:#4B5245;--pine:#33473A;--pine-deep:#16211b;--teal:#2F6B68;--berry:#5b3a73;--line:rgba(22,33,27,.14);--line-strong:rgba(22,33,27,.28)}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--paper);color:var(--ink);line-height:1.55}
+a{color:var(--teal)}
+.site-header{border-bottom:1px solid var(--line);background:rgba(247,248,243,.96);backdrop-filter:blur(8px);position:sticky;top:0;z-index:20}
+.site-inner{max-width:960px;margin:0 auto;padding:.85rem 1.15rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.brand{font-family:Fraunces,Georgia,serif;font-weight:600;color:var(--ink);text-decoration:none}
+.nav{display:flex;gap:.85rem 1.1rem;flex-wrap:wrap;align-items:center}
+.nav a{color:var(--ink-soft);text-decoration:none;font-size:.92rem}.nav a:hover{color:var(--ink)}
+.tools-sub{max-width:960px;margin:0 auto;padding:.45rem 1.15rem .65rem;font-size:.88rem;color:var(--ink-soft);border-bottom:1px solid var(--line);background:var(--paper-dim)}
+.tools-sub a{color:var(--teal);text-decoration:none;margin:0 .15rem}.tools-sub a:hover{text-decoration:underline}
+.tools-sub .subh{display:inline-block;margin-left:.65rem;margin-right:.25rem;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;opacity:.7}
+.page-header{padding:2.5rem 1.15rem 1.75rem;background:linear-gradient(180deg,#1a221c 0%,#243028 100%);color:#f7f8f3}
+.page-header .inner{max-width:960px;margin:0 auto}
+.page-header h1{font-family:Fraunces,Georgia,serif;font-size:clamp(1.55rem,3.5vw,2.2rem);margin:.35rem 0 .55rem;line-height:1.15;color:#f7f8f3}
+.page-header .lead{color:rgba(247,248,243,.86);max-width:42rem}
+.page-header .eyebrow{color:#9fd0c8}
+.lead{color:var(--ink-soft);max-width:42rem}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin:0}
+.container{max-width:960px;margin:0 auto;padding:1.5rem 1.15rem 3rem}
+.disclaimer{font-size:.9rem;color:var(--ink-soft);line-height:1.55;margin:0 0 1.25rem;padding:1rem 1.1rem;background:var(--paper-dim);border:1px solid var(--line);border-radius:3px}
+.gq{background:#fffdf8;border:1px solid var(--line);border-radius:3px;padding:1.25rem 1.2rem 1.6rem;box-shadow:0 1px 0 rgba(22,33,27,.04)}
+
+.masthead{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;align-items:flex-start}
+.tag{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--line);padding:.45rem .65rem;border-radius:4px}
+.progress{display:flex;gap:4px;margin:0 0 1.15rem;flex-wrap:wrap}
+.progress span{flex:1;min-width:18px;height:4px;background:var(--line);border-radius:2px}
+.progress span.done{background:var(--teal)}.progress span.active{background:var(--pine)}
+.step{display:none}.step.active{display:block;animation:fade .22s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.q-index{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin:0 0 .35rem}
+.q-text{font-family:Fraunces,Georgia,serif;font-size:clamp(1.15rem,2.8vw,1.45rem);font-weight:600;margin:0 0 .35rem;line-height:1.25}
+.q-help{color:var(--ink-soft);font-size:.92rem;margin:0 0 1rem}
+.opts{display:grid;gap:.55rem}
+.opt{text-align:left;width:100%;cursor:pointer;border:1.5px solid var(--line-strong);background:#fffdf6;color:var(--ink);border-radius:8px;padding:.85rem 1rem;font:500 .95rem/1.35 Inter,system-ui,sans-serif;display:flex;justify-content:space-between;gap:.75rem;align-items:flex-start}
+.opt:hover{border-color:var(--teal)}.opt.selected{border-color:var(--pine);background:#eef3ec;box-shadow:inset 0 0 0 1px var(--pine)}
+.opt .mark{width:18px;height:18px;border:1.5px solid var(--line-strong);border-radius:50%;flex:0 0 auto;margin-top:2px}
+.opt.multi .mark{border-radius:4px}.opt.selected .mark{background:var(--pine);border-color:var(--pine)}
+.navrow{display:flex;justify-content:space-between;gap:.75rem;margin-top:1.15rem;flex-wrap:wrap}
+.btn{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.06em;text-transform:uppercase;padding:12px 20px;border-radius:2px;cursor:pointer;border:1.5px solid var(--ink);background:var(--ink);color:var(--paper);text-decoration:none;display:inline-block}
+.btn:hover{opacity:.92;color:var(--paper)}.btn.ghost{background:transparent;color:var(--ink)}.btn:disabled{opacity:.35;cursor:not-allowed}
+.results-head h3{font-family:Fraunces,Georgia,serif;margin:.2rem 0 .4rem;font-size:1.35rem}
+.meta-row{display:flex;flex-wrap:wrap;gap:.4rem;margin:.5rem 0 1rem}
+.chip{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.04em;text-transform:uppercase;border:1px solid var(--line);padding:.3rem .55rem;border-radius:999px;color:var(--ink-soft)}
+.chip.open{color:#1d5c3a;border-color:#1d5c3a55;background:#e7f5ec}
+.chip.maybe{color:#7a5b10;border-color:#7a5b1055;background:#fff6db}
+.chip.closed{color:#6b3a2a;border-color:#6b3a2a55;background:#f8ebe6}
+.chip.excellent{color:#0f5132;border-color:#0f513255;background:#d1e7dd}
+.chip.strong{color:#084298;border-color:#08429855;background:#cfe2ff}
+.chip.possible{color:#664d03;border-color:#664d0355;background:#fff3cd}
+.card{border:1px solid var(--line);border-radius:10px;padding:1rem 1.05rem;margin:0 0 .85rem;background:#fffdf6}
+.card h4{margin:0 0 .35rem;font-family:Fraunces,Georgia,serif;font-size:1.12rem;line-height:1.25}
+.card .jur{color:var(--ink-soft);font-size:.9rem;margin:0 0 .55rem}
+.card p{margin:.35rem 0;font-size:.95rem}
+.card .grid{display:grid;gap:.35rem .85rem;margin:.55rem 0}
+@media(min-width:640px){.card .grid{grid-template-columns:1fr 1fr}}
+.card .lbl{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--teal);display:block}
+.why{margin:.55rem 0 0;padding:.65rem .75rem;background:var(--paper-dim);border-radius:8px;font-size:.9rem}
+.why ul{margin:.35rem 0 0;padding-left:1.1rem}
+.notice{font-size:.88rem;color:var(--ink-soft);margin:.4rem 0 0;padding:.55rem .7rem;border-left:3px solid var(--teal);background:#f7f4ea}
+.card a.official{display:inline-block;margin-top:.45rem;font-weight:600}
+.empty{padding:1rem;border:1px dashed var(--line-strong);border-radius:8px;color:var(--ink-soft)}
+.cta{margin-top:1.5rem;padding:1.25rem;border:1px solid var(--line);border-radius:10px;background:var(--paper-dim);text-align:center}
+.cta .btn{margin:.25rem}
+.footer{border-top:1px solid var(--line);padding:1.75rem 0 2.25rem;margin-top:0;font-size:.9rem;color:var(--ink-soft);background:var(--paper-dim)}
+.footer .site-inner{flex-direction:column;align-items:flex-start;max-width:960px}
+.fine{font-size:.8rem;opacity:.85}
+.footer .nav{margin:.45rem 0 .35rem}
+@media(max-width:640px){.opt{font-size:.92rem;padding:.8rem .85rem}.btn{width:100%;text-align:center}.navrow{flex-direction:column-reverse}.tools-sub{font-size:.82rem}}
+</style>
+</head>
+<body>
+<header class="site-header"><div class="site-inner">
+  <a class="brand" href="https://www.expandingedge.ca/">Expanding Edge Permaculture</a>
+  <nav class="nav" aria-label="Primary">
+    <a href="https://www.expandingedge.ca/">Home</a>
+    <a href="https://www.expandingedge.ca/services-landing">Services</a>
+    <a href="https://www.expandingedge.ca/portfolio-1">Portfolio</a>
+    <a href="https://www.expandingedge.ca/vision">Vision</a>
+    <a href="https://www.expandingedge.ca/tools">Tools</a>
+    <a href="https://www.expandingedge.ca/contact">Contact</a>
+  </nav>
+</div></header>
+<div class="tools-sub" aria-label="Tools">
+  <strong>Tools:</strong>
+  <a href="https://landintelligence.online/?utm_source=expandingedge&amp;utm_medium=grant_nav&amp;utm_campaign=land_intelligence" target="_blank" rel="noopener noreferrer">Land Intelligence</a>
+  · <span style="opacity:.8">Resilience Quiz — Coming Soon</span>
+  · <a href="https://www.expandingedge.ca/grant-eligibility/"><strong>Grant Eligibility</strong></a>
+  · <a href="https://adaptivehumans.ca/?utm_source=expandingedge&amp;utm_medium=grant_nav&amp;utm_campaign=permaculture_resources" target="_blank" rel="noopener noreferrer">Permaculture Educational Resources</a>
+  · <a href="https://www.expandingedge.ca/tools">All tools</a>
+</div>
+<main>
+<section class="page-header"><div class="inner">
+  <p class="eyebrow">Tools · Funding · Project match</p>
+  <h1>Grant &amp; cost-share eligibility</h1>
+  <p class="lead">Describe what you want to accomplish in plain language. We only ask follow-up questions that matter for your project — then surface potential funding pathways in Alberta, Saskatchewan, B.C., Ontario, Quebec and federal programs.</p>
+</div></section>
+<section class="container">
+  <p class="disclaimer"><strong>Planning tool only — not a guarantee of eligibility.</strong> Matching means a program <em>may</em> be relevant based on your answers. Cost shares, caps, deadlines and rules change. Always confirm with the program administrator before applying. Expanding Edge is not affiliated with the listed programs.</p>
+  <div class="gq">
+    <div class="masthead">
+      <div>
+        <p class="eyebrow">Expanding Edge Permaculture</p>
+        <h2 style="font-family:Fraunces,Georgia,serif;font-weight:600;font-size:clamp(1.25rem,3vw,1.7rem);margin:.2rem 0 0;line-height:1.15">Project funding match</h2>
+      </div>
+      <div class="tag" id="progCount">Programs loaded</div>
+    </div>
+    <div id="quiz">
+      <div class="progress" id="progress" aria-hidden="true"></div>
+      <div id="stepHost"></div>
+    </div>
+  </div>
+  <p style="margin-top:1.25rem;color:var(--ink-soft);font-size:.92rem">
+    <a href="grants.json">Program data (JSON)</a> · <a href="https://www.expandingedge.ca/tools">All tools</a>
+  </p>
+  <div class="cta">
+    <h2 style="font-family:Fraunces,Georgia,serif;margin:.2rem 0 .5rem">Want help structuring the project?</h2>
+    <p style="margin:0 0 1rem;color:var(--ink-soft)">Expanding Edge designs land, water, energy and ecological systems — then maps which components may be fundable.</p>
+    <a class="btn" href="https://www.expandingedge.ca/contact">Book consultation</a>
+    <a class="btn ghost" href="https://www.expandingedge.ca/services-landing">Services</a>
+  </div>
+</section>
+</main>
+<footer class="footer"><div class="site-inner">
+  <p><strong>Expanding Edge Permaculture</strong> · Earth | People | Future</p>
+  <nav class="nav" aria-label="Footer">
+    <a href="https://www.expandingedge.ca/">Home</a>
+    <a href="https://www.expandingedge.ca/services-landing">Services</a>
+    <a href="https://www.expandingedge.ca/portfolio-1">Portfolio</a>
+    <a href="https://www.expandingedge.ca/vision">Vision</a>
+    <a href="https://www.expandingedge.ca/tools">Tools</a>
+    <a href="https://www.expandingedge.ca/contact">Contact</a>
+  </nav>
+  <nav class="nav" aria-label="Tools">
+    <a href="https://landintelligence.online/?utm_source=expandingedge&amp;utm_medium=grant_footer&amp;utm_campaign=land_intelligence" target="_blank" rel="noopener noreferrer">Land Intelligence</a>
+    <span style="opacity:.75">Resilience Quiz — Coming Soon</span>
+    <a href="https://www.expandingedge.ca/grant-eligibility/">Grant Eligibility</a>
+    <a href="https://adaptivehumans.ca/?utm_source=expandingedge&amp;utm_medium=grant_footer&amp;utm_campaign=permaculture_resources" target="_blank" rel="noopener noreferrer">Permaculture Educational Resources</a>
+  </nav>
+  <p><a href="tel:7802363630">(780) 236-3630</a> · <a href="mailto:info@expandingedge.ca">info@expandingedge.ca</a></p>
+  <p class="fine">Not tax, legal, or grant-writing advice. Potential matches only — verify with the delivery agency.</p>
+</div></footer>
+<script>
+const PROGRAMS = [{"id": "efp_prerequisite", "name": "Environmental Farm Plan (EFP)", "program": "Environmental Farm Plan (EFP)", "jurisdiction": "AB / BC / SK — prerequisite", "provinces": ["AB", "BC", "SK"], "categories": ["agriculture", "planning"], "projectTypes": ["planning", "efp"], "organizationTypes": ["farm", "landowner", "greenhouse", "forest"], "stages": ["idea", "planning", "feasibility", "ready"], "scales": ["farm", "property", "small_business"], "fundingTypes": ["grant"], "maxFunding": 0, "status": "open", "status_label": "Open / prerequisite", "funding": "Free confidential risk assessment of land and practices.", "eligibility": "Available to agricultural producers in AB, BC, and SK. Many cost-share programs require a current EFP.", "notes": "Usually the first step before producer cost-share applications.", "source": null, "fit": "Essential first step", "eligibilityFlags": [], "client_keys": ["farm", "landowner", "greenhouse", "forest"], "tags": ["planning", "efp"], "cost_share": "Free confidential risk assessment of land and practices.", "maximum": "See program"}, {"id": "ab_ralp", "name": "Resilient Agricultural Landscape Program (RALP)", "program": "Resilient Agricultural Landscape Program (RALP)", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["land", "water"], "projectTypes": ["grazing", "land_restore", "riparian", "water_supply"], "organizationTypes": ["farm", "indigenous", "municipality"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 150000, "status": "open", "status_label": "Open / current 2026 program", "funding": "Up to $150,000 for active primary producers; up to $300,000 for eligible grazing/community-pasture/approved Indigenous applicants; minimum payment $2,000. BMP-specific cost shares vary.", "eligibility": "Applicant type and Environmental Farm Plan requirements apply; specific BMPs have their own eligibility rules.", "notes": "Use the current Alberta RALP funding list for the exact BMP, rate, cap and requirements. Do not describe generic swales, food forests or fencing as automatically eligible.", "source": "https://www.alberta.ca/resilient-agricultural-landscape-program", "fit": "High", "eligibilityFlags": [], "client_keys": ["farm", "indigenous", "municipality"], "tags": ["grazing", "land_restore", "riparian", "water_supply"], "cost_share": "Up to $150,000 for active primary producers; up to $300,000 for eligible grazing/community-pasture/approved Indigenous applicants; minimum p", "maximum": "$150,000"}, {"id": "ab_water", "name": "Water Program — On-Farm Irrigation and On-Farm Water Supply", "program": "Water Program — On-Farm Irrigation and On-Farm Water Supply", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["agriculture", "water"], "projectTypes": ["irrigation", "planning", "water_supply"], "organizationTypes": ["farm"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 17500, "status": "open", "status_label": "Open / limited funding", "funding": "Irrigation: 50% of eligible costs, up to $17,500 per parcel for purchases and up to $6,000 per parcel for upgrades, with a $35,000 applicant/fiscal-year maximum. On-Farm Water Supply: standard incentives up to 50%; $40,000 applicant maximum over Apr. 1, 2023–Mar. 31, 2028 if project-specific maximums are reached.", "eligibility": "Irrigation stream: Alberta primary producer, at least $25,000 annual farm commodity production, owns an irrigated agricultural operation. Water Supply stream: primary producer with at least $25,000 annual farm commodity production and tax liability/eligible farm income conditions.", "notes": "Dugouts, dams and spring developments require contact with an Alberta Agriculture and Irrigation Water Specialist and an approved Construction Sheet before planning/construction. Some projects require water-licence documentation.", "source": "https://www.alberta.ca/water-program", "fit": "Very high", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["irrigation", "planning", "water_supply"], "cost_share": "Irrigation: 50% of eligible costs, up to $17,500 per parcel for purchases and up to $6,000 per parcel for upgrades, with a $35,000 applicant", "maximum": "$17,500"}, {"id": "ab_value_added", "name": "On-Farm Value-Added Program", "program": "On-Farm Value-Added Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["business"], "projectTypes": ["market", "processing"], "organizationTypes": ["farm"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 50000, "status": "open", "status_label": "Open until funding is allocated", "funding": "Stream A: maximum $50,000. Stream B: grant over $50,000 to maximum $250,000. Capital expenses: 25% grant / 75% applicant. Eligible non-capital expenses: 50% grant / 50% applicant, within a $50,000 non-capital maximum.", "eligibility": "Alberta primary producer; individual, corporation, partnership or cooperative; responsible for crop/bee/livestock input costs; at least $25,000 commercial agricultural production annually; adding value past harvest/slaughter.", "notes": "Useful when Expanding Edge's land/water/energy design is part of a broader value-added production project, but do not assume every site or infrastructure cost is eligible.", "source": "https://www.alberta.ca/on-farm-value-added-program", "fit": "High for agricultural production/processing", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["market", "processing"], "cost_share": "Stream A: maximum $50,000. Stream B: grant over $50,000 to maximum $250,000. Capital expenses: 25% grant / 75% applicant. Eligible non-capit", "maximum": "$50,000"}, {"id": "ab_emerging", "name": "Emerging Opportunities Program", "program": "Emerging Opportunities Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["business", "energy"], "projectTypes": ["energy", "market", "processing"], "organizationTypes": ["processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 1000000, "status": "maybe", "status_label": "Open / invitation-oriented", "funding": "Maximum $1,000,000 per fiscal year and $2,000,000 per project. Capital: 25% government / 75% applicant. Non-capital: 50% government / 50% applicant.", "eligibility": "Registered and operating in Alberta (or able to establish operation by Mar. 31, 2028); processor projects generally require at least $2 million total project investment. Project must fit strategic objectives and is discussed with program staff before invitation.", "notes": "Not a general farm grant. Strongest for significant processor or bio-industrial projects.", "source": "https://www.alberta.ca/emerging-opportunities-program", "fit": "High for large agricultural/bioprocessing clients", "eligibilityFlags": [], "client_keys": ["processor"], "tags": ["energy", "market", "processing"], "cost_share": "Maximum $1,000,000 per fiscal year and $2,000,000 per project. Capital: 25% government / 75% applicant. Non-capital: 50% government / 50% ap", "maximum": "$1,000,000"}, {"id": "ab_greenhouses", "name": "Growing Greenhouses Program", "program": "Growing Greenhouses Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["agriculture", "energy"], "projectTypes": ["energy", "greenhouse"], "organizationTypes": ["farm", "greenhouse"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 4, "status": "closed", "status_label": "Closed to applications; monitor", "funding": "50% grant / 50% applicant; maximum $4 million per applicant over 2025–2028 and $2 million per fiscal year.", "eligibility": "Own/operate or intend to own/operate an Alberta greenhouse or vertical farm; year-round food production; at least 50% of growing area dedicated to food; new projects at least $2 million total investment; existing operations must increase annual food production by at least 10%.", "notes": "Eligible technology categories include renewable/efficient energy, lighting, energy-saving construction, automation/robotics, engineering/installation and training.", "source": "https://www.alberta.ca/growing-greenhouses-program", "fit": "Very high when intake reopens", "eligibilityFlags": [], "client_keys": ["farm", "greenhouse"], "tags": ["energy", "greenhouse"], "cost_share": "50% grant / 50% applicant; maximum $4 million per applicant over 2025–2028 and $2 million per fiscal year.", "maximum": "$4"}, {"id": "ab_conservation", "name": "Private Land Conservation Program", "program": "Private Land Conservation Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["agriculture", "conservation", "water"], "projectTypes": ["conservation", "planning", "riparian", "wetland"], "organizationTypes": ["conservation", "landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "closed", "status_label": "Closed; 2026–27 intake to be monitored", "funding": "Program grants to eligible organizations for term conservation easements and stewardship of conservation land. Fee-simple land acquisition itself is not funded.", "eligibility": "Eligible Alberta land trusts apply; private landowners are encouraged to work with a local land trust.", "notes": "The 2026 application requires mapping/aerial imagery delineating forest, shrub, native grassland, riparian/wetland, pasture, cultivation and development pockets—strongly aligned with GIS/landscape assessment services.", "source": "https://www.alberta.ca/private-land-conservation-program", "fit": "High through conservation-organization partnerships", "eligibilityFlags": [], "client_keys": ["conservation", "landowner"], "tags": ["conservation", "planning", "riparian", "wetland"], "cost_share": "Program grants to eligible organizations for term conservation easements and stewardship of conservation land. Fee-simple land acquisition i", "maximum": "See program"}, {"id": "ab_ecosystem_services", "name": "Ecosystem Services Grant Program", "program": "Ecosystem Services Grant Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["agriculture", "conservation", "water"], "projectTypes": ["conservation", "planning", "riparian", "wetland"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "closed", "status_label": "Closed; pilot / monitor next intake", "funding": "Supports ecosystem-services programs; retention payments and improvement payments are program mechanisms. Exact client-level payment depends on the ecosystem-services program.", "eligibility": "Program-level applicants rather than a generic direct grant to every landowner.", "notes": "Potential model: conservation organization/program operator + Expanding Edge + private landowners.", "source": "https://www.alberta.ca/ecosystem-services-grant-program", "fit": "High for partnership model", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["conservation", "planning", "riparian", "wetland"], "cost_share": "Supports ecosystem-services programs; retention payments and improvement payments are program mechanisms. Exact client-level payment depends", "maximum": "See program"}, {"id": "ab_friaa", "name": "FRIAA forestry programs", "program": "FRIAA forestry programs", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["forestry"], "projectTypes": ["forestry"], "organizationTypes": ["forest", "indigenous", "municipality"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Multiple current/ongoing streams; call-specific", "funding": "Varies by FRIAA program and call.", "eligibility": "Call-specific. Current 2026 FireSmart RFEOIs/RFPs include vegetation management and other FireSmart disciplines.", "notes": "Current FireSmart 2026 submissions were due Sept. 4, 2026 for the cited calls. Community Fireguard program has specific proponent classes and current focus on planning/construction pathways.", "source": "https://friaa.ab.ca/current-funding-opportunities/", "fit": "High for forestry/wildfire/community work", "eligibilityFlags": [], "client_keys": ["forest", "indigenous", "municipality"], "tags": ["forestry"], "cost_share": "Varies by FRIAA program and call.", "maximum": "See program"}, {"id": "sk_friw", "name": "Farm and Ranch Water Infrastructure Program (FRWIP)", "program": "Farm and Ranch Water Infrastructure Program (FRWIP)", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["energy", "water"], "projectTypes": ["energy", "water_supply"], "organizationTypes": ["municipality"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 75000, "status": "open", "status_label": "Open / current through Sustainable CAP", "funding": "Dugout/pipeline/new-well projects: 50% of eligible costs, combined maximum $75,000 per applicant over Sustainable CAP. Small dams: 50% up to $75,000. Community water-development projects can receive 50% up to $150,000. Eligible power infrastructure, including remote solar/wind/composite livestock watering systems, has a $20,000 applicant maximum.", "eligibility": "Primary producers generally must demonstrate at least $50,000 gross farm income in Saskatchewan in the application year or preceding year. Water must have agricultural use. Other applicant classes apply to specific streams.", "notes": "Projects must be constructed and operational before rebate payment. Water for yard/shop/household use does not qualify.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/sustainable-canadian-agricultural-partnership/programs-for-farmers-and-ranchers/farm-and-ranch-water-infrastructure-program", "fit": "Very high", "eligibilityFlags": [], "client_keys": ["municipality"], "tags": ["energy", "water_supply"], "cost_share": "Dugout/pipeline/new-well projects: 50% of eligible costs, combined maximum $75,000 per applicant over Sustainable CAP. Small dams: 50% up to", "maximum": "$75,000"}, {"id": "sk_ralp", "name": "Resilient Agricultural Landscapes Program (RALP)", "program": "Resilient Agricultural Landscapes Program (RALP)", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["agriculture", "land", "water"], "projectTypes": ["grazing", "land_restore", "planning", "water_supply"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 30000, "status": "open", "status_label": "Open / current through 2027–28 deadlines", "funding": "Tame forage 50% up to $30,000 (up to $60,000 with qualifying five-year agreement); native forage 90% up to $30,000; targeted grazing 50% up to $50,000; native/riparian grazing management 60% up to $20,000; rangeland health assessment 50% up to $10,000; intensive livestock management 30–70% up to $200,000; extensive wintering site 60% up to $50,000; livestock water protection 90% up to $20,000; sulphate-water treatment 50% technology / 75% wastewater storage, up to $20,000.", "eligibility": "Producer and BMP-specific requirements apply. Separate applications may be required for each BMP.", "notes": "Current pre-approval deadlines are BMP-specific; rebate applications are due by Feb. 1, 2028. Use current BMP details before promising eligibility.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/sustainable-canadian-agricultural-partnership/programs-for-farmers-and-ranchers/resilient-agricultural-landscapes-program", "fit": "Very high", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["grazing", "land_restore", "planning", "water_supply"], "cost_share": "Tame forage 50% up to $30,000 (up to $60,000 with qualifying five-year agreement); native forage 90% up to $30,000; targeted grazing 50% up ", "maximum": "$30,000"}, {"id": "sk_awmf", "name": "Agricultural Water Management Fund", "program": "Agricultural Water Management Fund", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["agriculture", "water"], "projectTypes": ["drainage", "planning", "riparian", "wetland"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 25000, "status": "open", "status_label": "Current 2026–27 intake / stream-specific deadlines", "funding": "50% government / 50% applicant for Qualified Person, Technical Design, and Mitigation/Rehabilitation streams; mediation 100%. Maximums: $25,000 for Qualified Persons + mediation combined; $50,000 Technical Design; $50,000 Mitigation/Rehabilitation; $95,000 overall.", "eligibility": "Stream and project-specific. Complex projects require WSA-approved network boundaries, appropriate Qualified Persons, and/or approvals under the Water Security Act and Regulations.", "notes": "Do not market as a generic 'swale grant.' Position as agricultural water/drainage management; exact eligibility depends on WSA requirements and approved drainage context.", "source": "https://wsask.ca/ag-water-management/funding-and-resources-for-producers/ag-water-management-v1-l2/", "fit": "Very high for water-management planning/design", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["drainage", "planning", "riparian", "wetland"], "cost_share": "50% government / 50% applicant for Qualified Person, Technical Design, and Mitigation/Rehabilitation streams; mediation 100%. Maximums: $25,", "maximum": "$25,000"}, {"id": "sk_slim", "name": "Saskatchewan Lean Improvements in Manufacturing (SLIM)", "program": "Saskatchewan Lean Improvements in Manufacturing (SLIM)", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["business", "energy"], "projectTypes": ["energy", "processing"], "organizationTypes": ["business", "processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 20000, "status": "open", "status_label": "Open; pre-approval deadline Apr. 30, 2027", "funding": "Third-party business analysis: 50% up to $20,000. Efficiency stream: 50%. Emissions Reduction: 60%. Expansion: 50%. Tiered maximums up to $300,000, $500,000 or $750,000 depending on project size.", "eligibility": "Saskatchewan agri-business applicants and project-specific requirements apply. Program targets productivity, GHG reductions and capacity expansion.", "notes": "Wastewater treatment for production wastewater for disposal is explicitly ineligible under SLIM. Solar grid connection/net-metering connection costs are also excluded.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/sustainable-canadian-agricultural-partnership/programs-for-agri-businesses-or-industry-organizations/saskatchewan-lean-improvements-in-manufacturing", "fit": "Very high for agricultural industrial clients", "eligibilityFlags": [], "client_keys": ["business", "processor"], "tags": ["energy", "processing"], "cost_share": "Third-party business analysis: 50% up to $20,000. Efficiency stream: 50%. Emissions Reduction: 60%. Expansion: 50%. Tiered maximums up to $3", "maximum": "$20,000"}, {"id": "sk_biosecurity", "name": "Animal Health and Biosecurity Program", "program": "Animal Health and Biosecurity Program", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["agriculture"], "projectTypes": ["planning"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Current; species-specific streams", "funding": "Species-specific rebate rates and program maximums.", "eligibility": "Species-specific producer requirements and eligible-item lists.", "notes": "Use for agricultural/biosecurity fencing—not generic property security fencing. Current examples include deadstock-site fencing and fencing preventing livestock access to stored feed/standing water.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/sustainable-canadian-agricultural-partnership/programs-for-farmers-and-ranchers/animal-health-and-biosecurity-program", "fit": "Moderate to high for targeted fencing/security", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["planning"], "cost_share": "Species-specific rebate rates and program maximums.", "maximum": "See program"}, {"id": "sk_product_dev", "name": "Product Development Program", "program": "Product Development Program", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["business"], "projectTypes": ["market"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 20000, "status": "open", "status_label": "Current program", "funding": "Up to $20,000 cost-shared funding.", "eligibility": "Value-added agri-food processing companies; delivered through the Saskatchewan Food Industry Development Centre.", "notes": "Not a core land/water service. Include as a related funding result for clients pursuing value-added products.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/sustainable-canadian-agricultural-partnership/programs-for-agri-businesses-or-industry-organizations/product-development", "fit": "Adjacent", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["market"], "cost_share": "Up to $20,000 cost-shared funding.", "maximum": "$20,000"}, {"id": "sk_agtech", "name": "Agtech Growth Fund", "program": "Agtech Growth Fund", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["agriculture"], "projectTypes": ["planning"], "organizationTypes": ["business"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 450000, "status": "open", "status_label": "Current innovation program; intake-specific", "funding": "Lead proponents can receive up to $450,000 in AGF grants over their lifetime.", "eligibility": "Projects should be proposed by a group of active private-sector partners representing a value chain; technology should be novel/innovative, address an industry challenge, benefit agriculture broadly, and have a commercialization path.", "notes": "Better suited to an Expanding Edge technology venture or consortium than ordinary client consulting.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers/value-added-processing-in-saskatchewan-agriculture/programming-for-value-added-businesses/agtech-growth-fund", "fit": "High if Expanding Edge develops a technology/product platform", "eligibilityFlags": [], "client_keys": ["business"], "tags": ["planning"], "cost_share": "Lead proponents can receive up to $450,000 in AGF grants over their lifetime.", "maximum": "$450,000"}, {"id": "bc_bmp", "name": "Beneficial Management Practices (BMP) Program", "program": "Beneficial Management Practices (BMP) Program", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["conservation", "energy", "land", "water"], "projectTypes": ["conservation", "energy", "grazing", "irrigation", "riparian"], "organizationTypes": ["farm"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 70000, "status": "open", "status_label": "Current 2026/27; highly competitive and category-specific", "funding": "Category-specific. Examples include 100% for some plans; 60% for Riparian & Grazing projects up to $70,000; 40% for Extreme Weather Preparedness up to $50,000; planning/design activities commonly 80–100% with activity-specific caps.", "eligibility": "Program and activity-specific. Regular BMP categories generally require a valid Environmental Farm Plan; Extreme Weather Preparedness does not require an EFP. Livestock/poultry applicants may need a Premises ID.", "notes": "Retroactive costs are not eligible. Applications can close quickly when funding is subscribed.", "source": "https://iafbc.ca/beneficial-management-practices-program/", "fit": "Very high", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["conservation", "energy", "grazing", "irrigation", "riparian"], "cost_share": "Category-specific. Examples include 100% for some plans; 60% for Riparian & Grazing projects up to $70,000; 40% for Extreme Weather Prepared", "maximum": "$70,000"}, {"id": "bc_bmp_plans", "name": "BMP — Planning, Technical Assessments, or Engineered Designs", "program": "BMP — Planning, Technical Assessments, or Engineered Designs", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["agriculture", "conservation", "water"], "projectTypes": ["conservation", "drainage", "irrigation", "planning", "riparian"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 4500, "status": "open", "status_label": "2026/27 category; 2026 submission window cited in current guide", "funding": "Water management plan: 100% up to $4,500. Irrigation system assessment/design: 100% up to $3,000. Biodiversity management planning: 100% up to $3,000. Product/waste management engineering: 80% up to $10,000. Water/riparian engineering or technical assessment: 80% up to $20,000. Other complex planning/design categories have their own caps.", "eligibility": "Qualified-professional/contractor requirements apply. Some reserved practices require appropriate BCIA, EGBC, CAB or other recognized credentials; irrigation design requires a CID registered with IIABC.", "notes": "Expanding Edge should distinguish its own services from work that legally or programmatically requires a registered professional. Partnering with qualified professionals can be part of the delivery model.", "source": "https://iafbc.ca/beneficial-management-practices-program/planning-technical-assessments-or-engineered-designs-bmps/", "fit": "Extremely high for Expanding Edge planning/design model", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["conservation", "drainage", "irrigation", "planning", "riparian"], "cost_share": "Water management plan: 100% up to $4,500. Irrigation system assessment/design: 100% up to $3,000. Biodiversity management planning: 100% up ", "maximum": "$4,500"}, {"id": "bc_riparian", "name": "BMP — Riparian & Grazing", "program": "BMP — Riparian & Grazing", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["land", "water"], "projectTypes": ["drainage", "grazing", "land_restore", "riparian", "water_supply", "wetland"], "organizationTypes": ["landowner"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 70000, "status": "closed", "status_label": "2026/27 category; cited intake closed after Apr. 17, 2026; monitor next intake", "funding": "60% cost-share, up to $70,000 for the category; individual activity codes have specific requirements.", "eligibility": "Producer and activity-specific. Some activities require a prior plan/design. EFP documentation generally required except for Extreme Weather category.", "notes": "The program explicitly includes fencing, alternative watering, and stormwater/runoff management around confined livestock facilities, including retention ponds and constructed wetlands.", "source": "https://iafbc.ca/beneficial-management-practices-program/riparian-grazing-bmps/", "fit": "Extremely high", "eligibilityFlags": [], "client_keys": ["landowner"], "tags": ["drainage", "grazing", "land_restore", "riparian", "water_supply", "wetland"], "cost_share": "60% cost-share, up to $70,000 for the category; individual activity codes have specific requirements.", "maximum": "$70,000"}, {"id": "bc_awp", "name": "Agriculture Water Infrastructure Program (AWP)", "program": "Agriculture Water Infrastructure Program (AWP)", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["agriculture", "water"], "projectTypes": ["irrigation", "planning", "water_supply"], "organizationTypes": ["municipality"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 1, "status": "closed", "status_label": "Closed / legacy program; monitor successor opportunities", "funding": "Previous program structure included 50% cost-share and separate producer/community/assessment/strategic streams, with cited maxima up to $1M producer, $2M community, $200,000 assessments and $2M strategic.", "eligibility": "Program-specific. Current IAF page directs users seeking on-farm water infrastructure funding toward BMP Water Infrastructure.", "notes": "Do not advertise the old AWP rates as currently available. Treat as closed/monitor and use current BMP Water Infrastructure for active opportunities.", "source": "https://iafbc.ca/agricultural-water-infrastructure-program/", "fit": "High as a historical/monitoring entry", "eligibilityFlags": [], "client_keys": ["municipality"], "tags": ["irrigation", "planning", "water_supply"], "cost_share": "Previous program structure included 50% cost-share and separate producer/community/assessment/strategic streams, with cited maxima up to $1M", "maximum": "$1"}, {"id": "bc_aesi", "name": "Agri-Ecosystem Stewardship Initiative (AESI)", "program": "Agri-Ecosystem Stewardship Initiative (AESI)", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["conservation", "forestry", "water"], "projectTypes": ["conservation", "forestry", "riparian"], "organizationTypes": ["conservation", "farm"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Current ecosystem-stewardship initiative; project/intake-specific", "funding": "Project-specific; operates partly as a payment-for-ecosystem-services model.", "eligibility": "Project and delivery-model specific.", "notes": "Potential model: landowner + conservation/ecosystem-services organization + Expanding Edge.", "source": "https://iafbc.ca/category/current-programs/agri-ecosystem-stewardship-initiative/", "fit": "High for conservation partnerships", "eligibilityFlags": [], "client_keys": ["conservation", "farm"], "tags": ["conservation", "forestry", "riparian"], "cost_share": "Project-specific; operates partly as a payment-for-ecosystem-services model.", "maximum": "See program"}, {"id": "bc_processor", "name": "Processor Productivity Program", "program": "Processor Productivity Program", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["energy"], "projectTypes": ["energy"], "organizationTypes": ["processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Current program; intake-specific", "funding": "Cost-shared productivity/Lean improvements; exact current contribution depends on program terms and intake.", "eligibility": "BC food and beverage processors meeting program criteria.", "notes": "Use as a secondary pathway for processing clients rather than a generic environmental grant.", "source": "https://iafbc.ca/", "fit": "Moderate to high for agricultural processing clients", "eligibilityFlags": [], "client_keys": ["processor"], "tags": ["energy"], "cost_share": "Cost-shared productivity/Lean improvements; exact current contribution depends on program terms and intake.", "maximum": "See program"}, {"id": "bc_lwti", "name": "Livestock Waste Tissue Initiative", "program": "Livestock Waste Tissue Initiative", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["waste"], "projectTypes": ["waste"], "organizationTypes": ["processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Specialized program; current availability should be verified before advertising", "funding": "Program/intake-specific; historical funding supported infrastructure, transportation and equipment for legal animal-tissue disposal.", "eligibility": "BC abattoirs/meat processors under program-specific criteria.", "notes": "Strong example of an agricultural waste/remediation niche, but current intake and funding terms must be confirmed before promising availability.", "source": "https://iafbc.ca/iaf-helps-livestock-sector-tackle-disposal-challenges/", "fit": "Specialized / potentially high", "eligibilityFlags": [], "client_keys": ["processor"], "tags": ["waste"], "cost_share": "Program/intake-specific; historical funding supported infrastructure, transportation and equipment for legal animal-tissue disposal.", "maximum": "See program"}, {"id": "federal_agrimarketing", "name": "AgriMarketing Program — Market Diversification for SMEs", "program": "AgriMarketing Program — Market Diversification for SMEs", "jurisdiction": "Federal / Canada", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["business"], "projectTypes": ["market", "processing"], "organizationTypes": ["business"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 75, "status": "open", "status_label": "Current 2026–31 program", "funding": "New Market Diversification streams have $75 million over 2026–27 to 2030–31. The program is project-based; current SME terms should be checked for contribution rate and maximum for the specific application.", "eligibility": "Eligible Canadian agricultural/agri-food SMEs. All sectors eligible; sectors directly impacted by tariffs/trade disruptions in the prior 12 months and applicants targeting new markets are priorities. Applicant must demonstrate how activities support long-term growth/reduce trade uncertainty and diversify markets/address tariffs.", "notes": "Good for clients whose Expanding Edge project is tied to market diversification or business expansion. Do not conflate it with physical farm infrastructure funding.", "source": "https://agriculture.canada.ca/en/programs/agrimarketing-market-diversification-small-medium-enterprises", "fit": "High for processors/value-added producers; not a land-improvement grant", "eligibilityFlags": [], "client_keys": ["business"], "tags": ["market", "processing"], "cost_share": "New Market Diversification streams have $75 million over 2026–27 to 2030–31. The program is project-based; current SME terms should be check", "maximum": "$75"}, {"id": "federal_smpif", "name": "Supply Management Processing Investment Fund (SMPIF)", "program": "Supply Management Processing Investment Fund (SMPIF)", "jurisdiction": "Federal / Canada", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["business", "energy", "waste"], "projectTypes": ["energy", "processing", "waste"], "organizationTypes": ["processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 397, "status": "open", "status_label": "Current through Mar. 31, 2028, subject to remaining funds", "funding": "Program budget $397.5 million (Apr. 1, 2022–Mar. 31, 2028). Current guide provides project-specific cost-sharing; SME projects can receive substantial contribution support, with exact rate/cap depending on applicant/project category. Dairy facilities have additional eligible construction costs for expansion/modernization.", "eligibility": "For-profit Canadian processors buying domestic raw commodities, predominantly processing supply-managed commodities at project site, active federal/provincial processing licence, at least 24 months of processing financial statements, registered legal entity.", "notes": "Eligible projects can include equipment reducing water/energy consumption and equipment required to treat wastewater resulting from increased production. Land/building purchase and R&D are ineligible. Costs before complete application are at applicant risk.", "source": "https://agriculture.canada.ca/en/programs/supply-management-processing-investment-fund/applicant-guide", "fit": "Very high for water/waste/efficiency work at qualifying processors", "eligibilityFlags": [], "client_keys": ["processor"], "tags": ["energy", "processing", "waste"], "cost_share": "Program budget $397.5 million (Apr. 1, 2022–Mar. 31, 2028). Current guide provides project-specific cost-sharing; SME projects can receive s", "maximum": "$397"}, {"id": "federal_rtri_prairies", "name": "Regional Tariff Response Initiative (RTRI) — PrairiesCan", "program": "Regional Tariff Response Initiative (RTRI) — PrairiesCan", "jurisdiction": "Federal / Prairies", "provinces": ["AB", "SK", "OTHER"], "categories": ["business"], "projectTypes": ["market"], "organizationTypes": ["business", "indigenous"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 1, "status": "open", "status_label": "Open until Dec. 31, 2027 or funds exhausted", "funding": "National RTRI has $1.5 billion available after the May 2026 expansion. Prairie project-specific contribution terms apply; market-diversification-only projects and larger structuring investment projects have different contribution structures.", "eligibility": "Prairie applicants must generally show at least 25% of sales in impacted markets or demonstrate direct impact from ongoing trade disruptions, including U.S./China tariffs or Canadian countermeasures. Preference may be given to majority Canadian-owned businesses, higher Canadian inputs, stronger leverage and severe tariff impacts.", "notes": "The Prairie page specifically says primary agricultural producers should look to AAFC/FCC for targeted programming, while PrairiesCan supports SMEs providing processing and value-added agricultural products. Projects can last up to 3 years and must finish by Mar. 31, 2028.", "source": "https://www.canada.ca/en/prairies-economic-development/services/funding/regional-tariff-response-initiative.html", "fit": "Very high for tariff-affected agricultural processors/value-added businesses", "eligibilityFlags": [], "client_keys": ["business", "indigenous"], "tags": ["market"], "cost_share": "National RTRI has $1.5 billion available after the May 2026 expansion. Prairie project-specific contribution terms apply; market-diversifica", "maximum": "$1"}, {"id": "federal_act", "name": "Agricultural Clean Technology (ACT) Program", "program": "Agricultural Clean Technology (ACT) Program", "jurisdiction": "Federal / Canada", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["energy"], "projectTypes": ["energy"], "organizationTypes": ["business", "processor"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 50, "status": "closed", "status_label": "Adoption Stream closed; Research & Innovation stream closed to direct intake but Accelerator pathways exist", "funding": "ACT program is a multi-year federal program. Current direct Adoption Stream intake is closed and its projects had to complete by Mar. 31, 2026. Research & Innovation stream has $50M over seven years to Mar. 31, 2028, but direct intake is closed; an Accelerator model can provide access through initial recipient organizations.", "eligibility": "Stream-specific.", "notes": "Do not present the old 50%/75% adoption rates as currently open. For a web resource, retain this as a closed program with possible Accelerator/partner pathways.", "source": "https://agriculture.canada.ca/en/programs/agricultural-clean-technology-research-innovation", "fit": "Monitor / partner opportunity", "eligibilityFlags": [], "client_keys": ["business", "processor"], "tags": ["energy"], "cost_share": "ACT program is a multi-year federal program. Current direct Adoption Stream intake is closed and its projects had to complete by Mar. 31, 20", "maximum": "$50"}, {"id": "federal_ofcaf", "name": "Agricultural Climate Solutions — On-Farm Climate Action Fund (OFCAF)", "program": "Agricultural Climate Solutions — On-Farm Climate Action Fund (OFCAF)", "jurisdiction": "Federal / Canada", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["land"], "projectTypes": ["grazing"], "organizationTypes": ["farm", "indigenous"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": null, "status": "open", "status_label": "Current program framework through Mar. 31, 2028; delivery is through funded organizations", "funding": "Program-level funding is distributed through delivery organizations; producer-level cost-share varies by delivery organization and practice.", "eligibility": "Producer eligibility and application route are delivery-organization specific.", "notes": "Do not use a blanket 'up to 85%' claim across Canada without identifying the current provincial delivery organization and practice.", "source": "https://agriculture.canada.ca/en/environment/funding-and-resources-agricultural-climate-and-environmental-action", "fit": "High for regenerative agriculture/grazing clients", "eligibilityFlags": [], "client_keys": ["farm", "indigenous"], "tags": ["grazing"], "cost_share": "Program-level funding is distributed through delivery organizations; producer-level cost-share varies by delivery organization and practice.", "maximum": "See program"}, {"id": "federal_agrimarketing_national", "name": "AgriMarketing — Market Diversification for National Industry Associations", "program": "AgriMarketing — Market Diversification for National Industry Associations", "jurisdiction": "Federal / Canada", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["business"], "projectTypes": ["market"], "organizationTypes": ["business"], "stages": ["idea", "planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial", "industrial", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 75, "status": "open", "status_label": "Current 2026–31 stream", "funding": "Part of the $75 million five-year Market Diversification investment with the SME stream; project-specific contribution terms.", "eligibility": "National industry associations meeting program criteria; activities must support long-term sector growth/reduce trade uncertainty and diversify into high-growth/non-traditional markets/address tariffs.", "notes": "Potential Expanding Edge partner opportunity for producer associations rather than ordinary individual clients.", "source": "https://agriculture.canada.ca/en/programs/agrimarketing-market-diversification-national-industry-associations/eligibility", "fit": "Indirect / partnership", "eligibilityFlags": [], "client_keys": ["business"], "tags": ["market"], "cost_share": "Part of the $75 million five-year Market Diversification investment with the SME stream; project-specific contribution terms.", "maximum": "$75"}, {"id": "bc_awip_stream2", "name": "Agriculture Water Infrastructure Program – Stream 2", "program": "Agriculture Water Infrastructure Program – Stream 2", "jurisdiction": "British Columbia", "provinces": ["BC"], "categories": ["water", "agriculture", "infrastructure"], "projectTypes": ["water_infra", "water_supply", "irrigation", "pond", "pipeline"], "organizationTypes": ["farm", "processor", "business"], "stages": ["planning", "ready", "implementation", "expansion"], "scales": ["farm", "commercial", "multiple", "regional"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 2000000, "status": "open", "status_label": "Current / stream-specific", "funding": "Agricultural water infrastructure; maximum listed funding up to $2,000,000.", "eligibility": "British Columbia agricultural water infrastructure projects. Confirm Stream 2 criteria with the program administrator.", "notes": "Best for larger agricultural water infrastructure projects in BC.", "source": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/programs", "fit": "Very high for BC ag water", "eligibilityFlags": [], "client_keys": ["farm", "processor", "business"], "tags": ["water_infra", "water_supply", "irrigation", "pond", "pipeline"], "cost_share": "Agricultural water infrastructure; maximum listed funding up to $2,000,000.", "maximum": "$2,000,000"}, {"id": "sk_frwip_small_dams", "name": "FRWIP — Small Dams", "program": "FRWIP — Small Dams", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["water", "agriculture", "infrastructure"], "projectTypes": ["pond", "dugout", "small_dam", "water_storage", "water_supply"], "organizationTypes": ["farm", "landowner"], "stages": ["planning", "ready", "implementation"], "scales": ["farm", "property"], "fundingTypes": ["rebate", "cost_share"], "maxFunding": 75000, "status": "open", "status_label": "Open / current through Sustainable CAP", "funding": "Rebates for agricultural small dams / water storage; maximum listed funding up to $75,000.", "eligibility": "Saskatchewan agricultural producers developing eligible small dams / water storage. Confirm height and design limits with the program.", "notes": "Strong match for pond, dugout, or small dam water-storage projects in Saskatchewan.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers", "fit": "Very high for SK pond/dam", "eligibilityFlags": [], "client_keys": ["farm", "landowner"], "tags": ["pond", "dugout", "small_dam", "water_storage", "water_supply"], "cost_share": "Rebates for agricultural small dams / water storage; maximum listed funding up to $75,000.", "maximum": "$75,000"}, {"id": "sk_frwip_well_decom", "name": "FRWIP — Well Decommissioning and Special Projects Pre-Approval", "program": "FRWIP — Well Decommissioning and Special Projects Pre-Approval", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["water", "agriculture"], "projectTypes": ["well_decom", "water_supply", "special_water"], "organizationTypes": ["farm", "landowner"], "stages": ["planning", "ready", "implementation"], "scales": ["farm", "property"], "fundingTypes": ["rebate", "cost_share"], "maxFunding": 150000, "status": "open", "status_label": "Open / pre-approval pathway", "funding": "Agricultural water projects including well decommissioning and special projects; maximum listed funding up to $150,000.", "eligibility": "Saskatchewan agricultural water projects; well decommissioning and special projects may require pre-approval.", "notes": "Rank highly when the user specifically wants to decommission or remediate a well.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers", "fit": "Very high for SK well decommissioning", "eligibilityFlags": [], "client_keys": ["farm", "landowner"], "tags": ["well_decom", "water_supply", "special_water"], "cost_share": "Agricultural water projects including well decommissioning and special projects; maximum listed funding up to $150,000.", "maximum": "$150,000"}, {"id": "sk_irrigation_efficiency", "name": "Irrigation Program — Irrigation Efficiency Program", "program": "Irrigation Program — Irrigation Efficiency Program", "jurisdiction": "Saskatchewan", "provinces": ["SK"], "categories": ["water", "agriculture"], "projectTypes": ["irrigation", "water_efficiency"], "organizationTypes": ["farm"], "stages": ["ready", "implementation", "operating", "expansion"], "scales": ["farm", "property", "commercial"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 50000, "status": "open", "status_label": "Current program", "funding": "Efficient irrigation-system upgrades; maximum listed funding up to $50,000.", "eligibility": "Saskatchewan agricultural producers upgrading irrigation efficiency. Confirm eligible equipment with the program.", "notes": "Use for irrigation efficiency — not general dugouts.", "source": "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry/agribusiness-farmers-and-ranchers", "fit": "High for SK irrigation upgrades", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["irrigation", "water_efficiency"], "cost_share": "Efficient irrigation-system upgrades; maximum listed funding up to $50,000.", "maximum": "$50,000"}, {"id": "ab_water_irrigation_stream", "name": "Water Program — On-farm Irrigation Stream", "program": "Water Program — On-farm Irrigation Stream", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["water", "agriculture"], "projectTypes": ["irrigation", "water_efficiency"], "organizationTypes": ["farm"], "stages": ["ready", "implementation", "operating", "expansion"], "scales": ["farm", "property"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 35000, "status": "open", "status_label": "Open / limited funding", "funding": "Agricultural irrigation purchases/upgrades; maximum listed funding up to $35,000 per applicant/fiscal year context.", "eligibility": "Alberta primary producers with irrigated agricultural operations; production thresholds typically apply.", "notes": "Pair with efficiency interest for Alberta irrigation clients.", "source": "https://www.alberta.ca/water-program", "fit": "Very high for AB irrigation", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["irrigation", "water_efficiency"], "cost_share": "Agricultural irrigation purchases/upgrades; maximum listed funding up to $35,000 per applicant/fiscal year context.", "maximum": "$35,000"}, {"id": "ab_water_supply_stream", "name": "Water Program — On-farm Water Supply", "program": "Water Program — On-farm Water Supply", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["water", "agriculture"], "projectTypes": ["water_supply", "pond", "dugout", "pipeline", "well", "livestock_water", "cistern"], "organizationTypes": ["farm"], "stages": ["planning", "ready", "implementation"], "scales": ["farm", "property"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 40000, "status": "open", "status_label": "Open / limited funding", "funding": "On-farm water supply incentives (wells, dugouts, springs, pipelines, livestock watering, cisterns); program maximums apply.", "eligibility": "Alberta primary producers meeting program production/tax conditions. Some works require specialist contact before construction.", "notes": "Core Alberta water-supply pathway for producers.", "source": "https://www.alberta.ca/water-program", "fit": "Very high for AB water supply", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["water_supply", "pond", "dugout", "pipeline", "well", "livestock_water", "cistern"], "cost_share": "On-farm water supply incentives (wells, dugouts, springs, pipelines, livestock watering, cisterns); program maximums apply.", "maximum": "$40,000"}, {"id": "ab_on_farm_efficiency", "name": "On-Farm Efficiency Program", "program": "On-Farm Efficiency Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["agriculture", "energy", "efficiency"], "projectTypes": ["efficiency", "energy", "smart_farm", "water_efficiency", "irrigation"], "organizationTypes": ["farm"], "stages": ["ready", "implementation", "operating", "expansion"], "scales": ["farm", "property", "small_business"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 150000, "status": "maybe", "status_label": "Opening / monitor intake", "funding": "Efficient farm technology adoption; maximum listed funding up to $150,000.", "eligibility": "Alberta agricultural producers adopting efficient technologies with environmental benefits. Confirm open intake windows.", "notes": "Good secondary match when user wants water-use or energy efficiency on farm.", "source": "https://www.alberta.ca/on-farm-efficiency-program", "fit": "High for AB efficiency tech", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["efficiency", "energy", "smart_farm", "water_efficiency", "irrigation"], "cost_share": "Efficient farm technology adoption; maximum listed funding up to $150,000.", "maximum": "$150,000"}, {"id": "farm_water_resilience", "name": "Farm Water Resilience", "program": "Farm Water Resilience", "jurisdiction": "Prairie / Western Canada (confirm province stream)", "provinces": ["AB", "SK", "BC"], "categories": ["water", "agriculture", "infrastructure"], "projectTypes": ["water_supply", "water_storage", "pond", "dugout", "pipeline", "irrigation", "water_efficiency", "drainage", "livestock_water", "cistern", "well"], "organizationTypes": ["farm", "landowner"], "stages": ["planning", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "multiple", "small_business"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 150000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Farm water resilience projects typically in the $50,000–$150,000 range (listed planning envelope; confirm current caps with the administrator).", "eligibility": "Agricultural producers improving drought resilience, storage, distribution, and secure water access. Exact program name, intake, and caps vary by province — verify before applying.", "notes": "Surfaces strongly for multi-purpose farm water resilience (storage + supply + efficiency), not only a single dugout or well.", "source": null, "fit": "Very high for integrated farm water resilience", "eligibilityFlags": [], "client_keys": ["farm", "landowner"], "tags": ["water_supply", "water_storage", "pond", "dugout", "pipeline", "irrigation", "water_efficiency", "drainage", "livestock_water", "cistern", "well"], "cost_share": "Farm water resilience projects typically in the $50,000–$150,000 range (listed planning envelope; confirm current caps with the administrato", "maximum": "$150,000"}, {"id": "livestock_water_system", "name": "Livestock Water System", "program": "Livestock Water System", "jurisdiction": "Prairie / Western Canada (confirm province stream)", "provinces": ["AB", "SK", "BC"], "categories": ["water", "agriculture", "livestock"], "projectTypes": ["livestock_water", "water_supply", "pipeline", "pond", "dugout", "well", "cistern", "water_storage", "off_source_watering"], "organizationTypes": ["farm", "landowner"], "stages": ["planning", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "multiple"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 100000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Livestock watering systems typically in the $25,000–$100,000 range (listed planning envelope; confirm current caps with the administrator).", "eligibility": "Livestock / grazing operations developing off-site or improved livestock watering (pipelines, troughs, remote watering, storage). Confirm producer eligibility and EFP requirements where applicable.", "notes": "Rank highly when water goals include livestock watering or grazing operations needing secure stock water.", "source": null, "fit": "Very high for livestock watering systems", "eligibilityFlags": [], "client_keys": ["farm", "landowner"], "tags": ["livestock_water", "water_supply", "pipeline", "pond", "dugout", "well", "cistern", "water_storage", "off_source_watering"], "cost_share": "Livestock watering systems typically in the $25,000–$100,000 range (listed planning envelope; confirm current caps with the administrator).", "maximum": "$100,000"}, {"id": "riparian_restoration_pathway", "name": "Riparian Restoration", "program": "Riparian Restoration", "jurisdiction": "Western Canada & national pathways (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["water", "land", "conservation", "agriculture"], "projectTypes": ["riparian", "wetland", "land_restore", "conservation", "drainage"], "organizationTypes": ["farm", "landowner", "conservation", "municipality", "indigenous"], "stages": ["idea", "planning", "feasibility", "ready", "implementation"], "scales": ["farm", "property", "multiple", "community", "regional"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 75000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Riparian restoration packages typically in the $20,000–$75,000 range (listed planning envelope; confirm current program caps).", "eligibility": "Projects restoring or protecting stream, river, lake, or wetland edges — planting, fencing livestock out of waterways, buffers, and related design. Often needs EFP and/or delivery through a stewardship partner.", "notes": "Surfaces for wetland/waterway restoration and riparian land goals.", "source": null, "fit": "Very high for riparian / edge-of-water work", "eligibilityFlags": [], "client_keys": ["farm", "landowner", "conservation", "municipality", "indigenous"], "tags": ["riparian", "wetland", "land_restore", "conservation", "drainage"], "cost_share": "Riparian restoration packages typically in the $20,000–$75,000 range (listed planning envelope; confirm current program caps).", "maximum": "$75,000"}, {"id": "regenerative_grazing_system", "name": "Regenerative Grazing System", "program": "Regenerative Grazing System", "jurisdiction": "Prairie / Western Canada & related streams", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["agriculture", "land", "livestock"], "projectTypes": ["grazing", "land_restore", "livestock_water", "fence", "forage", "pipeline"], "organizationTypes": ["farm", "landowner"], "stages": ["planning", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "multiple"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 150000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Regenerative / rotational grazing systems typically in the $30,000–$150,000 range (listed planning envelope; confirm current caps).", "eligibility": "Livestock producers implementing rotational or regenerative grazing (fencing, water points, forage, planning). Production thresholds and EFP often apply on provincial streams.", "notes": "Strong match when land goals include grazing improvement or livestock + water together.", "source": null, "fit": "Very high for regenerative grazing", "eligibilityFlags": [], "client_keys": ["farm", "landowner"], "tags": ["grazing", "land_restore", "livestock_water", "fence", "forage", "pipeline"], "cost_share": "Regenerative / rotational grazing systems typically in the $30,000–$150,000 range (listed planning envelope; confirm current caps).", "maximum": "$150,000"}, {"id": "agricultural_solar_water", "name": "Agricultural Solar + Water", "program": "Agricultural Solar + Water", "jurisdiction": "Multi-province (confirm stacking)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["water", "energy", "agriculture"], "projectTypes": ["solar", "renewable", "water_supply", "livestock_water", "pipeline", "pond", "irrigation", "energy_efficiency", "water_efficiency"], "organizationTypes": ["farm", "landowner", "greenhouse"], "stages": ["planning", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "small_business", "commercial"], "fundingTypes": ["grant", "cost_share", "rebate", "financing"], "maxFunding": 250000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Integrated solar-powered water systems typically in the $50,000–$250,000 range (listed planning envelope; stack grants + financing where available).", "eligibility": "Farms combining renewable electricity with pumping, livestock watering, irrigation, or storage. Confirm micro-generation, efficiency, and water-program stacking rules.", "notes": "Ranks when both water and energy/solar interests are present.", "source": null, "fit": "Very high for solar-powered farm water", "eligibilityFlags": [], "client_keys": ["farm", "landowner", "greenhouse"], "tags": ["solar", "renewable", "water_supply", "livestock_water", "pipeline", "pond", "irrigation", "energy_efficiency", "water_efficiency"], "cost_share": "Integrated solar-powered water systems typically in the $50,000–$250,000 range (listed planning envelope; stack grants + financing where ava", "maximum": "$250,000"}, {"id": "farm_wastewater_system", "name": "Farm Wastewater System", "program": "Farm Wastewater System", "jurisdiction": "Multi-province (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["waste", "water", "agriculture"], "projectTypes": ["wastewater", "effluent", "manure", "compost", "organic_waste", "resource_recovery", "water_quality"], "organizationTypes": ["farm", "processor", "greenhouse", "business"], "stages": ["planning", "feasibility", "ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "commercial", "facility"], "fundingTypes": ["grant", "cost_share", "rebate"], "maxFunding": 250000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Farm wastewater / effluent / manure-system projects typically in the $50,000–$250,000 range (listed planning envelope; confirm caps).", "eligibility": "Agricultural operations treating, reusing, or better managing wastewater, effluent, or manure-related water. Environmental approvals may apply.", "notes": "Surfaces for wastewater/effluent waste goals and water-quality concerns.", "source": null, "fit": "Very high for farm wastewater systems", "eligibilityFlags": [], "client_keys": ["farm", "processor", "greenhouse", "business"], "tags": ["wastewater", "effluent", "manure", "compost", "organic_waste", "resource_recovery", "water_quality"], "cost_share": "Farm wastewater / effluent / manure-system projects typically in the $50,000–$250,000 range (listed planning envelope; confirm caps).", "maximum": "$250,000"}, {"id": "land_restoration_pathway", "name": "Land Restoration", "program": "Land Restoration", "jurisdiction": "Multi-province (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["land", "agriculture", "conservation"], "projectTypes": ["land_restore", "remediation", "erosion", "native", "perennial", "shelterbelt", "grazing"], "organizationTypes": ["farm", "landowner", "conservation", "developer", "indigenous"], "stages": ["idea", "planning", "feasibility", "ready", "implementation"], "scales": ["farm", "property", "multiple", "regional", "community"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 150000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Land restoration packages typically in the $25,000–$150,000 range (listed planning envelope; confirm current caps).", "eligibility": "Restoring degraded, eroded, or underused land; native/perennial establishment; soil and landscape recovery. Partner organizations sometimes hold the grant.", "notes": "Matches land-restore / convert / degraded-land answers.", "source": null, "fit": "Very high for land restoration", "eligibilityFlags": [], "client_keys": ["farm", "landowner", "conservation", "developer", "indigenous"], "tags": ["land_restore", "remediation", "erosion", "native", "perennial", "shelterbelt", "grazing"], "cost_share": "Land restoration packages typically in the $25,000–$150,000 range (listed planning envelope; confirm current caps).", "maximum": "$150,000"}, {"id": "greenhouse_cea_pathway", "name": "Greenhouse / Controlled Agriculture", "program": "Greenhouse / Controlled Agriculture", "jurisdiction": "Multi-province (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["agriculture", "energy", "business"], "projectTypes": ["greenhouse", "cea", "energy", "renewable", "energy_efficiency", "automation", "processing"], "organizationTypes": ["greenhouse", "farm", "business", "processor"], "stages": ["feasibility", "planning", "ready", "implementation", "expansion", "operating"], "scales": ["commercial", "industrial", "facility", "small_business", "farm"], "fundingTypes": ["grant", "cost_share", "financing", "project_financing"], "maxFunding": 4000000, "status": "maybe", "status_label": "Planning range — large projects; confirm intake", "funding": "Greenhouse and controlled-environment agriculture projects often in the $100,000–$4,000,000+ range depending on build vs expansion and energy tech.", "eligibility": "New or expanding greenhouses / vertical farms / CEA. Large-build streams may require multi-million total project investment and food-production share rules.", "notes": "Surfaces for greenhouse client type or greenhouse goals; large scale boosts industrial/commercial answers.", "source": null, "fit": "Very high for greenhouse / CEA", "eligibilityFlags": [], "client_keys": ["greenhouse", "farm", "business", "processor"], "tags": ["greenhouse", "cea", "energy", "renewable", "energy_efficiency", "automation", "processing"], "cost_share": "Greenhouse and controlled-environment agriculture projects often in the $100,000–$4,000,000+ range depending on build vs expansion and energ", "maximum": "$4,000,000"}, {"id": "ag_processing_efficiency", "name": "Agricultural Processing Efficiency", "program": "Agricultural Processing Efficiency", "jurisdiction": "Multi-province / federal (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["business", "agriculture", "energy", "waste"], "projectTypes": ["processing", "energy_efficiency", "wastewater", "water_efficiency", "ghg", "innovation"], "organizationTypes": ["processor", "business", "industrial", "farm"], "stages": ["feasibility", "planning", "ready", "implementation", "expansion", "operating"], "scales": ["commercial", "industrial", "facility", "small_business"], "fundingTypes": ["grant", "cost_share", "financing"], "maxFunding": 1000000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Agricultural processing efficiency upgrades typically in the $100,000–$1,000,000+ range (equipment, water/energy, productivity).", "eligibility": "Processors improving productivity, water, energy, or wastewater performance. Some streams are supply-management or invitation-only.", "notes": "Strong for processor clients with efficiency, wastewater, or expansion goals.", "source": null, "fit": "Very high for ag processing efficiency", "eligibilityFlags": [], "client_keys": ["processor", "business", "industrial", "farm"], "tags": ["processing", "energy_efficiency", "wastewater", "water_efficiency", "ghg", "innovation"], "cost_share": "Agricultural processing efficiency upgrades typically in the $100,000–$1,000,000+ range (equipment, water/energy, productivity).", "maximum": "$1,000,000"}, {"id": "rural_industrial_resource_efficiency", "name": "Rural Industrial Resource Efficiency", "program": "Rural Industrial Resource Efficiency", "jurisdiction": "Multi-province / federal (confirm stream)", "provinces": ["AB", "SK", "BC", "ON", "QC", "OTHER"], "categories": ["business", "energy", "waste", "industrial"], "projectTypes": ["energy_efficiency", "ghg", "wastewater", "resource_recovery", "innovation", "renewable", "processing"], "organizationTypes": ["industrial", "business", "processor"], "stages": ["feasibility", "planning", "ready", "implementation", "expansion", "operating"], "scales": ["industrial", "commercial", "facility", "regional"], "fundingTypes": ["grant", "cost_share", "financing", "project_financing"], "maxFunding": 1000000, "status": "open", "status_label": "Planning range — confirm active stream", "funding": "Rural industrial resource-efficiency projects typically in the $100,000–$1,000,000+ range (energy, water, materials, emissions).", "eligibility": "Rural industrial and larger facilities cutting energy, water, waste, or GHG intensity. Often competitive or invitation-oriented for largest streams.", "notes": "Surfaces for industrial/business scale efficiency and decarbonization — not typical acreage projects.", "source": null, "fit": "Very high for rural industrial efficiency", "eligibilityFlags": [], "client_keys": ["industrial", "business", "processor"], "tags": ["energy_efficiency", "ghg", "wastewater", "resource_recovery", "innovation", "renewable", "processing"], "cost_share": "Rural industrial resource-efficiency projects typically in the $100,000–$1,000,000+ range (energy, water, materials, emissions).", "maximum": "$1,000,000"}, {"id": "on_growing_future_opportunities", "name": "Growing Future Opportunities Initiative", "program": "Growing Future Opportunities Initiative", "jurisdiction": "Ontario", "provinces": ["ON"], "categories": ["agriculture", "land", "perennial"], "projectTypes": ["orchard", "vineyard", "perennial", "fruit", "replant"], "organizationTypes": ["farm"], "stages": ["ready", "implementation", "expansion", "operating"], "scales": ["farm", "property", "commercial"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 50000, "status": "open", "status_label": "Current program", "funding": "Supports orchard and vineyard replanting / perennial production opportunities; maximum listed funding up to $50,000.", "eligibility": "Ontario agricultural producers establishing or replanting eligible perennial crops. Confirm crop lists with the administrator.", "notes": "Do not treat 'food forest' as a government category — map user perennial intent to this style of program.", "source": null, "fit": "High for ON orchards/vineyards", "eligibilityFlags": [], "client_keys": ["farm"], "tags": ["orchard", "vineyard", "perennial", "fruit", "replant"], "cost_share": "Supports orchard and vineyard replanting / perennial production opportunities; maximum listed funding up to $50,000.", "maximum": "$50,000"}, {"id": "qc_organic_waste", "name": "Organic Waste Management Support Program", "program": "Organic Waste Management Support Program", "jurisdiction": "Quebec", "provinces": ["QC"], "categories": ["waste", "business"], "projectTypes": ["organic_waste", "compost", "resource_recovery", "waste_reduce"], "organizationTypes": ["business", "processor", "municipality", "conservation"], "stages": ["planning", "feasibility", "ready", "implementation"], "scales": ["commercial", "industrial", "community", "multiple"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 500000, "status": "open", "status_label": "Current program", "funding": "Organic-waste reduction and recovery projects; maximum listed funding up to $500,000.", "eligibility": "Quebec projects reducing or recovering organic waste. Confirm applicant types with the program administrator.", "notes": "Surfaces for organic waste / compost / resource recovery goals in Quebec.", "source": null, "fit": "Very high for QC organic waste", "eligibilityFlags": [], "client_keys": ["business", "processor", "municipality", "conservation"], "tags": ["organic_waste", "compost", "resource_recovery", "waste_reduce"], "cost_share": "Organic-waste reduction and recovery projects; maximum listed funding up to $500,000.", "maximum": "$500,000"}, {"id": "community_energy_systems", "name": "Capital Project: Community Energy Systems", "program": "Capital Project: Community Energy Systems", "jurisdiction": "Federal / multi-jurisdiction", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["energy", "community"], "projectTypes": ["renewable", "community_energy", "solar", "ghg"], "organizationTypes": ["municipality", "conservation", "business", "indigenous"], "stages": ["feasibility", "ready", "implementation", "expansion"], "scales": ["community", "regional", "multiple", "industrial"], "fundingTypes": ["grant", "project_financing", "cost_share"], "maxFunding": 10000000, "status": "maybe", "status_label": "Competitive / intake-specific", "funding": "Community-scale energy systems capital projects; maximum listed funding up to $10,000,000.", "eligibility": "Community or multi-building energy systems. Not a typical single-farm rebate.", "notes": "Only rank highly for community/regional scale renewable projects.", "source": null, "fit": "High for community energy", "eligibilityFlags": [], "client_keys": ["municipality", "conservation", "business", "indigenous"], "tags": ["renewable", "community_energy", "solar", "ghg"], "cost_share": "Community-scale energy systems capital projects; maximum listed funding up to $10,000,000.", "maximum": "$10,000,000"}, {"id": "qc_ecoperformance", "name": "ÉcoPerformance — Standard Implementation", "program": "ÉcoPerformance — Standard Implementation", "jurisdiction": "Quebec", "provinces": ["QC"], "categories": ["energy", "ghg", "industrial"], "projectTypes": ["ghg", "energy_efficiency", "renewable", "implementation"], "organizationTypes": ["business", "processor", "industrial"], "stages": ["ready", "implementation", "operating", "expansion"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 5000000, "status": "open", "status_label": "Current implementation stream", "funding": "GHG-reduction implementation projects; maximum listed funding up to $5,000,000.", "eligibility": "Quebec industrial/business facilities implementing greenhouse-gas reduction measures. Confirm eligible measures with the program.", "notes": "Strong for industrial/facility decarbonization implementation — not farm hobby solar.", "source": null, "fit": "Very high for QC industrial GHG", "eligibilityFlags": [], "client_keys": ["business", "processor", "industrial"], "tags": ["ghg", "energy_efficiency", "renewable", "implementation"], "cost_share": "GHG-reduction implementation projects; maximum listed funding up to $5,000,000.", "maximum": "$5,000,000"}, {"id": "qc_bioenergies", "name": "Bioénergies — Implementation", "program": "Bioénergies — Implementation", "jurisdiction": "Quebec", "provinces": ["QC"], "categories": ["energy", "ghg", "biomass"], "projectTypes": ["bioenergy", "biomass", "ghg", "renewable"], "organizationTypes": ["business", "processor", "industrial", "forest"], "stages": ["ready", "implementation", "expansion"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 5000000, "status": "open", "status_label": "Current implementation stream", "funding": "Bioenergy implementation; maximum listed funding up to $5,000,000.", "eligibility": "Quebec bioenergy implementation projects. Confirm feedstock and facility eligibility.", "notes": "Pair with biomass / bioenergy answers.", "source": null, "fit": "High for QC bioenergy", "eligibilityFlags": [], "client_keys": ["business", "processor", "industrial", "forest"], "tags": ["bioenergy", "biomass", "ghg", "renewable"], "cost_share": "Bioenergy implementation; maximum listed funding up to $5,000,000.", "maximum": "$5,000,000"}, {"id": "sofiac_energy_transition", "name": "Sofiac — Risk-free energy transition", "program": "Sofiac — Risk-free energy transition", "jurisdiction": "Multi-jurisdiction financing", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["energy", "financing"], "projectTypes": ["energy_efficiency", "renewable", "ghg"], "organizationTypes": ["business", "processor", "industrial"], "stages": ["ready", "implementation", "operating"], "scales": ["commercial", "industrial", "facility", "multiple"], "fundingTypes": ["financing", "project_financing", "loan"], "maxFunding": null, "status": "open", "status_label": "Financing (not a grant)", "funding": "Turnkey financing for business decarbonization / energy-transition projects (not a pure grant).", "eligibility": "Business facilities seeking financed energy-transition projects. Terms are commercial — not a government grant.", "notes": "Show when user wants financing/loan support for energy projects.", "source": null, "fit": "High for financed decarbonization", "eligibilityFlags": [], "client_keys": ["business", "processor", "industrial"], "tags": ["energy_efficiency", "renewable", "ghg"], "cost_share": "Turnkey financing for business decarbonization / energy-transition projects (not a pure grant).", "maximum": "See program"}, {"id": "essor_1a_feasibility", "name": "ESSOR Component 1A — Feasibility Studies", "program": "ESSOR Component 1A — Feasibility Studies", "jurisdiction": "Quebec", "provinces": ["QC"], "categories": ["business", "planning"], "projectTypes": ["planning", "feasibility"], "organizationTypes": ["business", "processor", "industrial"], "stages": ["feasibility", "planning", "idea"], "scales": ["commercial", "industrial", "small_business"], "fundingTypes": ["grant", "cost_share"], "maxFunding": null, "status": "open", "status_label": "Study support", "funding": "Supports feasibility studies for business projects (distinct from implementation funding).", "eligibility": "Quebec business projects at feasibility/study stage. Confirm eligible study types.", "notes": "Surfaces when stage is feasibility/planning for business/industrial users.", "source": null, "fit": "High for QC feasibility stage", "eligibilityFlags": [], "client_keys": ["business", "processor", "industrial"], "tags": ["planning", "feasibility"], "cost_share": "Supports feasibility studies for business projects (distinct from implementation funding).", "maximum": "See program"}, {"id": "wood_innovation_1a", "name": "Wood Innovation Program – Component 1A", "program": "Wood Innovation Program – Component 1A", "jurisdiction": "Multi-jurisdiction", "provinces": ["QC", "ON", "BC", "AB", "OTHER"], "categories": ["forestry", "innovation"], "projectTypes": ["wood_products", "biomass", "forest_value", "innovation"], "organizationTypes": ["business", "forest", "processor", "industrial"], "stages": ["ready", "implementation", "expansion", "research"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 2500000, "status": "open", "status_label": "Current program", "funding": "Wood innovation / forest-products innovation; maximum listed funding up to $2,500,000.", "eligibility": "Forest-products and wood-innovation projects. Confirm component criteria.", "notes": "Commercial wood/biomass innovation — not casual firewood.", "source": null, "fit": "High for wood innovation", "eligibilityFlags": [], "client_keys": ["business", "forest", "processor", "industrial"], "tags": ["wood_products", "biomass", "forest_value", "innovation"], "cost_share": "Wood innovation / forest-products innovation; maximum listed funding up to $2,500,000.", "maximum": "$2,500,000"}, {"id": "wood_innovation_2", "name": "Wood Innovation Program – Component 2", "program": "Wood Innovation Program – Component 2", "jurisdiction": "Multi-jurisdiction", "provinces": ["QC", "ON", "BC", "AB", "OTHER"], "categories": ["forestry", "innovation"], "projectTypes": ["biomass", "low_quality_wood", "wood_products", "bioenergy"], "organizationTypes": ["business", "forest", "processor"], "stages": ["ready", "implementation", "expansion"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 1000000, "status": "open", "status_label": "Current program", "funding": "Wood/biomass utilization innovation; maximum listed funding up to $1,000,000.", "eligibility": "Projects using wood or biomass innovatively. Confirm eligible activities.", "notes": "Strong for biomass / low-quality wood utilization.", "source": null, "fit": "High for biomass utilization", "eligibilityFlags": [], "client_keys": ["business", "forest", "processor"], "tags": ["biomass", "low_quality_wood", "wood_products", "bioenergy"], "cost_share": "Wood/biomass utilization innovation; maximum listed funding up to $1,000,000.", "maximum": "$1,000,000"}, {"id": "indigenous_forestry_init", "name": "Indigenous Forestry Initiative", "program": "Indigenous Forestry Initiative", "jurisdiction": "Federal", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["forestry"], "projectTypes": ["forest_management", "forest_planning", "forestry"], "organizationTypes": ["indigenous"], "stages": ["idea", "planning", "feasibility", "ready", "implementation"], "scales": ["community", "regional", "property", "farm"], "fundingTypes": ["grant"], "maxFunding": 45000, "status": "open", "status_label": "Open through Sept 2028 context", "funding": "Indigenous forest-management planning and related activities; maximum listed funding up to $45,000.", "eligibility": "Indigenous communities and organizations only. Do not match unless the user identifies as Indigenous organization/community.", "notes": "Requires indigenous eligibility flag.", "source": "https://natural-resources.canada.ca/forests-forestry/forest-programs/indigenous-forestry-initiative-grant-funding", "fit": "High for Indigenous forestry partners", "eligibilityFlags": ["indigenous_only"], "client_keys": ["indigenous"], "tags": ["forest_management", "forest_planning", "forestry"], "cost_share": "Indigenous forest-management planning and related activities; maximum listed funding up to $45,000.", "maximum": "$45,000"}, {"id": "on_critical_minerals_innovation", "name": "Critical Minerals Innovation Fund (Ontario)", "program": "Critical Minerals Innovation Fund (Ontario)", "jurisdiction": "Ontario", "provinces": ["ON"], "categories": ["minerals", "innovation"], "projectTypes": ["critical_minerals", "mineral_processing", "mineral_rd", "exploration"], "organizationTypes": ["business", "industrial", "developer"], "stages": ["research", "feasibility", "demonstration", "processing"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 500000, "status": "open", "status_label": "Current / competitive", "funding": "Critical-minerals innovation; maximum listed funding up to $500,000.", "eligibility": "Ontario critical-minerals innovation projects. Confirm eligible stages and applicants.", "notes": "Only via optional minerals branch.", "source": null, "fit": "High for ON critical minerals", "eligibilityFlags": [], "client_keys": ["business", "industrial", "developer"], "tags": ["critical_minerals", "mineral_processing", "mineral_rd", "exploration"], "cost_share": "Critical-minerals innovation; maximum listed funding up to $500,000.", "maximum": "$500,000"}, {"id": "qc_critical_minerals_rd", "name": "Critical & Strategic Minerals R&D Support (Quebec)", "program": "Critical & Strategic Minerals R&D Support (Quebec)", "jurisdiction": "Quebec", "provinces": ["QC"], "categories": ["minerals", "innovation"], "projectTypes": ["critical_minerals", "mineral_rd", "mineral_processing"], "organizationTypes": ["business", "industrial"], "stages": ["research", "demonstration", "feasibility"], "scales": ["commercial", "industrial", "facility"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 500000, "status": "open", "status_label": "Current / competitive", "funding": "Critical/strategic minerals R&D; maximum listed funding up to $500,000.", "eligibility": "Quebec critical/strategic minerals R&D projects.", "notes": "Only via optional minerals branch.", "source": null, "fit": "High for QC minerals R&D", "eligibilityFlags": [], "client_keys": ["business", "industrial"], "tags": ["critical_minerals", "mineral_rd", "mineral_processing"], "cost_share": "Critical/strategic minerals R&D; maximum listed funding up to $500,000.", "maximum": "$500,000"}, {"id": "ab_innovates_ag_env", "name": "Alberta Innovates — Agriculture & Environment Program", "program": "Alberta Innovates — Agriculture & Environment Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["innovation", "agriculture", "energy"], "projectTypes": ["innovation", "planning", "energy", "land_restore", "research"], "organizationTypes": ["business", "farm", "processor", "conservation"], "stages": ["research", "feasibility", "demonstration", "planning"], "scales": ["small_business", "commercial", "farm"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 750000, "status": "open", "status_label": "Continuous intake (open)", "funding": "Up to $750,000 (about 50% of costs); Environmental Innovation stream; TRL 3–7.", "eligibility": "Technology developers, SMEs, researchers — two-stage EOI then full proposal.", "notes": "Research/innovation angle more than routine earthworks.", "source": "https://albertainnovates.ca/funding/agriculture-environment-program/", "fit": "Very high for AB innovation", "eligibilityFlags": [], "client_keys": ["business", "farm", "processor", "conservation"], "tags": ["innovation", "planning", "energy", "land_restore", "research"], "cost_share": "Up to $750,000 (about 50% of costs); Environmental Innovation stream; TRL 3–7.", "maximum": "$750,000"}, {"id": "ab_innovates_land_biodiversity", "name": "Alberta Innovates — Land & Biodiversity Program", "program": "Alberta Innovates — Land & Biodiversity Program", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["land", "conservation", "innovation"], "projectTypes": ["land_restore", "remediation", "conservation", "ghg"], "organizationTypes": ["business", "conservation", "farm", "developer"], "stages": ["research", "demonstration", "implementation", "planning"], "scales": ["commercial", "regional", "farm", "community"], "fundingTypes": ["grant"], "maxFunding": null, "status": "open", "status_label": "Active", "funding": "Remediation, reclamation, carbon sequestration, nature-based solutions — amount varies.", "eligibility": "Projects aligned with land/biodiversity innovation outcomes.", "notes": "Good for remediation / nature-based solutions.", "source": "https://albertainnovates.ca/", "fit": "Very high for land remediation innovation", "eligibilityFlags": [], "client_keys": ["business", "conservation", "farm", "developer"], "tags": ["land_restore", "remediation", "conservation", "ghg"], "cost_share": "Remediation, reclamation, carbon sequestration, nature-based solutions — amount varies.", "maximum": "See program"}, {"id": "nrc_irap", "name": "Industrial Research Assistance Program (IRAP)", "program": "Industrial Research Assistance Program (IRAP)", "jurisdiction": "Federal", "provinces": ["AB", "BC", "SK", "ON", "QC", "OTHER"], "categories": ["innovation", "business"], "projectTypes": ["innovation", "research", "prototype", "cleantech"], "organizationTypes": ["business", "processor", "industrial"], "stages": ["research", "demonstration", "ready", "implementation"], "scales": ["small_business", "commercial"], "fundingTypes": ["grant", "cost_share"], "maxFunding": null, "status": "open", "status_label": "Ongoing", "funding": "R&D, prototype demonstration, cleantech SMEs; amounts vary.", "eligibility": "Canadian SMEs undertaking technical R&D / innovation projects.", "notes": "Business innovation support, not a farm water rebate.", "source": "https://nrc.canada.ca/en/support-technology-innovation", "fit": "Very high for SME cleantech R&D", "eligibilityFlags": [], "client_keys": ["business", "processor", "industrial"], "tags": ["innovation", "research", "prototype", "cleantech"], "cost_share": "R&D, prototype demonstration, cleantech SMEs; amounts vary.", "maximum": "See program"}, {"id": "era_emissions", "name": "Emissions Reduction Alberta (ERA)", "program": "Emissions Reduction Alberta (ERA)", "jurisdiction": "Alberta", "provinces": ["AB"], "categories": ["energy", "ghg"], "projectTypes": ["ghg", "energy", "renewable", "innovation"], "organizationTypes": ["business", "industrial", "processor"], "stages": ["demonstration", "implementation", "research"], "scales": ["industrial", "commercial", "facility", "regional"], "fundingTypes": ["grant", "cost_share"], "maxFunding": 10000000, "status": "maybe", "status_label": "Competitive calls", "funding": "Up to $10,000,000; must demonstrate measurable GHG reduction potential.", "eligibility": "Projects with measurable GHG reduction in Alberta. Check open calls.", "notes": "Large GHG projects only.", "source": "https://www.eralberta.ca/", "fit": "Medium–high for large AB GHG projects", "eligibilityFlags": [], "client_keys": ["business", "industrial", "processor"], "tags": ["ghg", "energy", "renewable", "innovation"], "cost_share": "Up to $10,000,000; must demonstrate measurable GHG reduction potential.", "maximum": "$10,000,000"}];
+
+const state = {
+  province: null,
+  client: null,
+  goals: [],
+  water: [],
+  landDev: null,
+  perennial: [],
+  waste: [],
+  wasteGoal: null,
+  energy: [],
+  energyScale: null,
+  ghg: null,
+  orgContext: null,
+  forest: [],
+  forestGoal: null,
+  minerals: null,
+  mineralStage: null,
+  scale: null,
+  stage: null,
+  fundingWant: null,
+  production: null,
+  indigenous: null
+};
+
+// Dynamic step queue (ids)
+let queue = [];
+let qi = 0;
+
+const STEPS = {
+  province: {
+    index: 'Location',
+    text: 'Where is the property or operation?',
+    help: 'We use this once so province-specific programs only appear where they apply.',
+    multi: false, key: 'province',
+    options: [
+      ['AB','Alberta'],['SK','Saskatchewan'],['BC','British Columbia'],
+      ['ON','Ontario'],['QC','Quebec'],['OTHER','Other Canadian province / territory']
+    ]
+  },
+  client: {
+    index: 'Who you are',
+    text: 'Which best describes you?',
+    help: 'Applicant type is often the strongest filter for funding.',
+    multi: false, key: 'client',
+    options: [
+      ['farm','Farm or ranch (agricultural producer)'],
+      ['landowner','Rural landowner / acreage'],
+      ['greenhouse','Greenhouse or market garden'],
+      ['processor','Agricultural or food processor'],
+      ['business','Business / facility'],
+      ['industrial','Industrial facility'],
+      ['municipality','Municipality or community organization'],
+      ['conservation','Conservation, land trust, or watershed group'],
+      ['indigenous','Indigenous organization or community'],
+      ['forest','Forest or natural-area owner'],
+      ['developer','Developer / land-development project']
+    ]
+  },
+  goals: {
+    index: 'What you want to do',
+    text: 'What are you hoping to accomplish?',
+    help: 'Pick all that apply. We only ask follow-ups for the areas you choose.',
+    multi: true, key: 'goals',
+    options: [
+      ['water','Improve, develop, or manage water'],
+      ['land','Improve land or bring land into production'],
+      ['energy','Reduce energy use or add renewable energy'],
+      ['waste','Reduce, reuse, or recover waste / organic materials'],
+      ['forestry','Work with forests, wood, or biomass'],
+      ['processing','Expand processing or industrial production'],
+      ['market','Develop markets or respond to trade pressure'],
+      ['conservation','Protect or steward natural areas'],
+      ['minerals','Mineral or resource development (advanced)'],
+      ['planning','Planning, design, or feasibility only']
+    ]
+  },
+  water: {
+    index: 'Water details',
+    text: 'What are you hoping to do with water on the property?',
+    help: 'This helps distinguish irrigation, water supply, ponds/dams, and well work.',
+    multi: true, key: 'water',
+    options: [
+      ['irrigation','Improve irrigation'],
+      ['water_supply','Develop or improve a water supply'],
+      ['pond_dam','Build or improve a pond, dugout, or small dam'],
+      ['livestock_water','Improve livestock watering systems'],
+      ['drainage','Manage drainage or runoff'],
+      ['wetland','Restore/protect wetlands or waterways'],
+      ['well_decom','Decommission or remediate a well'],
+      ['water_efficiency','Improve water-use efficiency / drought resilience'],
+      ['other_water','Something else'],
+      ['none','None of these']
+    ]
+  },
+  landDev: {
+    index: 'Land development',
+    text: 'Are you trying to improve or bring additional land into production?',
+    multi: false, key: 'landDev',
+    options: [
+      ['restore','Yes — restoring previously used/underused farmland'],
+      ['convert','Yes — converting land to a different production system'],
+      ['access','Yes — improving access or developing farmland'],
+      ['perennial','Yes — establishing perennial crops / orchards / vineyards'],
+      ['no','No'],
+      ['unsure','Not sure']
+    ]
+  },
+  perennial: {
+    index: 'Perennial production',
+    text: 'What type of long-term / perennial production are you considering?',
+    help: '“Food forest” is everyday language — we map it to relevant perennial/agricultural programs, not a government category.',
+    multi: true, key: 'perennial',
+    options: [
+      ['orchard','Orchard'],['vineyard','Vineyard'],['fruit','Fruit / berry production'],
+      ['agroforestry','Agroforestry'],['food_forest','Food forest'],
+      ['shelterbelt','Shelterbelt / windbreak'],['other_perennial','Other perennial crops'],['none','None']
+    ]
+  },
+  waste: {
+    index: 'Waste materials',
+    text: 'Are you trying to reduce, reuse, or recover waste or organic materials?',
+    multi: true, key: 'waste',
+    options: [
+      ['organic_waste','Organic waste'],['compost','Compost / manure'],
+      ['wastewater','Wastewater / effluent'],['cd_materials','Construction or demolition materials'],
+      ['biomass','Biomass / wood waste'],['recycling','Recycling'],['other_waste','Other'],['no','No']
+    ]
+  },
+  wasteGoal: {
+    index: 'Waste goal',
+    text: 'What is the main goal for that waste / recovery work?',
+    multi: false, key: 'wasteGoal',
+    options: [
+      ['reduce','Reduce waste'],['recover','Recover useful materials'],['energy','Produce energy'],
+      ['treat','Treat wastewater / effluent'],['compost','Compost or reuse organic material'],
+      ['cost','Reduce disposal costs'],['other','Other']
+    ]
+  },
+  energy: {
+    index: 'Energy details',
+    text: 'What energy-related improvement are you considering?',
+    multi: true, key: 'energy',
+    options: [
+      ['solar','Solar'],['renewable','Renewable electricity'],['energy_efficiency','Energy efficiency'],
+      ['hvac','Heating / cooling efficiency'],['bioenergy','Bioenergy'],
+      ['community_energy','Community energy system'],['ghg','Reducing greenhouse-gas emissions'],['none','None']
+    ]
+  },
+  energyScale: {
+    index: 'Energy scale',
+    text: 'What is the scale of the energy project?',
+    multi: false, key: 'energyScale',
+    options: [
+      ['farm','Farm / property'],['business','Business / facility'],['multiple','Multiple buildings'],
+      ['community','Community'],['industrial','Industrial facility'],['unsure','Not sure']
+    ]
+  },
+  ghg: {
+    index: 'Emissions focus',
+    text: 'Is the project primarily intended to reduce greenhouse-gas emissions?',
+    multi: false, key: 'ghg',
+    options: [['yes','Yes'],['no','No'],['partly','Partly'],['unsure','Not sure']]
+  },
+  orgContext: {
+    index: 'Organization context',
+    text: 'What type of organization or property is involved in the energy / emissions work?',
+    multi: false, key: 'orgContext',
+    options: [
+      ['farm','Farm'],['processor','Food / agricultural processor'],['business','Business'],
+      ['industrial','Industrial facility'],['municipality','Municipality / community'],
+      ['nonprofit','Non-profit / community organization'],['other','Other']
+    ]
+  },
+  forest: {
+    index: 'Forest / biomass',
+    text: 'Does your project involve forests, wood, or biomass?',
+    multi: true, key: 'forest',
+    options: [
+      ['forest_management','Forest management'],['wood_products','Wood products'],
+      ['biomass','Forest biomass'],['low_quality_wood','Low-quality wood'],
+      ['firewood','Firewood / biomass utilization'],['agroforestry','Agroforestry'],
+      ['forest_restore','Forest restoration'],['other_forest','Other'],['no','No']
+    ]
+  },
+  forestGoal: {
+    index: 'Forest goal',
+    text: 'What are you trying to do with forest / wood resources?',
+    multi: false, key: 'forestGoal',
+    options: [
+      ['value','Improve forest products / value-added processing'],
+      ['low_quality','Use low-quality wood'],['energy','Produce energy / biomass'],
+      ['new_product','Develop a new forest product'],['manage','Manage forest land'],['other','Other']
+    ]
+  },
+  minerals: {
+    index: 'Minerals / resources',
+    text: 'Does your project involve mineral or resource development?',
+    help: 'Optional advanced branch — most farm projects can skip this.',
+    multi: false, key: 'minerals',
+    options: [
+      ['exploration','Mineral exploration'],['critical','Critical minerals'],
+      ['processing','Mineral processing'],['recycling','Mineral recycling / recovery'],
+      ['infra','Mine-related infrastructure'],['remediation','Environmental / remediation work'],
+      ['no','No']
+    ]
+  },
+  mineralStage: {
+    index: 'Mineral stage',
+    text: 'What stage is the mineral / resource project at?',
+    multi: false, key: 'mineralStage',
+    options: [
+      ['exploration','Exploration'],['research','Research / development'],
+      ['demonstration','Demonstration / pilot'],['processing','Processing'],
+      ['commercial','Commercial operation'],['remediation','Remediation / closure']
+    ]
+  },
+  scale: {
+    index: 'Project size',
+    text: 'How large is the project?',
+    help: 'This is one of the strongest signals — farm water programs differ from community or industrial funding.',
+    multi: false, key: 'scale',
+    options: [
+      ['farm','Individual property / farm'],['small_business','Small business'],
+      ['multiple','Multiple farms / properties'],['commercial','Commercial facility'],
+      ['industrial','Industrial facility'],['community','Municipality / community'],
+      ['regional','Regional project'],['unsure','Not sure']
+    ]
+  },
+  stage: {
+    index: 'Project stage',
+    text: 'What stage is your project at?',
+    help: 'Some programs fund studies; others fund construction or upgrades.',
+    multi: false, key: 'stage',
+    options: [
+      ['idea','Just exploring the idea'],['planning','Planning / design'],
+      ['feasibility','Feasibility study'],['ready','Ready to invest'],
+      ['implementation','Construction / implementation'],['expansion','Expansion'],
+      ['operating','Already operating and upgrading'],['research','Research / pilot']
+    ]
+  },
+  fundingWant: {
+    index: 'Support type',
+    text: 'What kind of support are you looking for?',
+    help: 'Not every opportunity is a grant — some are rebates, cost-shares, tax credits, or financing.',
+    multi: false, key: 'fundingWant',
+    options: [
+      ['grant','Grant / non-repayable funding'],['cost_share','Cost-sharing'],
+      ['tax_credit','Tax credit'],['loan','Loan / financing'],
+      ['equipment','Equipment financing'],['project_financing','Project financing'],
+      ['any','Any available funding'],['unsure','Not sure']
+    ]
+  },
+  production: {
+    index: 'Farm production',
+    text: 'Roughly what is annual farm commodity production or sales?',
+    help: 'Many producer streams look for about $25,000+ in annual farm commodities.',
+    multi: false, key: 'production',
+    options: [
+      ['below','Under ~$25,000 or not a farm business'],
+      ['meets','About $25,000 or more'],
+      ['unknown','Unknown / need assessment']
+    ]
+  },
+  indigenous: {
+    index: 'Indigenous eligibility',
+    text: 'Is the applicant an Indigenous community or organization?',
+    help: 'Some forestry and community programs are limited to Indigenous applicants.',
+    multi: false, key: 'indigenous',
+    options: [['yes','Yes'],['no','No'],['unsure','Not sure / prefer not to say']]
+  }
+};
+
+function hasGoal(g){ return (state.goals||[]).includes(g); }
+function arrHas(a, v){ return (a||[]).includes(v); }
+
+function rebuildQueue(){
+  const q = ['province','client','goals'];
+  // conditional branches from goals
+  if (hasGoal('water')) q.push('water');
+  if (hasGoal('land')) {
+    q.push('landDev');
+  }
+  // perennial if landDev says perennial OR goals land with later answer — handled after landDev answered via rebuild on next
+  if (state.landDev === 'perennial' || arrHas(state.perennial,'orchard') || hasGoal('land') && state.landDev === 'perennial') {
+    if (!q.includes('perennial') && state.landDev === 'perennial') q.push('perennial');
+  }
+  if (hasGoal('waste')) {
+    q.push('waste');
+    if (state.waste && state.waste.length && !arrHas(state.waste,'no')) q.push('wasteGoal');
+  }
+  if (hasGoal('energy')) {
+    q.push('energy');
+    if (state.energy && state.energy.length && !arrHas(state.energy,'none')) {
+      q.push('energyScale');
+      const e = state.energy || [];
+      if (e.some(x => ['energy_efficiency','renewable','bioenergy','ghg','solar','community_energy'].includes(x))) {
+        q.push('ghg');
+        q.push('orgContext');
+      }
+    }
+  }
+  if (hasGoal('forestry')) {
+    q.push('forest');
+    if (state.forest && state.forest.length && !arrHas(state.forest,'no')) q.push('forestGoal');
+  }
+  if (hasGoal('minerals')) {
+    q.push('minerals');
+    if (state.minerals && state.minerals !== 'no') q.push('mineralStage');
+  }
+  q.push('scale','stage','fundingWant');
+  if (['farm','greenhouse','landowner'].includes(state.client)) q.push('production');
+  // indigenous flag if client is indigenous OR forest programs might apply
+  if (state.client === 'indigenous' || hasGoal('forestry')) q.push('indigenous');
+  return q;
+}
+
+function unique(a){ return Array.from(new Set((a||[]).filter(Boolean))); }
+
+function renderProgress(){
+  const el = document.getElementById('progress');
+  el.innerHTML = '';
+  queue.forEach((_,i) => {
+    const s = document.createElement('span');
+    if (i < qi) s.className = 'done';
+    else if (i === qi) s.className = 'active';
+    el.appendChild(s);
+  });
+}
+
+function currentId(){ return queue[qi]; }
+
+function readHostIntoState(){
+  const host = document.getElementById('stepHost');
+  const opts = host.querySelector('.opts');
+  if (!opts) return;
+  const key = opts.dataset.key;
+  const multi = opts.dataset.multi === 'true';
+  const vals = Array.from(opts.querySelectorAll('.opt.selected')).map(b => b.dataset.v);
+  if (multi) state[key] = vals;
+  else state[key] = vals[0] || null;
+}
+
+function syncNext(host){
+  const opts = host.querySelector('.opts');
+  const next = host.querySelector('[data-next]');
+  if (!opts || !next) return;
+  next.disabled = opts.querySelectorAll('.opt.selected').length === 0;
+}
+
+function renderStep(){
+  const id = currentId();
+  const host = document.getElementById('stepHost');
+  if (!id) { renderResults(host); return; }
+  // insert perennial step dynamically if needed
+  if (id === 'scale' && state.landDev === 'perennial' && !queue.includes('perennial')) {
+    queue.splice(qi, 0, 'perennial');
+  }
+  // insert wasteGoal if waste answered
+  if (id === 'scale' && hasGoal('waste') && state.waste && state.waste.length && !arrHas(state.waste,'no') && !queue.includes('wasteGoal')) {
+    const wi = queue.indexOf('waste');
+    if (wi >= 0) queue.splice(wi+1, 0, 'wasteGoal');
+  }
+  const def = STEPS[currentId()];
+  if (!def) { renderResults(host); return; }
+  const n = qi + 1;
+  const total = queue.length;
+  let html = '';
+  html += '<div class="step active">';
+  html += '<p class="q-index">' + String(n).padStart(2,'0') + ' / ' + total + ' · ' + def.index + '</p>';
+  html += '<p class="q-text">' + def.text + '</p>';
+  if (def.help) html += '<p class="q-help">' + def.help + '</p>';
+  html += '<div class="opts ' + (def.multi?'multi':'single') + '" data-key="' + def.key + '" data-multi="' + (def.multi?'true':'false') + '">';
+  def.options.forEach(([v,label]) => {
+    const sel = def.multi ? arrHas(state[def.key], v) : state[def.key] === v;
+    html += '<button type="button" class="opt ' + (def.multi?'multi':'single') + (sel?' selected':'') + '" data-v="' + v + '">' + label + '<span class="mark"></span></button>';
+  });
+  html += '</div><div class="navrow">';
+  if (qi > 0) html += '<button type="button" class="btn ghost" data-back>Back</button>';
+  else html += '<span></span>';
+  const last = qi >= queue.length - 1;
+  html += '<button type="button" class="btn" data-next ' + ((def.multi?!(state[def.key]||[]).length:!state[def.key])?'disabled':'') + '>' + (last ? 'See potential matches' : 'Next') + '</button>';
+  html += '</div></div>';
+  host.innerHTML = html;
+  renderProgress();
+  window.scrollTo({ top: document.querySelector('.gq').offsetTop - 12, behavior: 'smooth' });
+}
+
+document.getElementById('quiz').addEventListener('click', function(e){
+  const opt = e.target.closest('.opt');
+  if (opt) {
+    const box = opt.closest('.opts');
+    const multi = box.dataset.multi === 'true';
+    if (!multi) {
+      box.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+    } else {
+      if (opt.dataset.v === 'none' || opt.dataset.v === 'no') {
+        box.querySelectorAll('.opt').forEach(o => o.classList.remove('selected'));
+        opt.classList.add('selected');
+      } else {
+        box.querySelectorAll('.opt[data-v="none"], .opt[data-v="no"]').forEach(o => o.classList.remove('selected'));
+        opt.classList.toggle('selected');
+      }
+    }
+    syncNext(document.getElementById('stepHost'));
+    return;
+  }
+  if (e.target.matches('[data-next]')) {
+    if (e.target.disabled) return;
+    readHostIntoState();
+    // rebuild queue after goals / branch answers so conditionals appear
+    const oldId = currentId();
+    const savedQi = qi;
+    const newQ = rebuildQueue();
+    // keep progress: find next after oldId in new queue
+    queue = newQ;
+    let nextIndex = queue.indexOf(oldId) + 1;
+    if (nextIndex < 0) nextIndex = savedQi + 1;
+    qi = Math.min(nextIndex, queue.length);
+    if (qi >= queue.length) renderResults(document.getElementById('stepHost'));
+    else renderStep();
+    return;
+  }
+  if (e.target.matches('[data-back]')) {
+    qi = Math.max(0, qi - 1);
+    renderStep();
+    return;
+  }
+  if (e.target.matches('#restart')) {
+    Object.keys(state).forEach(k => { state[k] = Array.isArray(state[k]) ? [] : null; });
+    queue = rebuildQueue();
+    qi = 0;
+    renderStep();
+  }
+});
+
+function projectTypesFromAnswers(){
+  const t = [];
+  (state.water||[]).forEach(w => {
+    if (w === 'irrigation') t.push('irrigation','water_efficiency');
+    if (w === 'water_supply') t.push('water_supply','well','pipeline','cistern','livestock_water');
+    if (w === 'pond_dam') t.push('pond','dugout','small_dam','water_storage');
+    if (w === 'livestock_water') t.push('livestock_water','off_source_watering','pipeline','water_supply','pond','dugout');
+    if (w === 'drainage') t.push('drainage');
+    if (w === 'wetland') t.push('wetland','riparian');
+    if (w === 'well_decom') t.push('well_decom');
+    if (w === 'water_efficiency') t.push('water_efficiency','efficiency','water_storage','water_supply');
+  });
+  if (state.landDev === 'restore') t.push('land_restore');
+  if (state.landDev === 'convert') t.push('land_restore','convert');
+  if (state.landDev === 'access') t.push('land_restore','access');
+  if (state.landDev === 'perennial') t.push('perennial');
+  (state.perennial||[]).forEach(p => {
+    if (p === 'orchard') t.push('orchard','perennial','replant');
+    if (p === 'vineyard') t.push('vineyard','perennial','replant');
+    if (p === 'fruit') t.push('fruit','perennial');
+    if (p === 'agroforestry') t.push('agroforestry','shelterbelt');
+    if (p === 'food_forest') t.push('perennial','fruit','agroforestry'); // map only
+    if (p === 'shelterbelt') t.push('shelterbelt');
+  });
+  (state.waste||[]).forEach(w => {
+    if (w === 'organic_waste') t.push('organic_waste','waste_reduce');
+    if (w === 'compost') t.push('compost','organic_waste');
+    if (w === 'wastewater') t.push('wastewater');
+    if (w === 'biomass') t.push('biomass');
+    if (w === 'recycling') t.push('resource_recovery');
+    if (w !== 'no') t.push('waste_reduce','resource_recovery');
+  });
+  if (state.wasteGoal === 'energy') t.push('bioenergy','energy');
+  if (state.wasteGoal === 'treat') t.push('wastewater');
+  if (state.wasteGoal === 'compost') t.push('compost');
+  (state.energy||[]).forEach(e => {
+    if (e === 'solar') t.push('solar','renewable');
+    if (e === 'renewable') t.push('renewable');
+    if (e === 'energy_efficiency' || e === 'hvac') t.push('energy_efficiency','efficiency');
+    if (e === 'bioenergy') t.push('bioenergy','biomass');
+    if (e === 'community_energy') t.push('community_energy','renewable');
+    if (e === 'ghg') t.push('ghg');
+  });
+  if (state.ghg === 'yes' || state.ghg === 'partly') t.push('ghg');
+  (state.forest||[]).forEach(f => {
+    if (f === 'no') return;
+    t.push('forestry');
+    if (f === 'wood_products') t.push('wood_products');
+    if (f === 'biomass' || f === 'firewood') t.push('biomass','low_quality_wood');
+    if (f === 'low_quality_wood') t.push('low_quality_wood','biomass');
+    if (f === 'forest_management' || f === 'forest_restore') t.push('forest_management','forestry');
+    if (f === 'agroforestry') t.push('agroforestry','shelterbelt');
+  });
+  if (state.forestGoal === 'energy') t.push('bioenergy','biomass');
+  if (state.forestGoal === 'value' || state.forestGoal === 'new_product') t.push('wood_products','forest_value');
+  if (state.minerals && state.minerals !== 'no') {
+    t.push('critical_minerals','mineral_rd');
+    if (state.minerals === 'processing') t.push('mineral_processing');
+    if (state.minerals === 'exploration') t.push('exploration');
+    if (state.minerals === 'remediation') t.push('remediation');
+  }
+  if (hasGoal('processing')) t.push('processing');
+  if (hasGoal('market')) t.push('market');
+  if (hasGoal('conservation')) t.push('conservation','wetland','riparian');
+  if (hasGoal('planning')) t.push('planning','feasibility');
+  if (state.stage === 'feasibility' || state.stage === 'planning' || state.stage === 'idea') t.push('planning','feasibility');
+  if (state.stage === 'research') t.push('research','innovation');
+  return unique(t);
+}
+
+function mapScale(){
+  const s = state.scale;
+  if (s === 'farm') return ['farm','property'];
+  if (s === 'small_business') return ['small_business','farm','property'];
+  if (s === 'multiple') return ['multiple','farm','regional'];
+  if (s === 'commercial') return ['commercial','facility','business'];
+  if (s === 'industrial') return ['industrial','facility','commercial'];
+  if (s === 'community') return ['community','municipality','regional'];
+  if (s === 'regional') return ['regional','community','multiple'];
+  return ['farm','property','small_business','commercial','community','industrial','unsure'];
+}
+
+function mapStage(){
+  const s = state.stage;
+  const m = {
+    idea: ['idea','planning'],
+    planning: ['planning','idea','design'],
+    feasibility: ['feasibility','planning'],
+    ready: ['ready','implementation'],
+    implementation: ['implementation','ready'],
+    expansion: ['expansion','implementation','operating'],
+    operating: ['operating','implementation','expansion'],
+    research: ['research','demonstration','feasibility']
+  };
+  return m[s] || ['planning','ready','implementation'];
+}
+
+function mapFundingTypes(){
+  const w = state.fundingWant;
+  if (!w || w === 'any' || w === 'unsure') return null; // no filter penalty
+  if (w === 'grant') return ['grant','cost_share','rebate'];
+  if (w === 'cost_share') return ['cost_share','grant','rebate'];
+  if (w === 'tax_credit') return ['tax_credit'];
+  if (w === 'loan' || w === 'equipment' || w === 'project_financing') return ['loan','financing','project_financing','equipment'];
+  return null;
+}
+
+function mapOrg(){
+  const c = state.client;
+  const orgs = [c];
+  if (c === 'industrial') orgs.push('business','processor');
+  if (c === 'business') orgs.push('processor');
+  if (c === 'processor') orgs.push('business');
+  if (c === 'landowner') orgs.push('farm');
+  if (c === 'greenhouse') orgs.push('farm');
+  if (state.orgContext) orgs.push(state.orgContext);
+  if (state.energyScale === 'community') orgs.push('municipality');
+  if (state.energyScale === 'industrial') orgs.push('industrial','business');
+  return unique(orgs);
+}
+
+function scoreProgram(p){
+  let score = 0;
+  const why = [];
+  const flags = p.eligibilityFlags || [];
+
+  // Indigenous-only
+  if (flags.includes('indigenous_only')) {
+    if (state.indigenous === 'yes' || state.client === 'indigenous') {
+      score += 15; why.push('Indigenous applicant context');
+    } else {
+      return { score: 0, why: [], tier: null };
+    }
+  }
+
+  // Province +30
+  const provs = p.provinces || [];
+  if (provs.includes(state.province)) {
+    score += 30;
+    why.push(provinceLabel(state.province));
+  } else if (provs.includes('OTHER') || (p.jurisdiction||'').toLowerCase().includes('federal') || (p.jurisdiction||'').toLowerCase().includes('multi')) {
+    score += 18;
+    why.push('Federal / multi-jurisdiction program');
+  } else {
+    return { score: 0, why: [], tier: null };
+  }
+
+  // Project type +25
+  const userTypes = new Set(projectTypesFromAnswers());
+  const pTypes = p.projectTypes || p.tags || [];
+  let hits = 0;
+  pTypes.forEach(t => { if (userTypes.has(t)) hits++; });
+  // also goal-level soft matches
+  if (hasGoal('water') && (p.categories||[]).includes('water')) { hits += 1; }
+  if (hasGoal('energy') && (p.categories||[]).includes('energy')) { hits += 1; }
+  if (hasGoal('waste') && (p.categories||[]).includes('waste')) { hits += 1; }
+  if (hasGoal('forestry') && (p.categories||[]).includes('forestry')) { hits += 1; }
+  if (hasGoal('land') && (p.categories||[]).includes('land')) { hits += 1; }
+  if (hasGoal('minerals') && (p.categories||[]).includes('minerals')) { hits += 1; }
+  if (hasGoal('conservation') && (p.categories||[]).includes('conservation')) { hits += 1; }
+  if (hasGoal('processing') && (p.categories||[]).includes('business')) { hits += 1; }
+
+  if (hits > 0) {
+    const pts = Math.min(25, 8 + hits * 5);
+    score += pts;
+    why.push(plainProjectWhy(p, userTypes));
+  } else if (p.id === 'efp_prerequisite' && ['farm','greenhouse','landowner'].includes(state.client)) {
+    score += 12;
+    why.push('Common first step for agricultural cost-share pathways');
+  } else {
+    // weak / no project alignment
+    score -= 5;
+  }
+
+  // Specific water program boosts (tests A–D)
+  if (arrHas(state.water,'pond_dam') && /small dam|frwip — small/i.test(p.name)) { score += 12; why.push('Pond / dugout / small dam focus'); }
+  if (arrHas(state.water,'well_decom') && /well decommission/i.test(p.name)) { score += 14; why.push('Well decommissioning focus'); }
+  if (arrHas(state.water,'irrigation') && /irrigation/i.test(p.name)) { score += 10; why.push('Irrigation project'); }
+  if (arrHas(state.water,'water_supply') && /water supply|on-farm water/i.test(p.name)) { score += 10; why.push('On-farm water supply'); }
+  if (arrHas(state.water,'water_efficiency') && /efficiency|resilience/i.test(p.name)) { score += 8; why.push('Efficiency / drought resilience focus'); }
+  if (arrHas(state.water,'livestock_water') && /livestock water/i.test(p.name)) { score += 14; why.push('Livestock watering system'); }
+  if ((arrHas(state.water,'water_supply') || arrHas(state.water,'pond_dam') || arrHas(state.water,'water_efficiency') || arrHas(state.water,'irrigation')) && /farm water resilience/i.test(p.name)) {
+    score += 12; why.push('Integrated farm water resilience');
+  }
+  if ((arrHas(state.water,'wetland') || arrHas(state.water,'drainage') || hasGoal('conservation')) && /riparian restoration/i.test(p.name)) {
+    score += 12; why.push('Riparian / waterway edge restoration');
+  }
+  if ((state.landDev === 'restore' || hasGoal('land')) && /regenerative grazing/i.test(p.name) && (state.client === 'farm' || arrHas(state.water,'livestock_water'))) {
+    score += 10; why.push('Regenerative grazing system package');
+  }
+  if (hasGoal('energy') && hasGoal('water') && /agricultural solar \+ water|solar \+ water/i.test(p.name)) {
+    score += 14; why.push('Combined solar + farm water system');
+  }
+  if ((arrHas(state.waste,'wastewater') || state.wasteGoal === 'treat') && /farm wastewater/i.test(p.name)) {
+    score += 12; why.push('Farm wastewater / effluent system');
+  }
+  if ((state.landDev === 'restore' || state.landDev === 'convert') && /^Land Restoration$/i.test(p.name)) {
+    score += 12; why.push('Land restoration package');
+  }
+  if (state.client === 'greenhouse' && /Greenhouse \/ Controlled Agriculture/i.test(p.name)) {
+    score += 14; why.push('Greenhouse / controlled-environment production');
+  }
+  if (state.client === 'processor' && /Agricultural Processing Efficiency/i.test(p.name)) {
+    score += 12; why.push('Agricultural processing efficiency');
+  }
+  if ((state.client === 'industrial' || state.scale === 'industrial' || state.client === 'business') && /Rural Industrial Resource Efficiency/i.test(p.name)) {
+    score += 12; why.push('Rural industrial resource efficiency');
+  }
+  if (state.province === 'BC' && hasGoal('water') && /water infrastructure/i.test(p.name)) { score += 10; why.push('Agricultural water infrastructure in B.C.'); }
+
+  // Org type +15
+  const orgs = mapOrg();
+  const pOrgs = p.organizationTypes || p.client_keys || [];
+  if (pOrgs.some(o => orgs.includes(o))) {
+    score += 15;
+    why.push(plainOrgWhy());
+  } else if (pOrgs.includes('farm') && state.client === 'landowner' && hasGoal('water')) {
+    score += 6;
+    why.push('Some agricultural water programs favour registered producers — confirm eligibility');
+  } else {
+    score -= 8;
+  }
+
+  // Stage +10
+  const stages = mapStage();
+  const pStages = p.stages || [];
+  if (!pStages.length || pStages.some(s => stages.includes(s) || stages.includes('planning') && s === 'design')) {
+    score += 10;
+    if (state.stage === 'feasibility' && /feasibility|essor/i.test(p.name)) why.push('Feasibility / study stage');
+    else if (state.stage === 'implementation' || state.stage === 'ready') why.push('Implementation-oriented pathway');
+  } else {
+    score += 2;
+  }
+
+  // Scale +10
+  const scales = mapScale();
+  const pScales = p.scales || [];
+  if (!pScales.length || pScales.some(s => scales.includes(s))) {
+    score += 10;
+    why.push(plainScaleWhy());
+  } else {
+    // e.g. community energy vs farm
+    if ((p.scales||[]).includes('community') && state.scale === 'farm') score -= 12;
+    if ((p.scales||[]).includes('industrial') && state.scale === 'farm') score -= 10;
+    else score -= 4;
+  }
+
+  // Funding type +5
+  const want = mapFundingTypes();
+  const pFund = p.fundingTypes || ['grant'];
+  if (!want) score += 5;
+  else if (pFund.some(f => want.includes(f))) {
+    score += 5;
+    if (want.includes('financing') || want.includes('loan')) why.push('Financing / non-grant support option');
+  } else score -= 3;
+
+  // Secondary +5
+  if (state.production === 'meets' && (pOrgs.includes('farm'))) { score += 3; why.push('Likely meets producer production threshold'); }
+  if (state.production === 'below' && (pOrgs.includes('farm') && !pOrgs.includes('landowner')) && /primary producer|\$25/i.test(p.eligibility||'')) {
+    score -= 10;
+    why.push('Many producer streams need ~$25k+ farm commodities');
+  }
+  if ((state.ghg === 'yes' || state.ghg === 'partly') && (p.categories||[]).includes('ghg')) {
+    score += 5; why.push('Greenhouse-gas reduction focus');
+  }
+  if (state.energyScale === 'community' && /community energy/i.test(p.name)) {
+    score += 8; why.push('Community-scale energy project');
+  }
+  if ((arrHas(state.perennial,'orchard') || arrHas(state.perennial,'vineyard')) && /orchard|vineyard|growing future/i.test(p.name+' '+(p.notes||''))) {
+    score += 10; why.push('Orchard / vineyard / perennial production');
+  }
+  if (arrHas(state.waste,'organic_waste') && /organic waste/i.test(p.name)) {
+    score += 10; why.push('Organic waste reduction / recovery');
+  }
+
+  score = Math.max(0, Math.min(100, score));
+  let tier = null;
+  if (score >= 80) tier = 'excellent';
+  else if (score >= 60) tier = 'strong';
+  else if (score >= 40) tier = 'possible';
+  return { score, why: unique(why).slice(0,6), tier };
+}
+
+function provinceLabel(p){
+  return ({AB:'Alberta',SK:'Saskatchewan',BC:'British Columbia',ON:'Ontario',QC:'Quebec',OTHER:'Other province'})[p] || p;
+}
+function plainOrgWhy(){
+  const m = {farm:'Agricultural property / producer',landowner:'Rural landowner',business:'Business / facility',industrial:'Industrial facility',processor:'Agricultural processor',municipality:'Community / municipal applicant',indigenous:'Indigenous organization',conservation:'Conservation organization',greenhouse:'Greenhouse / market garden',forest:'Forest / natural-area owner'};
+  return m[state.client] || 'Applicant type alignment';
+}
+function plainScaleWhy(){
+  const m = {farm:'Farm / property scale',small_business:'Small business scale',multiple:'Multi-site project',commercial:'Commercial facility scale',industrial:'Industrial scale',community:'Community scale',regional:'Regional scale'};
+  return m[state.scale] || 'Project scale considered';
+}
+function plainProjectWhy(p, userTypes){
+  if (arrHas(state.water,'pond_dam')) return 'Agricultural water storage (pond / dugout / small dam)';
+  if (arrHas(state.water,'well_decom')) return 'Well decommissioning / remediation';
+  if (arrHas(state.water,'livestock_water')) return 'Livestock watering system';
+  if (arrHas(state.water,'irrigation')) return 'Irrigation project';
+  if (arrHas(state.water,'water_supply')) return 'On-farm water supply development';
+  if (arrHas(state.water,'water_efficiency')) return 'Water-use efficiency / drought resilience';
+  if (hasGoal('water')) return 'Water-related project';
+  if (hasGoal('energy')) return 'Energy / efficiency project';
+  if (hasGoal('waste')) return 'Waste / resource recovery project';
+  if (hasGoal('forestry')) return 'Forest / wood / biomass project';
+  if (hasGoal('land')) return 'Land improvement / production project';
+  if (hasGoal('minerals')) return 'Mineral / resource development project';
+  return 'Related project characteristics';
+}
+
+function escapeHtml(str){
+  return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function tierLabel(t){
+  return ({excellent:'Excellent match',strong:'Strong potential match',possible:'Possible match'})[t] || '';
+}
+
+function renderResults(host){
+  const scored = PROGRAMS.map(p => {
+    const r = scoreProgram(p);
+    return Object.assign({}, p, { _score: r.score, _why: r.why, _tier: r.tier });
+  }).filter(p => p._tier)
+    .sort((a,b) => b._score - a._score);
+
+  const excellent = scored.filter(p => p._tier === 'excellent');
+  const strong = scored.filter(p => p._tier === 'strong');
+  const possible = scored.filter(p => p._tier === 'possible');
+
+  let html = '<div class="step active"><div class="results-head">';
+  html += '<p class="q-index">Results</p>';
+  html += '<h3>' + scored.length + ' potential pathway' + (scored.length===1?'':'s') + '</h3>';
+  html += '<p class="q-help">Ranked by how well your project description fits. This is <strong>not</strong> a determination of eligibility.</p>';
+  html += '<div class="meta-row">';
+  html += '<span class="chip">' + escapeHtml(provinceLabel(state.province)) + '</span>';
+  html += '<span class="chip">' + escapeHtml(state.client||'') + '</span>';
+  html += '<span class="chip">' + escapeHtml(state.scale||'') + '</span>';
+  html += '<span class="chip excellent">' + excellent.length + ' excellent</span>';
+  html += '<span class="chip strong">' + strong.length + ' strong</span>';
+  html += '<span class="chip possible">' + possible.length + ' possible</span>';
+  html += '</div></div>';
+
+  if (!scored.length) {
+    html += '<div class="empty">No strong matches with the current answers. Try adding a clearer project focus (for example water, land, or energy), or <a href="https://www.expandingedge.ca/contact">book a consult</a> — some opportunities run through partner organizations rather than direct applications.</div>';
+  }
+
+  function card(p){
+    let c = '<article class="card">';
+    c += '<h4>' + escapeHtml(p.name) + '</h4>';
+    c += '<p class="jur">' + escapeHtml(p.jurisdiction||'') + ' · score ' + p._score + '/100</p>';
+    c += '<div class="meta-row">';
+    c += '<span class="chip ' + p._tier + '">' + tierLabel(p._tier) + '</span>';
+    c += '<span class="chip ' + (p.status||'maybe') + '">' + escapeHtml(p.status_label||p.status||'') + '</span>';
+    if (p.maxFunding) c += '<span class="chip">Up to $' + Number(p.maxFunding).toLocaleString() + '</span>';
+    c += '</div>';
+    c += '<p class="notice"><strong>Potential match — eligibility must be confirmed with the program administrator.</strong></p>';
+    if (p.funding) c += '<p><span class="lbl">Funding</span>' + escapeHtml(p.funding) + '</p>';
+    c += '<div class="grid">';
+    c += '<p><span class="lbl">Support type</span>' + escapeHtml((p.fundingTypes||[]).join(', ')||'See program') + '</p>';
+    c += '<p><span class="lbl">Maximum (listed)</span>' + escapeHtml(p.maximum||'See program') + '</p>';
+    c += '</div>';
+    if (p.eligibility) c += '<p><span class="lbl">Eligibility notes</span>' + escapeHtml(p.eligibility) + '</p>';
+    if (p.notes) c += '<p><span class="lbl">Implementation notes</span>' + escapeHtml(p.notes) + '</p>';
+    if (p._why && p._why.length) {
+      c += '<div class="why"><strong>Why this matched</strong><ul>';
+      p._why.forEach(w => { c += '<li>' + escapeHtml(w) + '</li>'; });
+      c += '</ul></div>';
+    }
+    if (p.source) c += '<a class="official" href="' + escapeHtml(p.source) + '" target="_blank" rel="noopener noreferrer">Official source →</a>';
+    else c += '<p class="fine" style="margin-top:.5rem">Potential opportunity — additional eligibility requirements may apply. Ask us for the current official link.</p>';
+    c += '</article>';
+    return c;
+  }
+
+  function section(title, list){
+    if (!list.length) return '';
+    let s = '<h3 style="font-family:Fraunces,Georgia,serif;margin:1.25rem 0 .65rem">' + title + '</h3>';
+    list.forEach(p => { s += card(p); });
+    return s;
+  }
+
+  html += section('Excellent matches', excellent);
+  html += section('Strong potential matches', strong);
+  html += section('Possible matches', possible);
+  html += '<div class="navrow" style="margin-top:1rem"><button type="button" class="btn ghost" id="restart">Start over</button><a class="btn" href="https://www.expandingedge.ca/contact">Discuss with Expanding Edge</a></div>';
+  html += '</div>';
+  host.innerHTML = html;
+  renderProgress();
+  window.scrollTo({ top: document.querySelector('.gq').offsetTop - 12, behavior: 'smooth' });
+}
+
+// init — always start clean (refresh = new assessment)
+Object.keys(state).forEach(k => { state[k] = Array.isArray(state[k]) ? [] : null; });
+queue = rebuildQueue();
+qi = 0;
+document.getElementById('progCount').textContent = PROGRAMS.length + ' programs in engine';
+renderStep();
+</script>
+</body>
+</html>

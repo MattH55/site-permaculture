@@ -10145,7 +10145,7 @@ function pdfOpts(filename, opts = {}) {
     filename,
     image: { type: 'jpeg', quality: 0.92 },
     html2canvas: {
-      scale: 1.5,
+      scale: 2.0,
       useCORS: true,
       logging: false,
       letterRendering: true,
