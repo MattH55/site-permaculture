@@ -634,6 +634,7 @@ function extractTrees(chm, bbox, ctx) {
   }
   const canopyCoverPct = totalValid ? Math.round((coverCells / totalValid) * 100) : 0;
   const renderZones = classifyCanopyRenderZones(coverGrid, bbox, ctx.dense_cover_threshold);
+  const treeRenderTiers = buildTreeRenderTiers(renderZones);
 
   return {
     available: true,
@@ -658,6 +659,7 @@ function extractTrees(chm, bbox, ctx) {
     tree_count: instances.length,
     tree_instances: instances,
     render_zones: renderZones,
+    tree_render_tiers: treeRenderTiers,
     extraction: {
       method: 'local-maxima + watershed (lidR-style, scale-space, inverted CHM)',
       window_cells: baseWin,
@@ -768,6 +770,33 @@ function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
     });
   }
   return zones;
+}
+
+/**
+ * Map each density-classified render zone onto the output schema from
+ * billboard-impostor-trees-instructions.md. This only carries the mid/far
+ * split — 'instanced' zones (individually placed trees) become the "mid"
+ * tier's cross-billboard impostors, 'billboard_impostor' zones (dense cover)
+ * become the "far" tier's tiled cluster texture. The "near" tier (full 3D
+ * geometry for trees close to a structure) isn't classifiable here: it's a
+ * site-context distinction — proximity to a detected building — not a
+ * canopy-density one, and building-detection output isn't available to this
+ * module. It's applied client-side instead (see buildNearTrees() in
+ * public/app.js), reclassifying a subset of "mid" trees at render time.
+ * species_asset_id is left null: species-to-asset selection happens per-tree
+ * client-side (resolveTreeAsset() in public/tree-scale.js), not per-zone.
+ *
+ * @param {ReturnType<typeof classifyCanopyRenderZones>} renderZones
+ */
+function buildTreeRenderTiers(renderZones) {
+  return renderZones.map((z) => ({
+    geometry: z.geometry,
+    tier: z.render_mode === 'billboard_impostor' ? 'far' : 'mid',
+    render_mode: z.render_mode === 'billboard_impostor' ? 'tiled_texture' : 'billboard_impostor',
+    species_asset_id: null,
+    impostor_atlas: z.render_mode === 'billboard_impostor' ? null : 'nature-kit',
+    transition_blend_zone: true,
+  }));
 }
 
 /** Andrew's monotone chain convex hull. Input/output: [[x,y], ...]. */
