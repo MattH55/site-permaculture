@@ -18,6 +18,7 @@
     "enrich:plant-specs": "node scripts/enrich-plant-specs.mjs",
     "enrich:plant-specs:curated": "node scripts/enrich-plant-specs.mjs --curated-only --limit 120 --force",
     "ingest:plants": "node scripts/ingest-plant-intelligence.mjs",
+    "ingest:vegetation": "node scripts/ingest-vegetation/ingest.mjs",
     "satellite": "node scripts/satellite-indices.mjs",
     "satellite:demo": "node scripts/satellite-indices.mjs --lat 53.80 --lng -113.65"
   },
