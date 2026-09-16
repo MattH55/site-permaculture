@@ -1,0 +1,134 @@
+# ca_source_catalog — Canadian analogue of `ams_report_catalog` (v2 §1.3 / §2.3).
+#
+# This is a *catalog of places to look*, not a claim that any price was retrieved. In the
+# v1 tradition, a source that has not been retrieved stays enabled:false with a reason so
+# "not yet retrieved" is distinguishable from "retrieved and empty". Freshness of every
+# URL must be verified before use; these are starting points from the research session,
+# not permanently stable endpoints.
+#
+# Tier vocabulary is the CANADIAN hierarchy (v2 §1.3), which is parallel to — not a
+# relabel of — the U.S. one:
+#   CA Tier A  = Statistics Canada
+#   CA Tier B  = provincial ag ministries (Alberta)  [sub-federal, PDF, single-jurisdiction]
+#   CA Tier B2 = AAFC market/sector reports
+#   CA Tier C  = Census of Agriculture (aggregate value, not price)
+#   CA Tier D  = trade data (StatCan trade tables / UN Comtrade)
+#   CA Tier E  = no source
+#
+# Note (v2 §1.4): Alberta's provincial ag-ministry publications are the Canadian analogue
+# of U.S. Tier B2, but are classified as CA Tier B — in Canada there is no separate federal
+# AMS-equivalent terminal-market program above them for most of these commodities, so they
+# are the top tier actually available for prairie crops.
+sources:
+  - source_id: ca_statcan_1810024501
+    source_title: "Table 18-10-0245-01: Monthly average retail prices for selected products"
+    publishing_agency: "Statistics Canada"
+    jurisdiction: federal
+    province: null
+    report_type: "retail grocery scanner prices"
+    frequency: monthly
+    format: api
+    api_endpoint: "https://www150.statcan.gc.ca/t1/wds/rest/"
+    source_url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810024501"
+    ca_tier: A
+    enabled: false
+    coverage_note: >-
+      Confirmed via metadata pull to cover ~110 mainstream grocery staples only; does NOT
+      cover culinary herbs, pulses beyond lentils/dry beans, or microgreens. Useful as CA
+      Tier A only for the specific items it covers — do not generalize coverage.
+    reason: "Registered; not yet retrieved."
+
+  - source_id: ca_ab_cropping_alternatives
+    source_title: "Cropping Alternatives (Crop Planning Guide)"
+    publishing_agency: "Alberta Agriculture and Irrigation"
+    jurisdiction: provincial
+    province: AB
+    report_type: "annual soil-zone forecast budgets (price, yield, cost per crop)"
+    frequency: annual
+    format: pdf
+    api_endpoint: null
+    source_url: "https://www.alberta.ca/cropping-alternatives"
+    ca_tier: B
+    enabled: false
+    coverage_note: "Covers grains, oilseeds and pulses including lentils."
+    reason: "Registered; PDF-only, not yet parsed."
+
+  - source_id: ca_ab_agriprofits
+    source_title: "AgriProfit$ cost-and-return benchmarks"
+    publishing_agency: "Alberta Agriculture and Irrigation"
+    jurisdiction: provincial
+    province: AB
+    report_type: "realized historical cost-and-return benchmarks by soil zone"
+    frequency: annual
+    format: pdf
+    api_endpoint: null
+    source_url: "https://www.alberta.ca/agriprofits"
+    ca_tier: B
+    enabled: false
+    coverage_note: "Realized (not forecast) historical values."
+    reason: "Registered; PDF-only, not yet parsed."
+
+  - source_id: ca_ab_weekly_crop_market_review
+    source_title: "Alberta Weekly Crop Market Review"
+    publishing_agency: "Alberta Agriculture and Irrigation"
+    jurisdiction: provincial
+    province: AB
+    report_type: "weekly cash-bid report"
+    frequency: weekly
+    format: pdf
+    api_endpoint: null
+    source_url: "https://www.alberta.ca/weekly-crop-market-review"
+    ca_tier: B
+    enabled: false
+    coverage_note: >-
+      Covers flaxseed, mustard and lentils cash bids. The best current CA source for the
+      specialty pulse/oilseed crops. Chickpea coverage VARIES BY YEAR — verify per issue,
+      do not assume present.
+    reason: "Registered; PDF-only, not yet parsed."
+
+  - source_id: ca_aafc_sector_reports
+    source_title: "AAFC market and sector reports"
+    publishing_agency: "Agriculture and Agri-Food Canada"
+    jurisdiction: federal
+    province: null
+    report_type: "sector outlook and market reports"
+    frequency: periodic
+    format: html
+    api_endpoint: null
+    source_url: "https://agriculture.canada.ca/en/market-information"
+    ca_tier: B2
+    enabled: false
+    coverage_note: "Official but analytical/outlook-oriented rather than a price survey."
+    reason: "Registered; not yet retrieved."
+
+  - source_id: ca_census_agriculture
+    source_title: "Census of Agriculture"
+    publishing_agency: "Statistics Canada"
+    jurisdiction: federal
+    province: null
+    report_type: "quinquennial agricultural census"
+    frequency: quinquennial
+    format: api
+    api_endpoint: "https://www150.statcan.gc.ca/t1/wds/rest/"
+    source_url: "https://www.statcan.gc.ca/en/census-agriculture"
+    ca_tier: C
+    enabled: false
+    coverage_note: "Aggregate value, acreage and operation counts — NOT a unit price."
+    reason: "Registered; not yet retrieved."
+
+  - source_id: ca_trade_statcan
+    source_title: "Canadian International Merchandise Trade (StatCan) / UN Comtrade"
+    publishing_agency: "Statistics Canada"
+    jurisdiction: federal
+    province: null
+    report_type: "customs trade data"
+    frequency: monthly
+    format: api
+    api_endpoint: null
+    source_url: "https://www150.statcan.gc.ca/t1/tbl1/en/cv.action?pid=1210000101"
+    ca_tier: D
+    enabled: false
+    coverage_note: >-
+      Import/export unit value = value / quantity. A border proxy, never a farm, wholesale
+      or retail price. Requires an HS code chosen and justified per commodity (v1 §32).
+    reason: "Registered; no HS-code map shipped in this build."

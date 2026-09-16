@@ -1,0 +1,767 @@
+# ============================================================================
+# wide_source_catalog.yaml — v3 §30 master source catalog
+#
+# A catalog of *places price data credibly exists*, not of retrieved observations.
+# Every entry carries the §30 fields plus matching metadata (crop_groups / crops /
+# env_key / market_level) used by wide_source_discovery.
+#
+# HONESTY CONTRACT: nothing here is fetched in this build. access_status records *why*
+# (requires_key / manual_only / disabled-no-parser). A catalog entry must never be read
+# as evidence of a price — only as a defensible place to look (§2, §45).
+#
+# crop_groups values: "all" = any seed crop; otherwise a subset of the v2 closed group
+# taxonomy. crops: explicit seed-crop keys for commodity-specific sources (§1.5).
+# ============================================================================
+catalog_version: "3.0"
+last_checked: "2026-09-16"
+
+sources:
+  # ------------------------------------------------------------- §9 USDA NASS (US)
+  - source_id: nass_quickstats
+    source_name: "USDA NASS QuickStats"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies (USD/lb, USD/cwt, USD/ton)"
+    methodology_url: "https://www.nass.usda.gov/Data_and_Statistics/"
+    data_url: "https://quickstats.nass.usda.gov/api"
+    source_url: "https://www.nass.usda.gov/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: ["all"]
+    crops: []
+    notes: "Prices Received and survey program; commodity mapping must be validated per crop (§4.10)."
+  - source_id: nass_prices_received_monthly
+    source_name: "USDA NASS Agricultural Prices (monthly Prices Received)"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies"
+    methodology_url: "https://usda.library.cornell.edu/concern/publications/c821gj76b"
+    data_url: "https://quickstats.nass.usda.gov/"
+    source_url: "https://www.nass.usda.gov/Publications/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: ["pulse_specialty", "oilseed_specialty"]
+    crops: []
+    notes: "~100-commodity program; herbs/mushrooms reach NASS via special surveys instead (§1.5)."
+  - source_id: nass_special_mushrooms
+    source_name: "USDA NASS Mushrooms (annual special survey)"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD/lb"
+    methodology_url: "https://usda.library.cornell.edu/"
+    data_url: "https://quickstats.nass.usda.gov/"
+    source_url: "https://www.nass.usda.gov/Publications/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: ["mushroom"]
+    crops: []
+    verbatim_series_hint: "MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB"
+    notes: "Per-variety breakdown (Agaricus/Shiitake/Oyster/Other); shiitake must match the specialty series, not the Agaricus-dominated generic series (§50)."
+  - source_id: nass_special_maple_syrup
+    source_name: "USDA NASS Maple Syrup (annual)"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD/gal"
+    methodology_url: "https://usda.library.cornell.edu/"
+    data_url: "https://quickstats.nass.usda.gov/"
+    source_url: "https://www.nass.usda.gov/Publications/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: []
+    crops: ["maple_syrup"]
+    verbatim_series_hint: "MAPLE SYRUP - PRICE RECEIVED, MEASURED IN $ / GAL"
+    notes: "Genuine per-gallon producer price; USD/lb requires documented density conversion."
+  - source_id: nass_special_floriculture
+    source_name: "USDA NASS Floriculture Crops (annual)"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: aggregate_sales_value
+    market_level: wholesale
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD (wholesale value by category)"
+    methodology_url: "https://usda.library.cornell.edu/"
+    data_url: "https://quickstats.nass.usda.gov/"
+    source_url: "https://www.nass.usda.gov/Publications/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: ["botanical_ornamental"]
+    crops: []
+    notes: "Wholesale VALUE, not per-unit price (§1.5/§63): economic value only, never a price."
+  - source_id: nass_census_horticultural_specialties
+    source_name: "USDA NASS Census of Horticultural Specialties"
+    organization: "USDA National Agricultural Statistics Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: aggregate_sales_value
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: quinquennial
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD (sales value)"
+    methodology_url: "https://www.nass.usda.gov/AgCensus/"
+    data_url: "https://quickstats.nass.usda.gov/"
+    source_url: "https://www.nass.usda.gov/AgCensus/"
+    access_status: requires_key
+    env_key: NASS_API_KEY
+    crop_groups: ["botanical_ornamental", "medicinal_herb"]
+    crops: []
+    notes: "Operations/area/sales only (§1.5); lavender appears as a line item, but value-only."
+  # ------------------------------------------- §10 USDA AMS Specialty Crops Market News
+  # AMS covers hundreds of commodities across terminal, shipping-point, retail, movement,
+  # trend and organic datasets; each market level is a DIFFERENT supply-chain concept and
+  # is cataloged as its own entry so observations never get combined (§12).
+  - source_id: ams_terminal_market
+    source_name: "USDA AMS Specialty Crops Terminal Market Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: terminal_market_price
+    market_level: terminal
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: daily
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies (per package; package weight preserved, §35)"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice", "botanical_ornamental"]
+    crops: []
+    notes: "Major domestic wholesale terminal markets; commodity/variety/package/grade dimensions preserved."
+  - source_id: ams_shipping_point
+    source_name: "USDA AMS Specialty Crops Shipping Point Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: shipping_point_price
+    market_level: shipping_point
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: daily
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies (per package; differentiated by origin/variety/size/grade)"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruit-and-vegetable-shipping-point-market-price-reports"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruit-and-vegetable-shipping-point-market-price-reports"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice"]
+    crops: []
+    notes: "Production-area FOB-type prices; never combined with terminal-market observations (§12)."
+  - source_id: ams_movement
+    source_name: "USDA AMS Specialty Crops Movement Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: other
+    market_level: movement
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: daily
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "volume (not a price)"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice"]
+    crops: []
+    notes: "Volume/movement data: source_found_not_price territory (§2); never read as a price."
+  - source_id: ams_retail
+    source_name: "USDA AMS Specialty Crops Retail Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: retail_price
+    market_level: retail
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: weekly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "per retail unit"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice"]
+    crops: []
+    notes: "Advertised retail prices; market_level=retail, never farm-gate (§14 analog)."
+  - source_id: ams_organic
+    source_name: "USDA AMS Specialty Crops Organic Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: wholesale_price
+    market_level: wholesale
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: weekly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies"
+    methodology_url: "https://www.ams.usda.gov/market-news/organic"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/organic"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice"]
+    crops: []
+    notes: "Organic series kept distinct from conventional (§50 organic/conventional split)."
+  - source_id: ams_imports_ports
+    source_name: "USDA AMS Specialty Crops Imports / Ports of Entry Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: "ports of entry"
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: wholesale_price
+    market_level: port_of_entry
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: daily
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "varies"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy", "root_spice"]
+    crops: []
+    notes: "Prices at ports of entry for imported specialty crops (ginger, turmeric, wasabi); origin recorded."
+  - source_id: ams_farmers_market
+    source_name: "USDA AMS Farmers Market / Direct Market Reports"
+    organization: "USDA Agricultural Marketing Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_MARKET_NEWS
+    price_type: retail_price
+    market_level: farmers_market
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: false
+    frequency: weekly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "per retail unit"
+    methodology_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    data_url: "https://mymarketnews.ams.usda.gov/mars-api/"
+    source_url: "https://www.ams.usda.gov/market-news/fruits-vegetables"
+    access_status: requires_key
+    env_key: AMS_API_KEY
+    crop_groups: ["culinary_herb", "mushroom", "microgreen_leafy"]
+    crops: []
+    notes: "§24 direct-market prices; never mixed with wholesale (§24)."
+  # ------------------------------------------------------------- §13 USDA ERS (US)
+  - source_id: ers_vegetables_pulses
+    source_name: "USDA ERS Vegetables and Pulses Data (trade & prices by commodity)"
+    organization: "USDA Economic Research Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: false
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD (trade value), volume, unit value; price indexes; selected retail prices"
+    methodology_url: "https://www.ers.usda.gov/data-products/vegetables-and-pulses-data"
+    data_url: "https://www.ers.usda.gov/data-products/vegetables-and-pulses-data/trade-and-prices-by-category-and-commodity"
+    source_url: "https://www.ers.usda.gov/topics/crops/vegetables-and-pulses"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["pulse_specialty", "mushroom", "microgreen_leafy"]
+    crops: []
+    notes: "Updated 2026-09-15. Covers mushrooms. Unit value = trade_unit_value, NEVER producer price (§19/§64); indexes stored as price_type=index (§65)."
+  - source_id: ers_vegetables_pulses_yearbook
+    source_name: "USDA ERS Vegetables and Pulses Yearbook"
+    organization: "USDA Economic Research Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: false
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD/cwt (season-average price)"
+    methodology_url: "https://www.ers.usda.gov/topics/crops/vegetables-and-pulses/data"
+    data_url: "https://www.ers.usda.gov/data-products/vegetables-and-pulses-yearbook-tables"
+    source_url: "https://www.ers.usda.gov/topics/crops/vegetables-and-pulses"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["pulse_specialty", "mushroom"]
+    crops: []
+    notes: "Season-average prices for U.S. vegetables, potatoes, pulse crops and mushrooms (§13)."
+  - source_id: ers_fruit_tree_nuts
+    source_name: "USDA ERS Fruit and Tree Nuts Data (trade & prices by commodity)"
+    organization: "USDA Economic Research Service"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: false
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "USD (trade value), volume, unit value; price indexes; selected retail prices"
+    methodology_url: "https://www.ers.usda.gov/data-products/fruit-and-tree-nuts-data"
+    data_url: "https://www.ers.usda.gov/data-products/fruit-and-tree-nuts-data/trade-and-prices-by-category-and-commodity"
+    source_url: "https://www.ers.usda.gov/topics/crops/fruit-tree-nuts"
+    access_status: disabled
+    env_key: null
+    crop_groups: []
+    crops: []
+    notes: "Updated 2026-09-15. Cataloged for completeness; limited seed-list overlap."
+  - source_id: ers_retail_prices
+    source_name: "USDA ERS Selected Retail Prices (within data products)"
+    organization: "USDA Economic Research Service"
+    country: "US"
+    region: null
+    source_class: RETAIL_DATA
+    price_type: retail_price
+    market_level: retail
+    api_available: false
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "per retail unit"
+    methodology_url: "https://www.ers.usda.gov/data-products/"
+    data_url: "https://www.ers.usda.gov/data-products/"
+    source_url: "https://www.ers.usda.gov/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["pulse_specialty", "mushroom"]
+    crops: []
+    notes: "§14: market_level=retail, source_system=USDA_ERS; NEVER represented as farm-gate."
+  # ------------------------------------------------------------- §20 US official trade
+  - source_id: usitc_dataweb
+    source_name: "USITC DataWeb"
+    organization: "U.S. International Trade Commission"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_TRADE
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "customs value / quantity -> trade_unit_value (§19)"
+    methodology_url: "https://dataweb.usitc.gov/"
+    data_url: "https://dataweb.usitc.gov/"
+    source_url: "https://www.usitc.gov/"
+    access_status: requires_auth
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "HS-code queries via crop_code_map (§54); unit value labeled trade_unit_value only."
+  - source_id: us_census_international_trade
+    source_name: "U.S. Census Bureau International Trade (USA Trade Online)"
+    organization: "U.S. Census Bureau, Foreign Trade Division"
+    country: "US"
+    region: null
+    source_class: GOVERNMENT_TRADE
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "customs value / quantity -> trade_unit_value (§19)"
+    methodology_url: "https://www.census.gov/foreign-trade/"
+    data_url: "https://usatrade.census.gov/"
+    source_url: "https://www.census.gov/foreign-trade/"
+    access_status: requires_auth
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Official U.S. import/export statistics; safeguards of §64 apply."
+  # ------------------------------------------------------------- §15 Statistics Canada
+  - source_id: statcan_farm_product_prices
+    source_name: "Statistics Canada Farm Product Price Index / agricultural prices tables"
+    organization: "Statistics Canada"
+    country: "CA"
+    region: "federal"
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: CAD
+    unit: "index and CAD prices (table-specific)"
+    methodology_url: "https://www150.statcan.gc.ca/"
+    data_url: "https://www150.statcan.gc.ca/n1/en/type/data"
+    source_url: "https://www.statcan.gc.ca/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Exact StatCan table/vector IDs must be recorded per series (§15); indexes stored as price_type=index (§65)."
+  - source_id: statcan_census_agriculture
+    source_name: "Statistics Canada Census of Agriculture"
+    organization: "Statistics Canada"
+    country: "CA"
+    region: "federal"
+    source_class: GOVERNMENT_STATISTICS
+    price_type: aggregate_sales_value
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: quinquennial
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: CAD
+    unit: "CAD (sales value)"
+    methodology_url: "https://www.statcan.gc.ca/en/census-agriculture"
+    data_url: "https://www150.statcan.gc.ca/n1/en/type/data"
+    source_url: "https://www.statcan.gc.ca/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Value-only: economic_value_available, price_available=false (§63)."
+  - source_id: statcan_trade
+    source_name: "Statistics Canada International Trade (CIMT)"
+    organization: "Statistics Canada"
+    country: "CA"
+    region: "federal"
+    source_class: GOVERNMENT_TRADE
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: true
+    download_available: true
+    scrape_available: true
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: CAD
+    unit: "CAD value / quantity -> trade_unit_value (§19)"
+    methodology_url: "https://www150.statcan.gc.ca/"
+    data_url: "https://www150.statcan.gc.ca/n1/en/type/data"
+    source_url: "https://www.statcan.gc.ca/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Canadian HS-level imports/exports; safeguards of §64 apply."
+  # ------------------------------------- §16 Canadian provincial agricultural ministries
+  # Sub-national government data is still authoritative government data (§16). Cataloged
+  # manual_only until province-specific fetchers exist; loader supplies §30 defaults.
+  - {source_id: prov_ab_agriculture_prices, source_name: "Alberta Agriculture market information", organization: "Alberta Agriculture and Irrigation", country: "CA", region: "AB", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: monthly, currency: CAD, source_url: "https://www.alberta.ca/agriculture-and-rural-economy", access_status: manual_only, crop_groups: ["all"], notes: "Specialty crops / pulses / market garden price reporting varies by season."}
+  - {source_id: prov_bc_agriculture_prices, source_name: "British Columbia Ministry of Agriculture market reports", organization: "B.C. Ministry of Agriculture and Food", country: "CA", region: "BC", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood", access_status: manual_only, crop_groups: ["all"], notes: "Greenhouse, specialty vegetable and berry price reporting."}
+  - {source_id: prov_sk_agriculture_prices, source_name: "Saskatchewan Agriculture market reports", organization: "Saskatchewan Ministry of Agriculture", country: "CA", region: "SK", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.saskatchewan.ca/business/agriculture-natural-resources-and-industry", access_status: manual_only, crop_groups: ["pulse_specialty", "oilseed_specialty"], notes: "Pulse/specialty-crop emphasis."}
+  - {source_id: prov_mb_agriculture_prices, source_name: "Manitoba Agriculture market reports", organization: "Manitoba Agriculture", country: "CA", region: "MB", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.gov.mb.ca/agriculture/", access_status: manual_only, crop_groups: ["pulse_specialty", "oilseed_specialty", "culinary_herb"], notes: "Potato/vegetable and specialty crop reporting."}
+  - {source_id: prov_on_agriculture_prices, source_name: "OMAFRA commodity price information", organization: "Ontario Ministry of Agriculture, Food and Rural Affairs", country: "CA", region: "ON", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.ontario.ca/page/ministry-agriculture-food-and-rural-affairs", access_status: manual_only, crop_groups: ["all"], notes: "Greenhouse, tender fruit, ginseng and specialty vegetable reporting."}
+  - {source_id: prov_qc_agriculture_prices, source_name: "MAPAQ prix et marches agricoles", organization: "Ministere de l'Agriculture, des Pecheries et de l'Alimentation du Quebec", country: "CA", region: "QC", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.quebec.ca/agriculture", access_status: manual_only, crop_groups: ["all"], notes: "Maple syrup (federation quotas), market garden and organic price reporting; French-language sources."}
+  - {source_id: prov_ns_agriculture_prices, source_name: "Nova Scotia Agriculture market information", organization: "Nova Scotia Department of Agriculture", country: "CA", region: "NS", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://novascotia.ca/agri/", access_status: manual_only, crop_groups: ["all"], notes: "Wild blueberry and specialty crop emphasis."}
+  - {source_id: prov_nb_agriculture_prices, source_name: "New Brunswick Agriculture market information", organization: "New Brunswick Department of Agriculture, Aquaculture and Fisheries", country: "CA", region: "NB", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www2.gnb.ca/content/gnb/en/departments/10.html", access_status: manual_only, crop_groups: ["all"], notes: "Potato and specialty crop reporting."}
+  - {source_id: prov_nl_agriculture_prices, source_name: "Newfoundland and Labrador Agriculture market information", organization: "Dept. of Fisheries, Forestry and Agriculture", country: "CA", region: "NL", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.gov.nl.ca/ffa/", access_status: manual_only, crop_groups: ["all"], notes: "Small sector; berry (partridgeberry/bakeapple) emphasis."}
+  - {source_id: prov_pe_agriculture_prices, source_name: "Prince Edward Island Agriculture market information", organization: "PEI Department of Agriculture", country: "CA", region: "PE", source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: periodic, currency: CAD, source_url: "https://www.princeedwardisland.ca/en/topic/agriculture", access_status: manual_only, crop_groups: ["all"], notes: "Potato-heavy sector; small specialty crop base."}
+  # ------------------------------------------------------------- §18 FAOSTAT (global)
+  - source_id: faostat_producer_prices
+    source_name: "FAOSTAT Producer Prices domain"
+    organization: "Food and Agriculture Organization of the United Nations"
+    country: "GLOBAL"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: producer_price
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: "LCU + USD (per item/element)"
+    unit: "LCU/tonne, USD/tonne (per item)"
+    methodology_url: "https://www.fao.org/faostat/en/#data/PP"
+    data_url: "https://fenixservices.fao.org/faostat/api/v1/"
+    source_url: "https://www.fao.org/faostat/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "§18: cross-country comparability NOT assumed; methodology and unit checked per item before any comparison."
+  - source_id: faostat_value_of_production
+    source_name: "FAOSTAT Value of Agricultural Production"
+    organization: "Food and Agriculture Organization of the United Nations"
+    country: "GLOBAL"
+    region: null
+    source_class: GOVERNMENT_STATISTICS
+    price_type: aggregate_sales_value
+    market_level: producer
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: "LCU + USD"
+    unit: "value (1000 LCU / 1000 USD)"
+    methodology_url: "https://www.fao.org/faostat/en/#data/QV"
+    data_url: "https://fenixservices.fao.org/faostat/api/v1/"
+    source_url: "https://www.fao.org/faostat/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Value domain: economic_value_available only (§63); a price requires a valid quantity denominator from the SAME dataset."
+  - source_id: faostat_trade
+    source_name: "FAOSTAT Crops and livestock products / Detailed Trade Matrix"
+    organization: "Food and Agriculture Organization of the United Nations"
+    country: "GLOBAL"
+    region: null
+    source_class: GOVERNMENT_TRADE
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: annual
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "1000 USD / tonnes -> trade_unit_value (§19)"
+    methodology_url: "https://www.fao.org/faostat/en/#data/TM"
+    data_url: "https://fenixservices.fao.org/faostat/api/v1/"
+    source_url: "https://www.fao.org/faostat/"
+    access_status: disabled
+    env_key: null
+    crop_groups: ["all"]
+    crops: []
+    notes: "Trade value/quantity pairs yield trade_unit_value only (§64 safeguards)."
+  # ------------------------------------------------------------- §19 UN Comtrade
+  - source_id: un_comtrade
+    source_name: "UN Comtrade Database"
+    organization: "United Nations Statistics Division"
+    country: "GLOBAL"
+    region: null
+    source_class: GOVERNMENT_TRADE
+    price_type: trade_unit_value
+    market_level: trade
+    api_available: true
+    download_available: true
+    scrape_available: false
+    historical_available: true
+    frequency: monthly
+    current_data: true
+    coverage_start: null
+    coverage_end: null
+    currency: USD
+    unit: "customs value / netweight -> trade_unit_value (§19)"
+    methodology_url: "https://comtradeapi.un.org/"
+    data_url: "https://comtradeapi.un.org/data/v1/"
+    source_url: "https://comtradeplus.un.org/"
+    access_status: requires_key
+    env_key: COMTRADE_API_KEY
+    crop_groups: ["all"]
+    crops: []
+    notes: "HS-code queries via crop_code_map (§54); unit value computed ONLY when value and quantity are both valid and units compatible (§19)."
+  # ------------------------------------- §17 other national statistical agencies
+  # Source catalog FIRST (§17): parsers are NOT implemented in this build; every entry is
+  # manual_only/disabled until a country-specific adapter lands under parsers/.
+  - {source_id: eurostat_comext, source_name: "Eurostat COMEXT / agricultural price statistics", organization: "Eurostat", country: "EU", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: monthly, currency: EUR, source_url: "https://ec.europa.eu/eurostat/", data_url: "https://ec.europa.eu/eurostat/api/", access_status: disabled, crop_groups: ["all"], notes: "EU-level; saffron/lavender producing regions (ES, FR, IT) relevant."}
+  - {source_id: uk_defra_prices, source_name: "UK Defra agricultural price statistics", organization: "Department for Environment, Food and Rural Affairs", country: "GB", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: monthly, currency: GBP, source_url: "https://www.gov.uk/government/organisations/department-for-environment-food-rural-affairs", access_status: manual_only, crop_groups: ["all"], notes: "Includes horticultural price reporting."}
+  - {source_id: japan_maff_prices, source_name: "Japan MAFF wholesale market / price statistics", organization: "Ministry of Agriculture, Forestry and Fisheries (Japan)", country: "JP", region: null, source_class: GOVERNMENT_STATISTICS, price_type: wholesale_price, market_level: wholesale, frequency: daily, currency: JPY, source_url: "https://www.maff.go.jp/", access_status: manual_only, crop_groups: ["mushroom", "root_spice", "culinary_herb", "microgreen_leafy"], notes: "Central wholesale market prices; key for wasabi/shiitake (§52)."}
+  - {source_id: china_nbs_prices, source_name: "China NBS agricultural producer prices", organization: "National Bureau of Statistics of China", country: "CN", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: quarterly, currency: CNY, source_url: "https://www.stats.gov.cn/", access_status: manual_only, crop_groups: ["all"], notes: "Producer price indexes; item-level specialty crop prices uncertain."}
+  - {source_id: india_agri_prices, source_name: "India Ministry of Agriculture / Agmarknet mandi prices", organization: "Directorate of Marketing and Inspection (Agmarknet)", country: "IN", region: null, source_class: GOVERNMENT_MARKET_NEWS, price_type: wholesale_price, market_level: wholesale, frequency: daily, currency: INR, source_url: "https://agmarknet.gov.in/", access_status: disabled, crop_groups: ["all"], notes: "Mandi (wholesale) prices by market; saffron/turmeric/ginger relevant; API/data.gov.in access."}
+  - {source_id: australia_abares, source_name: "ABARES / ABS agricultural commodity statistics", organization: "Australian Bureau of Agricultural and Resource Economics and Sciences", country: "AU", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: annual, currency: AUD, source_url: "https://www.agriculture.gov.au/abares", access_status: manual_only, crop_groups: ["all"], notes: "Commodity statistics; unit values for trade."}
+  - {source_id: nz_stats_nz, source_name: "Stats NZ agricultural / trade statistics", organization: "Stats NZ", country: "NZ", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: annual, currency: NZD, source_url: "https://www.stats.govt.nz/", access_status: manual_only, crop_groups: ["all"], notes: "Horticulture export unit values."}
+  - {source_id: brazil_ibge, source_name: "IBGE agricultural statistics (PAM/SPV)", organization: "Instituto Brasileiro de Geografia e Estatistica", country: "BR", region: null, source_class: GOVERNMENT_STATISTICS, price_type: producer_price, market_level: producer, frequency: annual, currency: BRL, source_url: "https://www.ibge.gov.br/", access_status: manual_only, crop_groups: ["all"], notes: "Municipal crop statistics; producer price series via SIDRA."}
+  - {source_id: chile_odepa, source_name: "ODEPA precios de productos agropecuarios", organization: "Oficina de Estudios y Politicas Agrarias (Chile)", country: "CL", region: null, source_class: GOVERNMENT_MARKET_NEWS, price_type: farm_gate_price, market_level: farm_gate, frequency: weekly, currency: CLP, source_url: "https://www.odepa.gob.cl/", access_status: manual_only, crop_groups: ["all"], notes: "Farm-gate and wholesale prices; saffron/ specialty crop coverage uncertain."}
+  - {source_id: mexico_sader, source_name: "Mexico SADER / SIACON-NG market prices", organization: "Secretaria de Agricultura y Desarrollo Rural", country: "MX", region: null, source_class: GOVERNMENT_MARKET_NEWS, price_type: wholesale_price, market_level: wholesale, frequency: weekly, currency: MXN, source_url: "https://www.gob.mx/agricultura", access_status: manual_only, crop_groups: ["all"], notes: "Central de abasto wholesale prices."}
+  # ------------------------------------- §21/§22/§23/§26 non-government discovery layers
+  # Cataloged as LAYERS, not invented organizations: discovery records the layer and its
+  # search strategy; specific organizations get added only when verified to exist.
+  - {source_id: layer_producer_organizations, source_name: "Producer organizations / marketing boards (discovery layer)", organization: "various", country: "GLOBAL", region: null, source_class: PRODUCER_ORGANIZATION, price_type: farm_gate_price, market_level: farm_gate, frequency: varies, currency: "varies", source_url: null, access_status: manual_only, crop_groups: ["all"], notes: "§21: grower associations, commodity boards, co-ops; authority scored 4 but NEVER silently promoted to government quality (§31)."}
+  - {source_id: layer_auction_markets, source_name: "Agricultural auction markets (discovery layer)", organization: "various", country: "GLOBAL", region: null, source_class: AUCTION_MARKET, price_type: auction_price, market_level: auction, frequency: varies, currency: "varies", source_url: null, access_status: manual_only, crop_groups: ["all"], notes: "§22: lot-level low/high/average prices; market_level=auction preserved."}
+  - {source_id: layer_university_extension, source_name: "University extension price surveys & budgets (discovery layer)", organization: "various", country: "US", region: null, source_class: UNIVERSITY_EXTENSION, price_type: producer_price, market_level: producer, frequency: periodic, currency: USD, source_url: null, access_status: manual_only, crop_groups: ["all"], notes: "§23: a survey-based producer price IS a price observation; an enterprise budget is NOT a market price."}
+  - {source_id: layer_commercial_listings, source_name: "Commercial specialty produce listings (opt-in layer)", organization: "various", country: "GLOBAL", region: null, source_class: COMMERCIAL_DATA, price_type: wholesale_price, market_level: wholesale, frequency: varies, currency: "varies", source_url: null, access_status: disabled, crop_groups: ["all"], notes: "§26: vendor/product/package/listed_price/package_weight captured verbatim; NEVER promoted above authority 1; opt-in only."}
+
+# ------------------------------------------------------------- §48/§49 candidate crops
+# Commodity universes from which the candidate-crop generator draws. Terms here are
+# catalog metadata (names known to appear in each universe's publications); the heuristic
+# tags (§49) decide candidacy, and a human confirms before any crop enters the seed list.
+commodity_universes:
+  nass_specialty:
+    - {name: "hops", source: "NASS Hops annual report", tags: ["specialty"]}
+    - {name: "honey", source: "NASS Honey annual report", tags: ["specialty"]}
+    - {name: "mint oil", source: "NASS Prices Received", tags: ["essential_oil"]}
+    - {name: "hemp", source: "NASS Hemp (specialty)", tags: ["fiber", "specialty"]}
+    - {name: "floriculture crops", source: "NASS Floriculture Crops", tags: ["floriculture"]}
+    - {name: "nursery crops", source: "NASS Census of Horticultural Specialties", tags: ["nursery"]}
+  ams_specialty:
+    - {name: "lemongrass", source: "AMS specialty herbs reports", tags: ["herb", "aromatic"]}
+    - {name: "galangal", source: "AMS specialty roots reports", tags: ["root_crop", "spice"]}
+    - {name: "kaffir lime leaves", source: "AMS specialty herbs reports", tags: ["herb", "leaf"]}
+    - {name: "moringa", source: "AMS specialty greens reports", tags: ["leaf", "medicinal"]}
+    - {name: "edible flowers", source: "AMS specialty reports", tags: ["edible_flower"]}
+    - {name: "sprouts", source: "AMS specialty reports", tags: ["sprout"]}
+    - {name: "truffles", source: "AMS specialty reports", tags: ["mushroom", "high_value"]}
+  faostat_items:
+    - {name: "quinoa", source: "FAOSTAT crops item list", tags: ["pseudocereal"]}
+    - {name: "agave", source: "FAOSTAT crops item list", tags: ["specialty"]}
+    - {name: "vanilla", source: "FAOSTAT crops item list", tags: ["spice", "high_value"]}
+    - {name: "cardamom", source: "FAOSTAT crops item list", tags: ["spice", "high_value"]}
+    - {name: "saffron", source: "FAOSTAT crops item list (via spices aggregate)", tags: ["spice", "high_value"]}
+    - {name: "ginseng", source: "FAOSTAT crops item list (via roots)", tags: ["medicinal", "root_crop"]}

@@ -1,0 +1,340 @@
+# Land Intelligence — Alberta specialty-crop price source registry
+#
+# Every source declares exactly one price_type. Rows are NEVER blended across
+# price_type values; the frontend and every aggregate must filter on it first.
+#
+# `enabled: false` means registered-but-not-ingested (decision deferred).
+# `values_included: false` means the source is externalized by policy: it is
+# recorded as a citation only, and no number from it may enter the dataset.
+
+version: 1
+generated_for: "boost-yields / Alberta specialty-crop price pipeline"
+default_licence_note: >
+  Official government sources below are Open Government Licence - Canada or the
+  province's equivalent open-data terms unless a source overrides it.
+
+# ---------------------------------------------------------------------------
+# Normalization target
+# ---------------------------------------------------------------------------
+normalization:
+  target_currency: CAD
+  target_unit: tonne            # metric tonne (1000 kg)
+  keep_original: true           # original value + unit are always retained
+  # Bushel mass is commodity-specific. There is no generic bu -> kg factor.
+  # Resolution order for a $/bu observation:
+  #   1. explicit metric twin series in the same source (preferred)
+  #   2. commodity test weight declared by the source (Symbols sheet / NOTE line)
+  #   3. crop_sales cross-check (yield x price == reported $/acre sales)
+  #   4. quarantine — the row is written with normalized value null and a reason
+  bushel_policy: explicit-only
+
+# ---------------------------------------------------------------------------
+# price_type taxonomy (closed)
+# ---------------------------------------------------------------------------
+price_types:
+  average_farm_price:
+    label: "Average farm price"
+    definition: >
+      Season-average price received by producers at the farm gate for the crop
+      as a whole. Official statistics. Not a point-in-time quote.
+    usable_for_farm_economics: true
+  insurance_reference_price:
+    label: "Crop insurance / AgriStability reference price"
+    definition: >
+      Administrative price set by AFSC (or a federal price review committee) for
+      indemnity or program calculations. A policy parameter, not a transacted price.
+    usable_for_farm_economics: false
+    caveat: "Usable as an indexed floor / claims parameter only. Do not present as a price a farmer obtained."
+  expected_market_price:
+    label: "Expected market price (plan-time)"
+    definition: >
+      Price assumed in a cost-of-return budget at planning time. Forward-looking
+      and assumption-driven; it embeds the author's marketing expectation.
+    usable_for_farm_economics: false
+    caveat: "Planning assumption. Must never be averaged with realized farm prices."
+  retail_price:
+    label: "Retail (scanner) price"
+    definition: >
+      Consumer point-of-sale price for a packaged product. Includes retail margin,
+      processing and distribution. NOT a farm-gate price.
+    usable_for_farm_economics: false
+    caveat: "Never substitute for farm-gate. Package units are frequently not mass-based."
+  wholesale_price:
+    label: "Wholesale asking price"
+    definition: >
+      Wholesaler asking price at a named market, low-high range per package.
+      Not a completed transaction and not farm-gate.
+    usable_for_farm_economics: false
+  terminal_local_price:
+    label: "Terminal / local elevator feed-grain price"
+    definition: >
+      Published non-board (free market) price at a named Alberta delivery point.
+      Elevator-side, before basis/handling; closer to farm-gate than retail, but
+      still not a producer realization statistic.
+    usable_for_farm_economics: false
+    caveat: "Point-of-delivery price. Basis to an individual farm is not included."
+  trade_unit_value:
+    label: "Trade unit value (value / quantity)"
+    definition: "Border price implied from customs value and quantity. A proxy, not a producer price."
+    usable_for_farm_economics: false
+  aafc_outlook_price:
+    label: "AAFC price outlook"
+    definition: "Model-based forward price published in AAFC Analysis & Outlook commodity outlooks."
+    usable_for_farm_economics: false
+    caveat: "A forecast, with an AAFC-published range where available. Label as forecast in UI."
+  commercial_bid_reference_link:
+    label: "Commercial cash bid (external reference only)"
+    definition: >
+      Licensed / restricted commercial elevator or exchange cash bid. Values are
+      EXTERNALIZED BY POLICY and are never ingested into the normalized dataset.
+    usable_for_farm_economics: false
+    values_included: false
+
+
+# ---------------------------------------------------------------------------
+# Ingested sources
+# ---------------------------------------------------------------------------
+sources:
+  - source_id: statscan_32100359
+    title: "Estimated areas, yield, production, average farm price and total farm value of principal field crops, in metric and imperial units"
+    publisher: "Statistics Canada"
+    pid: "32100359-01"
+    price_type: average_farm_price
+    enabled: true
+    kind: statcan_zip
+    parser: statcan
+    unit_preference: [metric]          # never ingest the imperial twin as well
+    geography: [Alberta]
+    dimension_column: "Harvest disposition"
+    member_column: "Type of crop"
+    select_members_containing: ["Average farm price"]
+    table_url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3210035901"
+    download_url: "https://www150.statcan.gc.ca/n1/tbl/csv/32100359-eng.zip"
+    raw_name: "32100359.zip"
+
+  - source_id: statscan_32100077
+    title: "Farm product prices, crops and livestock"
+    publisher: "Statistics Canada"
+    pid: "32100077-01"
+    price_type: average_farm_price
+    enabled: true
+    kind: statcan_zip
+    parser: statcan
+    geography: [Alberta]
+    dimension_column: "Farm products"
+    member_column: null
+    select_members_containing: null    # crop members only, via crops.py allow-list
+    table_url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=3210007701"
+    download_url: "https://www150.statcan.gc.ca/n1/tbl/csv/32100077-eng.zip"
+    raw_name: "32100077.zip"
+
+  - source_id: alberta_table90
+    title: "Table 90: Alberta Special Crops - Area, Yield, Production and Price"
+    publisher: "Alberta Agriculture and Irrigation (Alberta Open Documents)"
+    price_type: average_farm_price
+    enabled: true
+    kind: xlsx
+    parser: alberta_table90
+    geography: [Alberta]
+    coverage_note: "Static 2005-2014 historical series. Unit is declared per row in a dedicated column."
+    download_url: "https://open.alberta.ca/dataset/7328ec69-16ea-429a-af68-8948a9649593/resource/285f0249-8e88-4559-ad7f-d2c30df4184e/download/table-90-alberta-special-crops-area-yield-production-and-price.xlsx"
+    raw_name: "ab_table90_special_crops.xlsx"
+
+  - source_id: alberta_table93
+    title: "Table 93: Non-Board Feed Grain Prices"
+    publisher: "Alberta Agriculture and Irrigation (Alberta Open Documents)"
+    price_type: terminal_local_price
+    enabled: true
+    kind: xlsx
+    parser: alberta_table93
+    geography: [Alberta]
+    marketing_year: true
+    source_attribution: "Alberta Grain Commission; Alberta Canola Producers Commission"
+    coverage_note: "Named Alberta delivery points, already $/tonne. Market level differs from average farm price."
+    download_url: "https://open.alberta.ca/dataset/1fc3b3ef-0f5f-4ebc-86f7-cf10d1b26e54/resource/cecb0527-328d-48b7-8c94-9b0fea4f98dd/download/table-93-non-board-feed-grain-prices.xlsx"
+    raw_name: "ab_table93_nonboard_feed_grain.xlsx"
+
+  - source_id: afsc_spring_adjusted
+    title: "2026 Spring Insurance Prices for Crops Eligible for Fall Insurance Price Adjustments"
+    publisher: "Alberta Farm Service Corporation (AFSC)"
+    price_type: insurance_reference_price
+    enabled: true
+    kind: pdf
+    parser: afsc_spring
+    geography: [Alberta]
+    document_url: "https://afsc.ca/crop-insurance/insurance-prices/"
+    download_url: "https://afsc.ca/wp-content/uploads/2026/02/2026-Spring-Insurance-Prices-for-Crops-Eligible-for-Fall-Insurance-Price-Adjustments.pdf"
+    raw_name: "afsc_spring_adjust_2026.pdf"
+    layout_note: >
+      Two-page grid. Columns are Commercial $/kg, Commercial $/bu(lbs), Pedigreed $/kg,
+      Pedigreed $/bu(lbs), then two % change columns. A trailing "*" on a $/bu value
+      means the printed figure is $/pound, per the page footnote. Crop label and its
+      numeric row often land on separate reconstructed lines and must be paired.
+
+  - source_id: afsc_spring_not_adjusted
+    title: "2026 Spring Insurance Prices for Crops Not Eligible for Fall Insurance Price Adjustments"
+    publisher: "Alberta Farm Service Corporation (AFSC)"
+    price_type: insurance_reference_price
+    enabled: true
+    kind: pdf
+    parser: afsc_spring
+    geography: [Alberta]
+    document_url: "https://afsc.ca/crop-insurance/insurance-prices/"
+    download_url: "https://afsc.ca/wp-content/uploads/2026/03/2026-Spring-Insurance-Prices-for-Crops-Not-Eligible-for-Fall-Insurance-Price-Adjustments.pdf"
+    raw_name: "afsc_spring_noadjust_2026.pdf"
+    layout_note: >
+      Same logical shape as the adjusted list but a DIFFERENT x-grid ($/kg and $/lbs
+      pairs, plus a Spring Price column). Column assignment must be derived from this
+      document's own header band, never from the adjusted document's coordinates.
+
+  - source_id: afsc_agristability_other_crops
+    title: "2026 AgriStability Commodity Price List - Other Crops"
+    publisher: "Alberta Farm Service Corporation (AFSC)"
+    price_type: insurance_reference_price
+    enabled: true
+    kind: pdf
+    parser: afsc_agristability
+    geography: [Alberta]
+    document_url: "https://afsc.ca/income-stabilization/agristability/agristability-price-lists/"
+    download_url: "https://afsc.ca/wp-content/uploads/2026/06/2026-Other-Crops-Price-List.pdf"
+    raw_name: "afsc_othercrops_agristability_2026.pdf"
+    layout_note: >
+      Month-major: each crop block carries tonne/bushel price pairs in one column set.
+      Header repeats "tonne" and "bushel" per crop, so unit is taken from the header
+      column of the block, not inferred from magnitude. A second block is $/lb.
+
+  - source_id: afsc_agristability_forage_seed
+    title: "2026 AgriStability Commodity Price List - Forage Seed"
+    publisher: "Alberta Farm Service Corporation (AFSC)"
+    price_type: insurance_reference_price
+    enabled: true
+    kind: pdf
+    parser: afsc_agristability_forage
+    geography: [Alberta]
+    document_url: "https://afsc.ca/income-stabilization/agristability/agristability-price-lists/"
+    download_url: "https://afsc.ca/wp-content/uploads/2026/06/2026-Forage-Seed-Price-List.pdf"
+    raw_name: "afsc_forage_seed_2026.pdf"
+    layout_note: >
+      Single $/lb grid, one row per species/grade, one column per month. Only Jan-Jul
+      are populated in the June-vintage document; later months are genuinely blank.
+      $/lb is mass-based so it converts cleanly to CAD/tonne.
+
+  - source_id: alberta_cropping_alternatives_2026
+    title: "2026 Cropping Alternatives: crop budget planning (AgriProfit$)"
+    publisher: "Alberta Agriculture and Irrigation"
+    price_type: expected_market_price
+    enabled: true
+    kind: pdf
+    parser: cropping_alternatives
+    geography: [Alberta]
+    document_url: "https://open.alberta.ca/dataset/agriprofits-cropping-alternatives"
+    download_url: "https://open.alberta.ca/dataset/64f607fb-d73c-407d-aa60-1f112be29777/resource/beba1d0f-6f22-4ab0-93ba-63930db5efb2/download/agi-tedab-cropping-alternatives-2026.pdf"
+    raw_name: "cropping_alts_2026.pdf"
+    unit_resolution: footnote-driven
+    layout_note: >
+      One soil-zone table per page (Black, Dark Grey Wooded, Brown, Grey Wooded,
+      Dark Brown, Irrigated). Price row tokens sit at the SAME x positions as the
+      yield row tokens, which gives the column mapping. Crop-name header words span
+      two lines and a grade/class line. Units come from the per-page footnote:
+      a bare column is $/bu, "*" is $/lb on some pages and $/tonne on others,
+      "**" is $/tonne. The footnote MUST be read per page; it is not constant.
+      The dataset spans 2014-2026 annual editions, so this is a longitudinal
+      plan-time price series, not a single snapshot.
+
+  - source_id: statscan_18100245
+    title: "Monthly average retail prices for selected products"
+    publisher: "Statistics Canada"
+    pid: "18100245-01"
+    price_type: retail_price
+    enabled: true
+    kind: statcan_zip
+    parser: statcan
+    geography: [Alberta]
+    dimension_column: "Products"
+    member_column: null
+    select_members_containing: null
+    coverage_warning: >
+      Retail scanner prices. NOT farm-gate. Many Alberta members are package units
+      (unit, 142 grams, 454 grams, 2 litres) that cannot be normalized to CAD/tonne;
+      those rows are quarantined with a reason, never guessed at.
+    table_url: "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810024501"
+    download_url: "https://www150.statcan.gc.ca/n1/tbl/csv/18100245-eng.zip"
+    raw_name: "18100245.zip"
+
+# ---------------------------------------------------------------------------
+# Registered but deferred (decision: NOT ingested in v1)
+# ---------------------------------------------------------------------------
+deferred_sources:
+  - source_id: aafc_commodity_outlook
+    title: "AAFC Analysis and Outlook - commodity price outlook"
+    publisher: "Agriculture and Agri-Food Canada"
+    price_type: aafc_outlook_price
+    enabled: false
+    reason: >
+      AAFC publishes outlooks as PDF/HTML reports with no stable machine-readable
+      price table, and the figures are forecasts rather than observations. Folding a
+      forecast into the observation store requires its own uncertainty handling
+      (published range + vintage). Deferred to the dedicated forecast layer, which
+      futures-predicted-price-spec.md already models as instrument_type = "outlook"
+      with a null-safe fallback.
+    reference_urls:
+      - "https://agriculture.canada.ca/en/international-research/market-analyses-reports/reports/reports-and-publications/ltc-price-outlook"
+      - "https://agriculture.canada.ca/en/international-research/market-analyses-reports/reports/analysis-and-outlook"
+
+  - source_id: aafc_infohort_weekly
+    title: "AAFC Infohort weekly wholesale prices"
+    publisher: "Agriculture and Agri-Food Canada"
+    price_type: wholesale_price
+    enabled: false
+    reason: >
+      Belongs to the horticulture/greenhouse layer rather than the field-crop
+      specialty series. Ingest it in the produce pipeline so the package dimensions
+      (variety, grade, origin, package weight, low/high range) survive instead of
+      being flattened into a single tonne price.
+    reference_urls:
+      - "https://od-do.agr.gc.ca/WeeklyWholesalePrices_PrixDeGrossistesHebdomadaires.csv"
+      - "https://od-do.agr.gc.ca/WeeklyWholesalePricesDictionaryEn.html"
+
+  - source_id: alberta_table101
+    title: "Table 101: Farm Supply and Disposition of Alberta Principal Field Crops"
+    publisher: "Alberta Agriculture and Irrigation"
+    price_type: trade_unit_value
+    enabled: false
+    reason: >
+      Quantity table (opening stocks, production, marketings, seed, carryover,
+      feed/waste/dockage). It carries no producer price series, so it belongs in the
+      market-volume layer, not the price store.
+    raw_name: "ab_table101_supply_disp.xlsx"
+
+# ---------------------------------------------------------------------------
+# Externalized by policy - citation only, never ingested
+# ---------------------------------------------------------------------------
+external_references:
+  policy: >
+    Commercial cash-bid and exchange data is licence-restricted. It is kept here as
+    an explicit external reference so a user can pursue it under their own
+    entitlement. No value from these sources may be written into
+    data/price-observations, and none may be merged into an official
+    average_farm_price figure.
+  references:
+    - reference_id: open_alberta_weekly_crop_market_review
+      title: "Weekly crop market review (Alberta)"
+      url: "https://open.alberta.ca/dataset?q=title%3A+%22Weekly+crop+market+review%22"
+      kind: "public-market-commentary"
+      values_included: false
+      note: "Narrative commentary; any figures quoted there trace to third-party price reporting."
+    - reference_id: commercial_elevator_cash_bids
+      title: "Commercial elevator / broker cash bids"
+      url: null
+      kind: "commercial-cash-bid"
+      values_included: false
+      note: "Licence-restricted. Excluded from every normalized price series."
+    - reference_id: exchange_futures_settlements
+      title: "ICE Futures Canada / CME settled futures"
+      url: null
+      kind: "exchange-settlement"
+      values_included: false
+      note: >
+        Exchange redistribution terms restrict republication. Handled as a separately
+        labeled forecast layer (see futures-price-forecast-instructions.md), never as
+        an observation row.

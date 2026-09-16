@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Price pipeline: recreation artifacts and local scratch
+# ---------------------------------------------------------------------------
+
+# Downloaded source artifacts. These are re-fetchable from the URLs recorded in
+# price_sources.yaml, and every observation already stores the SHA-256 of the exact
+# bytes it was parsed from, so the binaries do not belong in version control.
+raw/
+_probe_raw/
+
+# One-off reconnaissance scripts written while mapping each document's layout. The
+# findings they produced are captured in the parsers' docstrings and in the tests,
+# and their per-version numbering is meaningless outside that session.
+_probe*.py
+
+# Reconnaissance output dumps.
+out*.txt
+
+# Generated dataset. Rebuild with `python -m price_pipeline.runner`.
+data/price-observations/
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+.venv/
+venv/
+
+# ---------------------------------------------------------------------------
+# OS / editor
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,71 @@
+# §1.5 known NASS special/annual commodity surveys — a named checklist, not left to
+# generic `statisticcat_desc` text discovery. v1 Section 9's plain search underspecifies
+# these because a dedicated special survey can use different internal taxonomy tags than
+# the ~100-commodity Prices Received program, so they are enumerated and verified
+# separately.
+#
+# CRITICAL DISCIPLINE (§1.5): "special survey exists" does NOT imply "Tier A price
+# available". For each entry the discovery step must confirm (a) whether a per-unit price
+# field exists at all — several of these are volume/value-only — and (b) the correct
+# series identifier to pull via QuickStats, BEFORE any tier is assigned. `has_price_field`
+# below is the verified answer to (a) for this build; `false` means the survey is real but
+# yields no producer price, so it must not be promoted to Tier A.
+#
+# `verbatim_series_hint` records the exact QuickStats `short_desc` wording where it is
+# known, so a discovery run matches the named series rather than silently substituting a
+# broader category (the v1 §10 saffron / "SPECIALTY VEGETABLES" cautionary case).
+surveys:
+  - key: mushrooms
+    report_title: "Mushrooms"
+    frequency: annual
+    release_month: "August"
+    has_price_field: true
+    unit: "USD/lb"
+    variety_breakdown: [Agaricus, Shiitake, Oyster, Other]
+    verbatim_series_hint: "MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB"
+    notes: >-
+      Standalone annual report, not folded into the general Prices Received program.
+      Per-variety price breakdowns exist. The matching discipline of §2.2 applies:
+      `shiitake` must resolve to the SPECIALTY mushroom series, not the generic
+      `MUSHROOMS` Agaricus-dominated series.
+  - key: floriculture_crops
+    report_title: "Floriculture Crops"
+    frequency: annual
+    has_price_field: false
+    measures: "wholesale value by category"
+    notes: >-
+      Wholesale VALUE by category, not a per-unit price. Qualifies a crop for Tier C
+      (economic value) only — never Tier A.
+  - key: census_horticultural_specialties
+    report_title: "Census of Horticultural Specialties"
+    frequency: quinquennial
+    has_price_field: false
+    measures: "operations, area, sales value"
+    notes: >-
+      Every 5 years; includes a lavender line item. Aggregate value, so Tier C at best.
+  - key: hops
+    report_title: "Hops"
+    frequency: annual
+    has_price_field: true
+    unit: "USD/lb"
+    verbatim_series_hint: "HOPS - PRICE RECEIVED, MEASURED IN $ / LB"
+    notes: "Acreage and price; a genuine producer price series."
+  - key: maple_syrup
+    report_title: "Maple Syrup"
+    frequency: annual
+    has_price_field: true
+    unit: "USD/gal"
+    verbatim_series_hint: "MAPLE SYRUP - PRICE RECEIVED, MEASURED IN $ / GAL"
+    notes: >-
+      Production and price; also appears in the core Census. Priced per gallon, so a
+      documented density conversion is required to reach USD/lb (see units.py).
+  - key: honey
+    report_title: "Honey"
+    frequency: annual
+    has_price_field: true
+    unit: "USD/lb"
+    verbatim_series_hint: "HONEY - PRICE RECEIVED, MEASURED IN $ / LB"
+    notes: >-
+      Price per pound by state. Relevant given prior honey quarantine work; not part of
+      the current seed list but enumerated so a future discovery run does not re-derive
+      it from scratch.

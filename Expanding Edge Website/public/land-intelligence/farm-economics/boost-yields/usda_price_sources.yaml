@@ -1,0 +1,304 @@
+# Land Intelligence — U.S. specialty-crop price source registry (Tier A–E)
+#
+# Companion to price_sources.yaml. That file governs the *Alberta* ingestion layer and
+# normalizes to CAD/tonne; this one governs the *U.S.* discovery/classification layer
+# described in "Coding Agent Instructions — Specialty Crop Price Retrieval Pipeline.md"
+# and normalizes to USD/lb and USD/kg.
+#
+# Two deliberate differences from price_sources.yaml, both required by the instruction
+# document rather than chosen here:
+#
+#   1. This registry records SEARCH PRIORITY, not availability. Section 26 is explicit:
+#      "The configuration expresses search priority; it does not assert that a source
+#      exists." So a crop declaring `preferred: [census, trade]` is not a claim that
+#      either returned a price — only the order in which they are tried.
+#   2. A source that has not been retrieved is `enabled: false` with a `reason`. The
+#      instruction document requires an auditable "checked, found nothing" record, and
+#      distinguishing "not yet retrieved" from "retrieved and empty" is the difference
+#      between "no source found" and "source checked incorrectly" (section 23).
+
+version: 1
+generated_for: "boost-yields / U.S. specialty-crop price retrieval pipeline"
+seed_workbook: "usda_specialty_crop_price_master.xlsx"
+normalization_target:
+  currency: USD
+  units: [USD/lb, USD/kg]
+  keep_original: true
+
+# ---------------------------------------------------------------------------
+# Source tiers (closed taxonomy; section 2)
+# ---------------------------------------------------------------------------
+tiers:
+  A:
+    label: "USDA NASS Prices Received"
+    source_system: "USDA NASS"
+    market_level: producer
+    definition: >-
+      Recurring NASS producer price observation (Prices Received / Crop Values /
+      annual commodity program). The preferred tier.
+    price_available: true
+  B:
+    label: "USDA AMS Market News"
+    source_system: "USDA AMS Market News"
+    market_level: wholesale
+    definition: >-
+      Recurring AMS terminal-market / shipping-point report, quoted as a low-high
+      range per package. Preserves variety, grade, package and market.
+    price_available: true
+  C:
+    label: "Census of Agriculture / Horticultural Specialties"
+    source_system: "USDA Census of Agriculture"
+    market_level: aggregate_sales_value
+    definition: >-
+      Aggregate production, acreage, operations or sales value. NOT a unit price.
+      Emits price_available=false and economic_value_available=true.
+    price_available: false
+  D:
+    label: "Trade-data proxy"
+    source_system: "U.S. Census trade data"
+    market_level: trade_unit_value
+    definition: >-
+      customs_value / quantity. A border proxy, never a farm, wholesale or retail
+      price. Must carry the source `trade_unit_value` label.
+    price_available: true
+    caveat: "Never present a trade unit value as a producer price."
+  E:
+    label: "No defensible source"
+    source_system: null
+    market_level: null
+    definition: >-
+      No reliable, recurring, publicly documented U.S. price series identified.
+      A valid result. Requires an audit record documenting the searches performed.
+    price_available: false
+
+# ---------------------------------------------------------------------------
+# Market levels (closed taxonomy; section 15)
+# ---------------------------------------------------------------------------
+market_levels:
+  - producer
+  - farm_gate
+  - wholesale
+  - terminal_market
+  - farmers_market
+  - retail
+  - trade_unit_value
+  - aggregate_sales_value
+
+# ---------------------------------------------------------------------------
+# Sources
+#
+# `enabled: true` means the source is retrieval-ready in this build. `enabled: false`
+# means the source is registered with a documented reason and will emit a skip, never a
+# silent zero. Nothing here fabricates a value when a retrieval has not happened.
+# ---------------------------------------------------------------------------
+sources:
+  - source_id: nass_commodity_codes
+    title: "Published NASS commodity-code reference"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: A
+    kind: reference_table
+    enabled: true
+    source_url: "https://www.nass.usda.gov/Data_and_Statistics/County_Data_Files/Frequently_Asked_Questions/commcodes.php"
+    coverage_note: >-
+      Reference table only. Establishes the commodity universe and code identity; it
+      carries no price observation of its own.
+
+  - source_id: nass_quickstats_api
+    title: "NASS QuickStats API"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: A
+    kind: api
+    enabled: false
+    price_type: producer_price
+    credential_env: "NASS_API_KEY"
+    document_url: "https://quickstats.nass.usda.gov/api"
+    reason: >-
+      Documented API access requires a key (credential_env above). The instruction
+      document's fallback — official bulk files — is the path used instead, so neither
+      a key nor a scraped substitute is needed.
+
+  - source_id: nass_crop_values
+    title: "NASS Crop Values (annual price received summary)"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: A
+    kind: pdf
+    enabled: false
+    price_type: producer_price
+    download_url: "https://www.nass.usda.gov/Publications/Todays_Reports/reports/cpvl0226.pdf"
+    raw_name: "nass_crop_values_cpvl0226.pdf"
+    reason: >-
+      Registered but not yet retrieved. A Tier A producer price may only be emitted
+      from the retrieved artifact's own bytes; until that artifact is in raw/ the
+      affected crops classify as verified-check-only rather than Tier A.
+
+  - source_id: nass_mushrooms
+    title: "NASS Mushrooms (annual program)"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: A
+    kind: pdf
+    enabled: false
+    price_type: producer_price
+    download_url: "https://www.nass.usda.gov/Publications/Todays_Reports/reports/mush0825.pdf"
+    raw_name: "nass_mushrooms_mush0825.pdf"
+    reason: >-
+      Registered but not yet retrieved. The seed workbook names specialty mushroom
+      varieties (shiitake, oyster) as included; inclusion must be confirmed against the
+      retrieved report before a variety-level price is asserted.
+
+  - source_id: nass_vegetables
+    title: "NASS Vegetables (annual summary: production, price, value)"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: A
+    kind: pdf
+    enabled: false
+    price_type: producer_price
+    download_url: "https://www.nass.usda.gov/Publications/Todays_Reports/reports/vegean26.pdf"
+    raw_name: "nass_vegetables_vegean26.pdf"
+    reason: >-
+      Registered but not yet retrieved. Carries the fresh-market/processing garlic
+      price series.
+
+  - source_id: ams_market_news_api
+    title: "AMS Market News (My Market News) API"
+    publisher: "USDA Agricultural Marketing Service"
+    tier: B
+    kind: api
+    enabled: false
+    price_type: wholesale_price
+    credential_env: "AMS_API_KEY"
+    document_url: "https://mymarketnews.ams.usda.gov/mymarketnews-api/authentication"
+    reason: >-
+      Requires a personal API key (credential_env above). Anonymous access is not
+      assumed and no key is stored in this repository, so the API binding is dormant.
+      The report catalog and crop mapping below are usable without it.
+
+  - source_id: ams_terminal_reports
+    title: "AMS terminal-market / shipping-point price reports"
+    publisher: "USDA Agricultural Marketing Service"
+    tier: B
+    kind: report_set
+    enabled: false
+    price_type: wholesale_price
+    document_url: "https://mymarketnews.ams.usda.gov/node/8570"
+    reason: >-
+      Registered but not yet retrieved. Report URLs recorded per crop are dated
+      editions; the catalog below is discovery metadata, not an observation store.
+
+  - source_id: census_horticultural_specialties
+    title: "Census of Horticultural Specialties"
+    publisher: "USDA National Agricultural Statistics Service"
+    tier: C
+    kind: pdf
+    enabled: false
+    price_type: aggregate_sales_value
+    download_url: "https://www.nass.usda.gov/Publications/AgCensus/2022/Online_Resources/Census_of_Horticulture_Specialties/HORTIC.pdf"
+    raw_name: "census_horticultural_specialties_hortic.pdf"
+    reason: >-
+      Registered but not yet retrieved. Tier C is not a unit-price source: it may only
+      support economic_value_available=true with price_available=false.
+
+  - source_id: trade_census_data
+    title: "U.S. Census trade data (HS / Schedule B)"
+    publisher: "U.S. Census Bureau"
+    tier: D
+    kind: dataset
+    enabled: false
+    price_type: trade_unit_value
+    document_url: "https://www.census.gov/foreign-trade/"
+    reason: >-
+      Registered but not yet retrieved. Ships no HS code map in this build: a trade
+      unit value requires an HS code chosen and justified per commodity, and inventing
+      one would violate section 32. Crops that would need Tier D therefore stay at
+      "checked, no defensible source" until a code is supplied.
+
+# ---------------------------------------------------------------------------
+# Crop search priority (section 26)
+#
+# ORDER ONLY. A crop's `preferred` list is the sequence in which sources are tried; it
+# makes no claim that any of them returned a price. `variety_notes` records the
+# substitution risk a human reviewer has to watch for, e.g. that oil and leaf mint are
+# different products and must never be blended into one series.
+# ---------------------------------------------------------------------------
+crops:
+  mushrooms:
+    preferred: [nass, ams]
+    nass_commodity_ref: "35599999 — Mushrooms All"
+    variety_notes: "Seed workbook notes shiitake and oyster as specialty varieties; inclusion must be confirmed in the retrieved report."
+    search_aliases: [shiitake, shiitakes, oyster-mushroom, oyster-mushrooms, button-mushroom, portobello, cremini]
+  hops:
+    preferred: [nass]
+    nass_commodity_ref: "19199999 — Hops"
+  maple-syrup:
+    preferred: [nass]
+    search_aliases: [maple, syrup, maple-sirup]
+    nass_commodity_ref: "13399999 — Maple Syrup"
+  peppermint:
+    preferred: [nass]
+    nass_commodity_ref: "80201899 — Peppermint"
+    variety_notes: "Oil and leaf are different products; never blend the two series."
+  spearmint:
+    preferred: [nass]
+    nass_commodity_ref: "80202899 — Spearmint"
+    variety_notes: "Oil and leaf are different products; never blend the two series."
+  garlic:
+    preferred: [nass]
+    nass_commodity_ref: "33599999 — Garlic"
+    variety_notes: "Fresh-market and processing are priced separately."
+  ginger-root:
+    preferred: [ams]
+    nass_commodity_ref: "80112299 — Ginger Root"
+    variety_notes: "Often import-heavy; preserve origin and pack size."
+  turmeric:
+    preferred: [ams]
+    variety_notes: "No dedicated NASS series; normalize package and market."
+  taro:
+    preferred: [ams]
+    nass_commodity_ref: "37799999 — Taro"
+    variety_notes: "Likely import-heavy; record origin."
+  basil:
+    preferred: [ams]
+  arugula:
+    preferred: [ams]
+  cilantro:
+    preferred: [ams]
+    variety_notes: "Normalize bunch count."
+  parsley:
+    preferred: [ams]
+  rosemary:
+    preferred: [ams]
+  sage:
+    preferred: [ams]
+  thyme:
+    preferred: [ams]
+  oregano:
+    preferred: [ams]
+  dill:
+    preferred: [ams]
+  fennel:
+    preferred: [ams]
+  chamomile:
+    preferred: [ams]
+  chives:
+    preferred: [ams]
+  horseradish:
+    preferred: [ams]
+  watercress:
+    preferred: [ams]
+  lavender:
+    preferred: [census, trade]
+  ginseng:
+    preferred: [census, trade]
+  saffron:
+    preferred: [trade]
+  stevia:
+    preferred: [nass, ams, census, trade]
+  wasabi:
+    preferred: [nass, ams, census, trade]
+  truffles:
+    preferred: [nass, ams, census, trade]
+  microgreens:
+    preferred: [census]
+    variety_notes: "May only appear inside protected-horticulture aggregates."
+  galanga-thai-ginger:
+    preferred: [ams]
+

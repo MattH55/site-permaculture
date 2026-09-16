@@ -1,0 +1,99 @@
+# wide_price_sources.yaml — wide-coverage (v2) config for the U.S. + Canadian
+# specialty-crop price retrieval pipeline.
+#
+# Companion to usda_price_sources.yaml, NOT a replacement. v1 governs the U.S.-only
+# workbook-seeded layer; this file governs the multi-crop, multi-country layer seeded by
+# seed/specialty_crop_seed_list.csv. The v2 spec supersedes v1 where they conflict.
+#
+# Key semantics (v2 Part 3), which v1 left ambiguous:
+#   * Config keys match the seed list's `crop` field EXACTLY (not commodity_desc).
+#   * A crop-specific key FULLY OVERRIDES any group-level default for that crop. There is
+#     NO merging of preference lists between a group default and a crop entry. If partial
+#     inheritance is ever wanted it must be written out explicitly per crop.
+#   * `preferred` is a SEARCH-ORDER hint for discovery only (v1 §26). It does not assert a
+#     source exists; discovery still runs and can downgrade a crop below its configured
+#     `preferred` tier if nothing is actually found there.
+#
+# Source families (the `kind` axis of the US registry, extended for v2):
+#   US: nass, ams (Tier B terminal), ams_farmers_market & university_extension (Tier B2),
+#       census, trade
+#   CA: ca_statcan (CA A), ca_provincial (CA B), ca_aafc (CA B2), ca_census (CA C),
+#       ca_trade (CA D)
+#
+# A crop is checked against BOTH countries when its seed `target_countries` allows, and can
+# yield two crop_source_status rows (one per country). Asymmetry between the two is
+# expected and correct, not a bug (v2 §1.3).
+
+version: 2
+generated_for: "boost-yields / wide-coverage specialty-crop price retrieval pipeline (v2)"
+seed_list: "seed/specialty_crop_seed_list.csv"
+normalization_target:
+  keep_original_currency: true
+  currencies: [USD, CAD]
+  note: >-
+    Original currency is stored alongside the original price. No currency conversion is
+    performed inside the normalized table (v2 §1.2); any converted comparison view is a
+    separate downstream derived table built from a dated, cited exchange-rate source.
+
+# Source family -> the tier and market_level it implies, per country. The classifier reads
+# this so a family name in `preferred` maps deterministically to a tier without the crop
+# entry having to repeat it. Tier B2 sits between B and C in preference order (v2 §1.4).
+source_families:
+  nass:                 { country: US, tier: A,  market_level: producer }
+  ams:                  { country: US, tier: B,  market_level: wholesale }
+  ams_farmers_market:   { country: US, tier: B2, market_level: farmers_market }
+  university_extension: { country: US, tier: B2, market_level: farmers_market }
+  census:               { country: US, tier: C,  market_level: aggregate_sales_value }
+  trade:                { country: US, tier: D,  market_level: trade_unit_value }
+  ca_statcan:           { country: CA, tier: A,  market_level: retail }
+  ca_provincial:        { country: CA, tier: B,  market_level: farm_gate }
+  ca_aafc:              { country: CA, tier: B2, market_level: wholesale }
+  ca_census:            { country: CA, tier: C,  market_level: aggregate_sales_value }
+  ca_trade:             { country: CA, tier: D,  market_level: trade_unit_value }
+
+# Tier B2 confidence rule (v2 §1.4): default to `medium` unless the specific program shows
+# 3+ years of continuous publication and a stated methodology (then `high`); a one-off or
+# newly launched local report is `low` and flagged for manual review.
+tier_b2_confidence:
+  default: medium
+  multi_year_threshold_years: 3
+  one_off: low
+
+# Group-level defaults. These apply UNLESS a crop-specific entry below overrides them.
+# They are search-order hints only.
+_defaults:
+  culinary_herb:        { preferred: [nass, ams] }
+  mushroom:             { preferred: [nass, ams] }
+  medicinal_herb:       { preferred: [census, trade] }
+  botanical_ornamental: { preferred: [census, trade] }
+  pulse_specialty:      { preferred: [nass, ca_provincial, ams] }
+  oilseed_specialty:    { preferred: [nass, ca_provincial] }
+  root_spice:           { preferred: [nass, ams, census, trade] }
+  sweetener:            { preferred: [nass, ams, census, trade] }
+  microgreen_leafy:     { preferred: [ams_farmers_market, university_extension] }
+
+# Crop-specific overrides. Each entry REPLACES (does not merge with) its group default.
+crops:
+  # Mushroom special-survey coverage (§1.5). Specialty varieties must resolve to the
+  # SPECIALTY series, not the generic MUSHROOMS series (§2.2).
+  shiitake:            { preferred: [nass, ams], nass_special_survey: mushrooms }
+  oyster_mushroom:     { preferred: [nass, ams], nass_special_survey: mushrooms }
+  agaricus_white_button: { preferred: [nass, ams], nass_special_survey: mushrooms }
+  agaricus_cremini:    { preferred: [nass, ams], nass_special_survey: mushrooms }
+  agaricus_portobello: { preferred: [nass, ams], nass_special_survey: mushrooms }
+
+  saffron:             { preferred: [trade] }          # confirmed no NASS/AMS/census coverage
+  wasabi:              { preferred: [nass, ams, census, trade] }  # exhaustive check expected to fail
+  stevia:              { preferred: [nass, ams, census, trade] }
+  ginger:              { preferred: [nass, ams, census, trade] }
+  turmeric:            { preferred: [nass, ams, census, trade] }
+
+  lentils:             { preferred: [nass, ca_provincial, ams] }
+  chickpeas:           { preferred: [nass, ca_provincial, ams] }
+  dry_peas:            { preferred: [nass, ca_provincial, ams] }
+  dry_beans:           { preferred: [nass, ca_provincial, ams] }
+  flax:                { preferred: [nass, ca_provincial] }
+  mustard:             { preferred: [nass, ca_provincial] }
+
+  maple_syrup:         { preferred: [nass], nass_special_survey: maple_syrup }
+  microgreens_mixed:   { preferred: [ams_farmers_market, university_extension] }  # Tier B2 sources

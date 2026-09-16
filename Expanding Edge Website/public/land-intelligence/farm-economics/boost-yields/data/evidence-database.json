@@ -1,0 +1,189 @@
+{
+  "version": "1.0",
+  "status": "evidence_records_only",
+  "principles": [
+    "No effect sizes are inferred",
+    "No composite evidence score is calculated",
+    "No recommendation ranking is displayed",
+    "No evidence found is distinct from no effect"
+  ],
+  "enterprises": [
+    {
+      "enterprise_id": "tomato",
+      "enterprise": "Tomato",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "cucumber",
+      "enterprise": "Cucumber",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "pepper",
+      "enterprise": "Pepper",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "lettuce",
+      "enterprise": "Lettuce",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "ornamentals",
+      "enterprise": "Bedding plants / ornamentals",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "tree-seedlings",
+      "enterprise": "Tree seedlings",
+      "type": "greenhouse",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "hemp",
+      "enterprise": "Industrial hemp",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "sugar-beet",
+      "enterprise": "Sugar beet",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "beef",
+      "enterprise": "Beef cattle",
+      "type": "livestock",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "dairy",
+      "enterprise": "Dairy cattle",
+      "type": "livestock",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "canola",
+      "enterprise": "Canola",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "wheat",
+      "enterprise": "Wheat",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "barley",
+      "enterprise": "Barley",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "oats",
+      "enterprise": "Oats",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "peas",
+      "enterprise": "Peas",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    },
+    {
+      "enterprise_id": "lentils",
+      "enterprise": "Lentils",
+      "type": "field",
+      "subcategory": "",
+      "production_system": "",
+      "primary_products": []
+    }
+  ],
+  "intervention_categories": [],
+  "factors": [],
+  "studies": [],
+  "study_interventions": [],
+  "outcomes": [],
+  "study_results": [],
+  "evidence_syntheses": [],
+  "interactions": [],
+  "economic_effects": [],
+  "search_log": [
+    {
+      "search_date": "2026-09-11",
+      "scope": "greenhouse enterprises: tomato, cucumber, pepper, lettuce, ornamentals, tree-seedlings",
+      "method": "Europe PMC keyword search for meta-analysis/systematic review plus targeted retrieval of known CEA/horticulture papers and Alberta AgriProfit$ 2023",
+      "priority_queries": [
+        "greenhouse tomato yield meta-analysis LED CO2 grafting pollination",
+        "cucumber greenhouse CO2 yield meta-analysis",
+        "sweet pepper LED interlighting far-red greenhouse yield",
+        "lettuce CEA DLI meta-analysis hydroponic",
+        "floriculture photoperiod paclobutrazol poinsettia",
+        "ectomycorrhizal inoculation Pinus Picea container seedling Alberta"
+      ],
+      "notes": "Replaced prior greenhouse yield-factor records that used unverifiable titles/DOIs. New records use reported effect sizes only; CIs stored only when the source published them. Open-field biostimulant means are labelled as such and not treated as soilless greenhouse results."
+    },
+    {
+      "search_date": "2026-09-11",
+      "scope": "protocol crop x factor grid (light, CO2, temperature, VPD, irrigation, nutrients, grafting, density, pollination, disease, structure, photoperiod) for six greenhouse crops",
+      "method": "Europe PMC grid plus targeted retrieval of WUR diffuse-glass, vegetable deficit-irrigation meta-analysis, Alberta pepper production guide, lettuce tipburn airflow, cucumber grafting/PM, pepper heat",
+      "protocol": "landintelligence_greenhouse_yield_literature_review_agent_strategy.md",
+      "notes": "Added 18 page-facing yield-factor records. Null/negative evidence included (deficit irrigation, heat, BER, tipburn). Combined light x CO2 and grafting x fertigation kept as interactions, not stacked percentages."
+    }
+  ],
+  "coverage_matrix": {
+    "tomato": {"Light": "included", "CO2": "included", "Temp/VPD": "included", "Irrigation": "included", "Nutrition": "included", "Grafting": "included", "Pollination": "included", "Biostimulants": "open-field only", "Disease": "BER included; pathogen meta still thin", "Structure": "diffuse glass included"},
+    "cucumber": {"Light": "included", "CO2": "included", "Structure": "diffuse glass included", "Grafting": "included", "Disease": "powdery mildew recovery included; Canadian high-wire pooling still a gap", "Biostimulants": "open-field vegetable mean only"},
+    "pepper": {"Light": "included", "Heat": "included", "Density x light": "included (numeric extraction still flagged)", "CO2": "gap", "Grafting": "gap", "VPD/BER": "gap"},
+    "lettuce": {"Light/DLI": "included", "CEA vs field": "included", "Airflow/tipburn": "included", "EC": "included", "Greenhouse soilless biostimulant": "tipburn control included"},
+    "ornamentals": {"Photoperiod": "included", "PGR": "included", "Diffuse glass cycle time": "included", "Pack-out meta-analysis": "gap"},
+    "tree-seedlings": {"ECM": "included", "Photoperiod/blackout": "directional primary study included; pooled % still a gap", "Provenance": "mechanistic"}
+  },
+  "research_gaps": [
+    "Alberta-specific replicated lighting and CO2 trials for cucumber and pepper (most lighting economics are Ontario/Finland/Netherlands).",
+    "Greenhouse-only biostimulant yield meta-analysis (vegetable +22.8% mean remains open-field; lettuce tipburn biostimulant is quality not biomass).",
+    "Quantified powdery mildew and Pythium yield-loss pooling for Canadian high-wire cucumber (current PM record is recovery vs an untreated epidemic).",
+    "Ornamental percent pack-out / shrink meta-analysis.",
+    "Pooled short-day blackout survival or RGP effect size for white spruce and lodgepole pine.",
+    "Pepper grafting, CO2, and BER/VPD cells still lack a page record with a reported percent.",
+    "Automation/sensing yield trials (protocol section S) — only count when a production outcome is reported."
+  ]
+}
