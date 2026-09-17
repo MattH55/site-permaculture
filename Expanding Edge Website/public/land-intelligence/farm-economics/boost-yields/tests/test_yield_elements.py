@@ -18,6 +18,8 @@ def test_import_requires_source_url_and_known_crop():
         "hops", "mushroom-cultivated", "honey", "maple-syrup",
         "potato", "onion", "bean-dry-edible", "broccoli-including-broccoli-raab",
         "carrot", "strawberry", "apple", "almond", "blueberry",
+        "asparagus", "cabbage-including-chinese", "sweet-potato", "eggplant",
+        "garlic", "grape-including-raisin", "cherry", "raspberry",
     }
     assert all(r.crop_id in mapped for r in rows)
     assert all(r.element_type in YS.ELEMENT_TYPES for r in rows)
@@ -67,6 +69,12 @@ def test_curated_papers_have_quantified_effects_and_urls():
     assert "R²" in blueberry.claimed_effect or "R2" in blueberry.claimed_effect
     almond = next(r for r in rows if r.crop_id == "almond")
     assert almond.conflict_of_interest_flag is True
+    cabbage = next(r for r in rows if r.crop_id == "cabbage-including-chinese")
+    assert "30.3" in cabbage.claimed_effect and "75.8" in cabbage.claimed_effect
+    grape = next(r for r in rows if r.crop_id == "grape-including-raisin")
+    assert "17.11" in grape.claimed_effect
+    sweet_potato = next(r for r in rows if r.crop_id == "sweet-potato")
+    assert "1.7" in sweet_potato.claimed_effect
 
 
 def test_cli_exposes_yield_commands():

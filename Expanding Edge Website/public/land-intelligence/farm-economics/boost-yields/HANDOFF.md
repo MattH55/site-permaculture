@@ -155,8 +155,8 @@ census/trade still open).
 
 CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
 
-`output/yield_elements.csv`: **97 rows** — 78 imported from `data/yield-factors`
-(URL required) plus **19 transcribed from papers actually opened**
+`output/yield_elements.csv`: **105 rows** — 78 imported from `data/yield-factors`
+(URL required) plus **27 transcribed from papers actually opened**
 (`data/yield-elements/curated_from_papers.json`). Peas→`pea-dry-edible`,
 pepper→Capsicum, tomato→`tomato-including-tomatillo`. Livestock/ornamental
 buckets skipped. Taxonomy: `protected_environment` (v1.1), `colony_nutrition` (v1.2).
@@ -187,17 +187,26 @@ First-tier vegetables/fruit (price A/B) paper-read pass — medicinal herbs not 
 - almond Independence bees vs isolation: fruit set **~60%** higher; kernel **5.53 vs 4.49 kg/tree** (~20%); Beeflow-funded, COI flag true (Sáez et al. 2020)
 - blueberry insect pollination: authors report **R² 64.8 / 75.9 / 75.2%** for fruit set / berry weight / seed set — not percent yield. USDA-ARS blurb that restated R² as “increased by 64.8%” was not stored (Eeraerts et al. 2023)
 
+Second remaining-veg/fruit pass:
+- asparagus drip N fertigation vs broadcast N no irrigation: **8.79 vs 5.69 t ha−1** green spears, authors **+54%** (Rolbiecki et al. 2022; water and N placement confounded)
+- cabbage 0 N vs 180 N vs 240 N+S: marketable **30.3 / 62.7 / 75.8 t ha−1** (Kacjan Maršić et al. 2021 Table 1)
+- sweet potato N vs none (China meta, 45 papers): authors **+1.7%** fresh tuber yield overall (Ji et al. 2024) — small effect stored as written
+- eggplant 100 kg N vs 0: **3713 vs 2615 g/plant**; 150 kg below the 100 kg peak (Aminifard et al. 2010)
+- garlic 50 vs 0 lb N/acre: authors **+20%** in year 2; **no yield difference** among 50/100/150 lb (Cornell CCE 2018; Tier B)
+- grape 60% vs 100% CWR: authors **−17.11%** yield/vine; 80% CWR **−3.70% ns** (El-Salhy et al. 2026)
+- cherry cv. Regina bagged vs open vs hand: fruit set **2% / 28% / 39%** (Osterman et al. 2023)
+- raspberry pollinator exclusion: authors **68.2%** reduction in marketable fruit set, D = 0.68 (Ryan et al. 2023)
+
 Retracted PLOS ONE Ahmad 2021 honey-feeding paper was **not** used. CrossRef
 title-only files remain in `raw/yield-literature/` and still do not contribute
-effect sizes. **25 crops** now have elements (Vegetables 12, Fruits 4, plus
+effect sizes. **33 crops** now have elements (Vegetables 17, Fruits 7, plus
 prior hops/honey/maple and imported grains).
 
 Price-A/B veg/fruit still without a paper-read yield row (honest zeros, do not
-borrow): artichoke, asparagus, okra, beet-table, cabbage, cauliflower, celery,
-pumpkin, spinach, eggplant, squash, sweet-corn, garlic, sweet-potato, melon;
-grape, apricot, kiwi, avocado, macadamia, banana, blackberry, nectarine, olive,
-papaya, peach, citrus, pear, pecan, cherry, pineapple, pistachio, cranberry,
-date, raspberry, fig, walnut.
+borrow): artichoke, okra, beet-table, cauliflower, celery, pumpkin, spinach,
+squash, sweet-corn, melon; apricot, kiwi, avocado, macadamia, banana,
+blackberry, nectarine, olive, papaya, peach, citrus, pear, pecan, pineapple,
+pistachio, cranberry, date, fig, walnut.
 
 `yield-review-queue --tier D` is empty. Discovery checklists are incomplete except
 peer-reviewed-search on crops that now have elements.
@@ -207,8 +216,9 @@ peer-reviewed-search on crops that now have elements.
 0. **Yield elements:** remaining first-tier veg/fruit listed above; then
    medicinal herbs (price C/D/E — do not start until the veg/fruit zeros are
    either filled from opened papers or left explicit). No cross-crop borrowing.
-   Garlic/sweet-corn papers were opened enough to see confounded or chart-only
-   yields and were not stored.
+   Sweet-corn still chart-only; cauliflower N0 yield not in the opened abstract;
+   spinach/New Zealand spinach papers mixed species. Garlic Cornell null among
+   50–150 lb is stored.
 1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
    (snapdragon, rose, lily). Do not dump 142 names onto one row.
 2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
