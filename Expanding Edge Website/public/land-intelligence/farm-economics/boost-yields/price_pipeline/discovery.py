@@ -1,28 +1,8 @@
 """Section 3: individualized per-crop discovery, run against the full crop_registry.
 
-This is an AUTOMATED FIRST PASS, not the finished discovery the spec ultimately wants.
-Every record this module produces has ``checked_by: "automated"`` and, where it finds
-nothing, ``confidence: "low"`` -- promoting a record to ``checked_by: "manual_review"``
-with a real API/report lookup is exactly the work HANDOFF.md hands to the next agent.
-Two deliberate limits this pass has, both because no NASS/AMS API key is configured in
-this environment (see usda_price_sources.yaml's ``nass_quickstats_api``/
-``ams_market_news_api`` entries, both ``enabled: false`` for this reason):
-
-1. It can only assert a *retrieved, defensible* tier where a real retrieval already
-   exists elsewhere in this repo -- concretely, the Alberta ``price_pipeline`` runner's
-   already-parsed ``data/price-observations/observations.json`` (real Statistics
-   Canada / AAFC / Weekly Crop Market Review data, not this module's own fetch). A
-   crop_registry row whose crop_id (or a close variant of it) appears there with a
-   ``usable_for_farm_economics: true`` price type gets ``selected_tier_ca`` set for
-   real, with ``selected_source_ca`` naming the underlying source.
-2. For everything else it can only run the CHECKLIST -- does this crop's name turn up
-   in the NASS special-survey list, the CA source catalog, or the v2 wide-coverage
-   registry's ``crops:``/group-default search-order hints -- and record what it found
-   as a lead for a human (or an API-key-equipped follow-up run) to chase, never as a
-   confirmed tier. This satisfies the spec's Section 3.1 rule that "not yet checked"
-   must be distinguished from "checked, found nothing", but it does NOT satisfy
-   "every applicable checked_* field is true" -- most fields here stay false, honestly,
-   because the underlying report was never actually opened and read.
+Live US retrieval (NASS QuickStats / AMS Market News) is applied only when
+``live_us=True`` and cached indexes exist under ``raw/nass/`` and ``raw/ams/``.
+Unit-price tiers are never inferred from catalog membership alone.
 """
 from __future__ import annotations
 
@@ -32,7 +12,9 @@ import os
 import re
 from dataclasses import dataclass, field, fields
 
+from . import ams_market_news as AMS
 from . import crop_registry_full as REG
+from . import nass_quickstats as NASS
 from . import wide_catalogs as WC
 
 _TRAP_CROP_IDS = {cid for trap in REG.KNOWN_IDENTITY_TRAPS for cid in trap["crop_ids"]}
@@ -120,15 +102,13 @@ MANUAL_LEAD_REVIEWS: dict[str, dict] = {
     },
     "mushroom-cultivated": {
         "decision": "confirm_lead_unretrieved",
-        "note": "CONFIRMED LEAD (not retrieved): NASS Mushrooms special survey "
-                "has_price_field=true, verbatim 'MUSHROOMS - PRICE RECEIVED, "
-                "MEASURED IN $ / LB'. Needs NASS_API_KEY before Tier A.",
+        "note": "NASS Mushrooms special survey has_price_field=true "
+                "(MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB).",
     },
     "hops": {
         "decision": "confirm_lead_unretrieved",
-        "note": "CONFIRMED LEAD (not retrieved): NASS Hops special survey "
-                "has_price_field=true, verbatim 'HOPS - PRICE RECEIVED, "
-                "MEASURED IN $ / LB'. Needs NASS_API_KEY before Tier A.",
+        "note": "NASS Hops special survey has_price_field=true "
+                "(HOPS - PRICE RECEIVED, MEASURED IN $ / LB).",
     },
     "mustard-seed": {
         "decision": "confirm_lead_unretrieved",
@@ -403,6 +383,8 @@ def discover_crop(
     surveys: list[WC.SpecialSurvey], ca_sources: list[WC.CaSource],
     wide_crop_keys: set[str],
     checked_at: str,
+    nass_index: dict | None = None,
+    ams_index: dict | None = None,
 ) -> CropDiscoveryRecord:
     rec = CropDiscoveryRecord(crop_id=crop_id, crop_name=crop_name, checked_at=checked_at)
     notes: list[str] = []
@@ -452,7 +434,7 @@ def discover_crop(
                 notes.append(
                     f"NASS special survey {survey_hit.key!r} applies "
                     f"({survey_hit.report_title}); has_price_field="
-                    f"{survey_hit.has_price_field}; not retrieved"
+                    f"{survey_hit.has_price_field}"
                 )
         elif category.startswith("Floriculture and Nursery Crops"):
             flor = _survey_by_key(surveys, "floriculture_crops")
@@ -468,6 +450,60 @@ def discover_crop(
                 "NASS special-survey checklist (mushrooms, hops, maple_syrup, "
                 "honey, floriculture_crops, census_horticultural_specialties) "
                 "checked: none apply to this crop_id"
+            )
+
+    # 2b. Live NASS QuickStats PRICE RECEIVED index (cached raw/nass/).
+    if nass_index:
+        rec.checked_us_nass = True
+        nass_hits = (nass_index.get("by_crop_id") or {}).get(crop_id) or []
+        if nass_hits:
+            latest = max(nass_hits, key=lambda h: str(h.get("year") or ""))
+            rec.selected_tier_us = "A"
+            rec.confidence_us = "high"
+            rec.selected_source_us = (
+                f"NASS QuickStats PRICE RECEIVED {latest.get('short_desc')} "
+                f"({latest.get('year')} {latest.get('value')} "
+                f"{latest.get('unit_desc')}; raw {latest.get('raw_file')})"
+            )
+            notes.append(
+                f"RETRIEVED NASS PRICE RECEIVED as {latest.get('short_desc')} "
+                f"{latest.get('year')} {latest.get('value')} {latest.get('unit_desc')}"
+            )
+        else:
+            notes.append(
+                "NASS PRICE RECEIVED commodity universe checked: no mapped "
+                "unit-price series for this crop_id"
+            )
+
+    # 2c. AMS terminal-market catalog (cached raw/ams/). Category-level check
+    # only — per-crop Tier B requires a Report Details commodity hit.
+    if ams_index:
+        groups = (ams_index.get("active_us_terminal") or {})
+        by_commodity = ams_index.get("by_commodity") or {}
+        ams_group = None
+        if category.startswith("Vegetables"):
+            ams_group = "vegetables"
+        elif category.startswith("Fruits and Tree Nuts"):
+            ams_group = "fruit"
+        if ams_group and groups.get(ams_group):
+            rec.checked_us_ams = True
+            notes.append(
+                f"AMS My Market News catalog checked: {len(groups[ams_group])} "
+                f"active US terminal {ams_group} reports present"
+            )
+        ams_hits = by_commodity.get(crop_id) or []
+        if ams_hits:
+            rec.checked_us_ams = True
+            if rec.selected_tier_us is None:
+                rec.selected_tier_us = "B"
+                rec.confidence_us = "medium"
+                rec.selected_source_us = (
+                    f"AMS Market News {ams_hits[0].get('report_title')} "
+                    f"commodity={ams_hits[0].get('commodity')}"
+                )
+            notes.append(
+                "AMS Report Details names this commodity in "
+                + ams_hits[0].get("slug_name", "terminal report")
             )
 
     # 3. CA source catalog (provincial/AAFC programs beyond Alberta's already-parsed ones).
@@ -534,12 +570,15 @@ def run_discovery(
     registry_rows: list, *, category_filter: str | None = None,
     crop_filter: str | None = None,
     checked_at: str | None = None,
+    live_us: bool = False,
 ) -> list[CropDiscoveryRecord]:
     checked_at = checked_at or datetime.datetime.now(datetime.timezone.utc).date().isoformat()
     alberta_usable = _load_alberta_usable_crops()
     surveys = WC.load_special_surveys()
     ca_sources = WC.load_ca_catalog()
     wide_crop_keys = _load_wide_registry_crop_keys()
+    nass_index = NASS.load_index() if live_us else None
+    ams_index = AMS.load_index() if live_us else None
 
     out: list[CropDiscoveryRecord] = []
     for row in registry_rows:
@@ -554,6 +593,7 @@ def run_discovery(
             crop_id, crop_name, category,
             alberta_usable=alberta_usable, surveys=surveys, ca_sources=ca_sources,
             wide_crop_keys=wide_crop_keys, checked_at=checked_at,
+            nass_index=nass_index, ams_index=ams_index,
         ))
     return out
 

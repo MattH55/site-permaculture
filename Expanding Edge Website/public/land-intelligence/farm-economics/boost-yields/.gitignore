@@ -7,6 +7,8 @@
 # bytes it was parsed from, so the binaries do not belong in version control.
 raw/
 _probe_raw/
+.env
+.env.*
 
 # One-off reconnaissance scripts written while mapping each document's layout. The
 # findings they produced are captured in the parsers' docstrings and in the tests,

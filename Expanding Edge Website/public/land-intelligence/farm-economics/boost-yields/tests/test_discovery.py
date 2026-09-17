@@ -139,7 +139,55 @@ def test_mushroom_special_survey_is_a_confirmed_unretrieved_lead():
     assert rec.checked_us_nass_special_survey is True
     assert rec.selected_tier_us is None
     assert rec.checked_by == "manual_review"
-    assert "CONFIRMED LEAD" in rec.reviewer_notes
+    assert "has_price_field=True" in rec.reviewer_notes
+
+
+def test_nass_index_assigns_tier_a_for_retrieved_mushrooms():
+    nass_index = {
+        "by_crop_id": {
+            "mushroom-cultivated": [{
+                "short_desc": "MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB",
+                "year": "2026",
+                "value": 1.37,
+                "unit_desc": "$ / LB",
+                "raw_file": "raw/nass/price_received_MUSHROOMS.json",
+            }],
+        },
+    }
+    rec = DISC.discover_crop(
+        "mushroom-cultivated", "Mushroom (Cultivated)", "Vegetables",
+        alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
+        ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
+        nass_index=nass_index,
+    )
+    assert rec.checked_us_nass is True
+    assert rec.selected_tier_us == "A"
+    assert rec.confidence_us == "high"
+    assert "RETRIEVED NASS" in rec.reviewer_notes
+
+
+def test_nass_mustard_oilseed_does_not_attach_to_greens():
+    nass_index = {
+        "by_crop_id": {
+            "mustard-seed": [{
+                "short_desc": "MUSTARD - PRICE RECEIVED, MEASURED IN $ / CWT",
+                "year": "2025", "value": 40.0, "unit_desc": "$ / CWT",
+                "raw_file": "raw/nass/x.json",
+            }],
+        },
+    }
+    greens = DISC.discover_crop(
+        "mustard-and-other-greens", "Mustard and Other Greens", "Vegetables",
+        alberta_usable={}, surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01", nass_index=nass_index,
+    )
+    seed = DISC.discover_crop(
+        "mustard-seed", "Mustard seed", "Ineligible Crops",
+        alberta_usable={}, surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01", nass_index=nass_index,
+    )
+    assert greens.selected_tier_us is None
+    assert seed.selected_tier_us == "A"
 
 
 def test_statcan_lookup_is_always_recorded():

@@ -53,7 +53,8 @@ def cmd_discover(args: argparse.Namespace) -> int:
     """Run the Section 3 discovery pass for one category, one crop, or all."""
     registry, _ = REG.ingest_and_audit()
     records = DISC.run_discovery(
-        registry, category_filter=args.category, crop_filter=args.crop)
+        registry, category_filter=args.category, crop_filter=args.crop,
+        live_us=True)
     if args.crop and not records:
         print(f"no crop_registry row matched --crop {args.crop!r}")
         return 1
@@ -96,6 +97,40 @@ def cmd_dashboard(args: argparse.Namespace) -> int:
               f"{row['discovery_complete']:>6} {row['tier_a']:>4} {row['tier_b']:>4} "
               f"{row['tier_b2']:>4} {row['tier_c']:>4} {row['tier_d']:>4} "
               f"{row['tier_e']:>4} {avg:>8}{note}")
+    return 0
+
+
+def cmd_retrieve_us(args: argparse.Namespace) -> int:
+    """Pull NASS QuickStats / AMS catalog using env API keys. Never stores keys."""
+    from . import nass_quickstats as NASS
+    from . import ams_market_news as AMS
+    if not args.nass and not args.ams:
+        args.nass = True
+        args.ams = True
+    if args.nass:
+        if not os.environ.get("NASS_API_KEY"):
+            print("NASS_API_KEY is not set")
+            return 1
+        comms = NASS.retrieve_price_received_universe()
+        print(f"NASS PRICE RECEIVED universe: {len(comms)} commodities")
+        mushroom = NASS.retrieve_commodity("MUSHROOMS")
+        hops = NASS.retrieve_commodity("HOPS")
+        print(f"  mushrooms unit-price rows: {len(mushroom)}")
+        print(f"  hops unit-price rows: {len(hops)}")
+        years = args.years or ["2024", "2025", "2026"]
+        annual = NASS.retrieve_national_annual_years(years)
+        print(f"  national annual {years}: {len(annual)} unit-price rows")
+        doc = NASS.build_index(mushroom + hops + annual, comms)
+        print(f"  mapped crop_ids: {len(doc['by_crop_id'])}")
+    if args.ams:
+        if not os.environ.get("AMS_API_KEY"):
+            print("AMS_API_KEY is not set")
+            return 1
+        reports = AMS.retrieve_report_catalog()
+        doc = AMS.build_catalog_index(reports)
+        print(f"AMS catalog: {doc['n_reports_in_catalog']} reports")
+        for group, rows in doc["active_us_terminal"].items():
+            print(f"  active US terminal {group}: {len(rows)}")
     return 0
 
 
@@ -151,6 +186,12 @@ def build_parser() -> argparse.ArgumentParser:
                              help="list low-confidence or incomplete discovery records")
     p_queue.add_argument("--json", action="store_true")
     p_queue.set_defaults(func=cmd_review_queue)
+
+    p_ret = sub.add_parser("retrieve-us", help="retrieve NASS/AMS into raw/ using env keys")
+    p_ret.add_argument("--nass", action="store_true")
+    p_ret.add_argument("--ams", action="store_true")
+    p_ret.add_argument("--years", nargs="*", default=None)
+    p_ret.set_defaults(func=cmd_retrieve_us)
 
     return parser
 

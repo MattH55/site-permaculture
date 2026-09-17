@@ -4,9 +4,13 @@ Status as of 2026-09-17 (third session — `next-session-extend-coverage.md`).
 
 Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices.**
 
-**This session closed the three review gaps, then ran the floriculture group
-pass. NASS_API_KEY and AMS_API_KEY are still unset, so Section 2 of the
-extend-coverage note (live US retrieval) was not run.**
+**NASS QuickStats and AMS Market News keys are wired via environment variables
+only (never committed). Section 2 live retrieval is done for NASS PRICE RECEIVED
+(mushrooms, hops, then Vegetables and Fruits/Tree Nuts against the 129-commodity
+universe). AMS catalog is retrieved (1,051 reports; 10 active US terminal
+fruit/veg/nut reports each). Per-crop AMS Report Details unit prices were not
+bulk-loaded (100k-row payloads); checked_us_ams is a catalog check for those
+categories, not a Tier B assignment.**
 
 ## What's built and verified
 
@@ -110,10 +114,21 @@ report. What it honestly *can* do, and does:
     - census_horticultural_specialties (lavender) — applies to both lavender
       rows; `has_price_field=false`; Tier C at best; not retrieved.
 
-### extend-coverage.md Section 2 (not done)
+### extend-coverage.md Section 2 (NASS done; AMS catalog only)
 
-`NASS_API_KEY` and `AMS_API_KEY` are unset. No live US retrieval. Do not skip
-this by scraping a substitute.
+- `python -m price_pipeline.full_coverage_cli retrieve-us` uses `NASS_API_KEY` /
+  `AMS_API_KEY` from the environment. Raw JSON lands in gitignored `raw/nass/`
+  and `raw/ams/`.
+- Mushrooms retrieved: `MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB` 2026
+  1.45 USD/lb (national). Hops: `HOPS - PRICE RECEIVED` 2025 5.38 USD/lb.
+- NASS PRICE RECEIVED universe: 129 commodities. 61 mapped crop_ids have a
+  retrieved unit price. MUSTARD maps only to mustard-seed; maple syrup and
+  honey stay unmapped (no matching specialty crop_id).
+- Vegetables after live re-run: 25/55 US Tier A. Fruits and Tree Nuts: 21/47
+  US Tier A. Distribution is uneven, as required.
+- AMS: HTTP Basic (key as username, empty password). Catalog 1,051 reports.
+  `checked_us_ams` is true for the 102 vegetable + fruit/tree-nut rows because
+  active US terminal FV reports exist. No per-crop AMS Tier B yet.
 
 ### extend-coverage.md Section 3 (group pass done)
 
@@ -123,11 +138,10 @@ nursery/terminal prices need AMS_API_KEY; not invented.
 
 ### Current tier picture (plausibly uneven)
 
-11 CA Tier B from already-retrieved Alberta farm-gate series (3 vegetables +
-8 ineligible field/oilseed/forage). 0 US tiers. 0 discovery_complete (US NASS
-general, AMS, farmers-market, census, trade, CA census, CA trade still
-unchecked). `review-queue` = 375 for that reason, not because leads are open
-(open catalog leads = 0).
+59 US Tier A (NASS PRICE RECEIVED, retrieved). 11 CA Tier B (Alberta farm-gate).
+Dashboard counts a crop once at its best tier, so vegetables show 25 A (including
+crops that also have CA B). 0 discovery_complete: farmers-market, census, trade,
+CA census/trade still open. `review-queue` remains large for that reason.
 
 | bucket | crops | CA Tier B | notes |
 |---|---:|---:|---|
@@ -140,26 +154,25 @@ unchecked). `review-queue` = 375 for that reason, not because leads are open
 
 ## What's explicitly NOT done — next agent starts here
 
-1. **Wire NASS_API_KEY (and/or AMS_API_KEY) and retrieve** mushrooms then hops
-   first, then re-check Vegetables and Fruits/Tree Nuts against live NASS/AMS
-   (extend-coverage.md Section 2). Do not assign Tier A from catalog existence.
-2. **Remaining `checked_*` fields:** `checked_us_nass`, `checked_us_ams`,
-   `checked_us_ams_farmers_market`, `checked_us_census_specialty` (except the
-   two lavender rows), `checked_us_trade`, `checked_ca_census`,
-   `checked_ca_trade`. Do not mark complete or assign Tier E without opening
-   each source or recording not-applicable with a citation.
-3. **Floriculture individualized AMS/nursery prices** — group survey does not
-   resolve unit prices. Expect many Tier C/E. Needs AMS_API_KEY.
-4. Live re-fetch of the USDA PDF / NAPCS CSV (changelog logic exists; still on
-   the first cached fetch).
+1. **AMS Report Details per commodity** — catalog is in `raw/ams/`. Pull
+   `/reports/{slug_id}/Report Details` with a date filter (unfiltered NY veg
+   is 100k rows) and attach Tier B only when the `commodity` field names this
+   crop. Do not promote from report-title keywords (Orangeburg ≠ oranges).
+2. **Remaining `checked_*`:** `checked_us_ams_farmers_market`,
+   `checked_us_census_specialty` (except lavender), `checked_us_trade`,
+   `checked_ca_census`, `checked_ca_trade`.
+3. **Floriculture individualized AMS/nursery prices** — NASS floriculture
+   survey is still value-only. AMS ornamentals reports exist (e.g. BH_FV201).
+4. Live re-fetch of the USDA PDF / NAPCS CSV.
+
+Never commit API keys. `retrieve-us` reads them from the environment only.
 
 ## How to resume
 
 ```bash
 cd farm-economics/boost-yields
 python -m pytest tests/test_full_coverage.py tests/test_discovery.py -q
+python -m price_pipeline.full_coverage_cli retrieve-us --nass --ams   # needs env keys
+python -m price_pipeline.full_coverage_cli discover --category "Vegetables"
 python -m price_pipeline.full_coverage_cli dashboard
-python -m price_pipeline.full_coverage_cli review-queue
 ```
-
-Full suite should stay at 190+ passing. Prior wide-coverage pipeline untouched.
