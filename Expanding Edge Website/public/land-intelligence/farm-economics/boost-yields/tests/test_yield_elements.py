@@ -20,6 +20,9 @@ def test_import_requires_source_url_and_known_crop():
         "carrot", "strawberry", "apple", "almond", "blueberry",
         "asparagus", "cabbage-including-chinese", "sweet-potato", "eggplant",
         "garlic", "grape-including-raisin", "cherry", "raspberry",
+        "cauliflower", "spinach", "melon-all-types",
+        "ginseng", "stevia", "coneflower", "st-john-s-wort",
+        "medicinal-herbs-fenugreek", "medicinal-herbs-lavender",
     }
     assert all(r.crop_id in mapped for r in rows)
     assert all(r.element_type in YS.ELEMENT_TYPES for r in rows)
@@ -75,6 +78,15 @@ def test_curated_papers_have_quantified_effects_and_urls():
     assert "17.11" in grape.claimed_effect
     sweet_potato = next(r for r in rows if r.crop_id == "sweet-potato")
     assert "1.7" in sweet_potato.claimed_effect
+    spinach = next(r for r in rows if r.crop_id == "spinach")
+    assert spinach.effect_direction == "no_significant_effect"
+    assert "37.8" in spinach.claimed_effect
+    ginseng = next(r for r in rows if r.crop_id == "ginseng")
+    assert "816.56" in ginseng.claimed_effect
+    assert ginseng.effect_direction == "mixed"
+    fenugreek = next(r for r in rows if r.crop_id == "medicinal-herbs-fenugreek")
+    assert "15.29" in fenugreek.claimed_effect
+    assert fenugreek.source_url.startswith("http")
 
 
 def test_cli_exposes_yield_commands():

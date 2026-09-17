@@ -155,8 +155,8 @@ census/trade still open).
 
 CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
 
-`output/yield_elements.csv`: **105 rows** — 78 imported from `data/yield-factors`
-(URL required) plus **27 transcribed from papers actually opened**
+`output/yield_elements.csv`: **114 rows** — 78 imported from `data/yield-factors`
+(URL required) plus **36 transcribed from papers actually opened**
 (`data/yield-elements/curated_from_papers.json`). Peas→`pea-dry-edible`,
 pepper→Capsicum, tomato→`tomato-including-tomatillo`. Livestock/ornamental
 buckets skipped. Taxonomy: `protected_environment` (v1.1), `colony_nutrition` (v1.2).
@@ -173,7 +173,7 @@ Prior pass:
 - maple vacuum vs unpumped: **43.7 vs 16.4 qt/taphole** Area I (USDA FS NE-91)
 - maple high-yield retubing: authors **70.6%** (0.58 vs 0.34 gal/tap, UVM 20 yr)
 
-First-tier vegetables/fruit (price A/B) paper-read pass — medicinal herbs not started:
+First-tier vegetables/fruit (price A/B) paper-read pass:
 - potato NPK vs none (China meta, 180 studies): authors **+33.64%** overall; NPK together **+49.18%** (Li et al. 2025 PSE)
 - onion 82 kg N ha−1 vs 0: marketable **26.77 vs 19.09 t ha−1** (Yeshiwas et al. 2024 PLOS ONE). Do not use 57.84/21.74 — those are not in the paper.
 - onion Russet/Jambar vs Bombay Red: marketable **26.50 / 24.57 vs 19.86 t ha−1** (same trial, cultivar main effect)
@@ -197,28 +197,44 @@ Second remaining-veg/fruit pass:
 - cherry cv. Regina bagged vs open vs hand: fruit set **2% / 28% / 39%** (Osterman et al. 2023)
 - raspberry pollinator exclusion: authors **68.2%** reduction in marketable fruit set, D = 0.68 (Ryan et al. 2023)
 
+Third veg/fruit pass + first medicinal-herb pass:
+- cauliflower 0/75/150/225 kg N: Table VI curd **8.81 / 29.1 / 31.0 / 33.9 Mg ha−1** (Bozkurt et al. 2011)
+- spinach 0–300 kg N: authors **yield similar among fertilizing treatments**; mean **37.8 t ha−1** fresh (Canali et al. 2014). Honest null. *Spinacia*, not *Tetragonia*.
+- watermelon (maps to `melon-all-types`) 0 vs 270 kg N, 2018: **32581 vs 55454 kg ha−1** at 0 B (Gülüt 2021 Table 3)
+- ginseng N1 20 g m−2: **816.56 g m−2**; authors **+29.90% vs N0** and **+38.05% vs N2** (unimodal; Li et al. 2025). *Panax ginseng*, not notoginseng.
+- stevia control vs urea 100: plant **13770 vs 24370 kg ha−1**; leaf **7630 vs 14900** (Śniegowska et al. 2024 Table 3)
+- coneflower 0 vs 150 kg N: dry herb **3817 vs 8746 kg ha−1** (Soltanbeigi & Maral 2022; DOI 10.29393/chjaa38-16ayah20016)
+- St. John’s wort 250 N+100 P vs control: herb **1053.9 vs 745.8 g m−2**; fertiliser also raised herb Cd (Azizi & Omidbaigi 2002)
+- fenugreek 90 vs 0 kg N: seed **15.29 vs 11.67 q ha−1**; 120 kg N below the 90 kg peak (Jagdale & Dalve 2011; stored on `medicinal-herbs-fenugreek`)
+- lavender/lavandin Super A 0 vs 100 kg N, 2010 dry flower **217.9 vs 3849 kg ha−1**; 150 kg N below 100 kg peak (Kucukyumuk et al. 2015; stored on `medicinal-herbs-lavender`). Extreme 0-N jump stored as published.
+
 Retracted PLOS ONE Ahmad 2021 honey-feeding paper was **not** used. CrossRef
 title-only files remain in `raw/yield-literature/` and still do not contribute
-effect sizes. **33 crops** now have elements (Vegetables 17, Fruits 7, plus
-prior hops/honey/maple and imported grains).
+effect sizes. **42 crops** now have elements (Vegetables 20, Fruits 7,
+Medicinal Herbs 6, plus prior hops/honey/maple and imported grains).
 
 Price-A/B veg/fruit still without a paper-read yield row (honest zeros, do not
-borrow): artichoke, okra, beet-table, cauliflower, celery, pumpkin, spinach,
-squash, sweet-corn, melon; apricot, kiwi, avocado, macadamia, banana,
-blackberry, nectarine, olive, papaya, peach, citrus, pear, pecan, pineapple,
-pistachio, cranberry, date, fig, walnut.
+borrow): artichoke, okra, beet-table, celery, pumpkin, squash, sweet-corn;
+apricot, kiwi, avocado, macadamia, banana, blackberry, nectarine, olive,
+papaya, peach, citrus, pear, pecan, pineapple, pistachio, cranberry, date,
+fig, walnut.
+
+Medicinal herbs still without a paper-read yield row (do not borrow):
+artemissia, mullein, arum, passion-flower, astragalus, patchouli, boldo,
+pennyroyal, cananga, pokeweed, medicinal-herbs-comfrey, senna, skullcap,
+feverfew, sonchus, foxglove, sorrel, ginko-biloba, tansy, goat-s-rue, urtica,
+goldenseal, witch-hazel, gypsywort, wood-betony, medicinal-herbs-horehound,
+wormwood, horsetail, yarrow, yerba-buena, liquorice, marshmallow.
 
 `yield-review-queue --tier D` is empty. Discovery checklists are incomplete except
 peer-reviewed-search on crops that now have elements.
 
 ## What's explicitly NOT done — next agent starts here
 
-0. **Yield elements:** remaining first-tier veg/fruit listed above; then
-   medicinal herbs (price C/D/E — do not start until the veg/fruit zeros are
-   either filled from opened papers or left explicit). No cross-crop borrowing.
-   Sweet-corn still chart-only; cauliflower N0 yield not in the opened abstract;
-   spinach/New Zealand spinach papers mixed species. Garlic Cornell null among
-   50–150 lb is stored.
+0. **Yield elements:** remaining veg/fruit zeros above; remaining medicinal
+   herbs. Fenugreek/lavender dual USDA listings: yield rows live on the
+   medicinal `crop_id`. No cross-crop borrowing. Sweet-corn still chart-only.
+   Garlic Cornell null among 50–150 lb is stored. Spinach yield-null is stored.
 1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
    (snapdragon, rose, lily). Do not dump 142 names onto one row.
 2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
