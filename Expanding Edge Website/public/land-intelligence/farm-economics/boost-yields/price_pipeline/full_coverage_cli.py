@@ -12,6 +12,7 @@ import json
 import os
 
 from . import crop_registry_full as REG
+from . import discovery as DISC
 from . import napcs_ca as NAPCS
 from . import usda_master_list as USDA
 
@@ -49,17 +50,66 @@ def cmd_audit_identity(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_discover(args: argparse.Namespace) -> int:
+    """Run the Section 3 automated discovery pass for one category (or all)."""
+    registry, _ = REG.ingest_and_audit()
+    records = DISC.run_discovery(registry, category_filter=args.category)
+    out_path = os.path.join(OUTPUT_DIR, "crop_discovery_record.csv")
+    # Merge with any existing records from a prior category run rather than clobbering.
+    existing: dict[str, DISC.CropDiscoveryRecord] = {}
+    if os.path.exists(out_path):
+        import csv as _csv
+        with open(out_path, encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                for boolfield in ("checked_us_nass", "checked_us_nass_special_survey",
+                                  "checked_us_ams", "checked_us_ams_farmers_market",
+                                  "checked_us_census_specialty", "checked_us_trade",
+                                  "checked_ca_statcan", "checked_ca_provincial",
+                                  "checked_ca_census", "checked_ca_trade"):
+                    row[boolfield] = row[boolfield] == "True"
+                for nullable in ("selected_tier_us", "selected_tier_ca",
+                                  "selected_source_us", "selected_source_ca"):
+                    row[nullable] = row[nullable] or None
+                existing[row["crop_id"]] = DISC.CropDiscoveryRecord(**row)
+    for rec in records:
+        existing[rec.crop_id] = rec
+    merged = list(existing.values())
+    DISC.write_discovery_records_csv(merged, out_path)
+
+    tier_selected = sum(1 for r in records if r.selected_tier_ca or r.selected_tier_us)
+    leads = sum(1 for r in records if "lead" in r.reviewer_notes)
+    print(f"discovered {len(records)} crops in this run"
+          f"{f' (category filter: {args.category})' if args.category else ''}")
+    print(f"  real retrieved tier confirmed : {tier_selected}")
+    print(f"  leads recorded for manual review: {leads}")
+    print(f"  no lead found                 : {len(records) - tier_selected - leads}")
+    print(f"wrote output/crop_discovery_record.csv ({len(merged)} total records across all runs)")
+    return 0
+
+
 def cmd_dashboard(args: argparse.Namespace) -> int:
-    """Section 5.2 dashboard. Discovery (Section 3) hasn't run yet in this build, so
-    every category is reported as 0% complete -- an honest empty dashboard, not a
-    placeholder pretending progress exists."""
+    """Section 5.2 dashboard. Categories with no discovery run yet show 0/total."""
     registry, _ = REG.ingest_and_audit()
     by_category: dict[str, int] = {}
     for row in registry:
         by_category[row.category] = by_category.get(row.category, 0) + 1
-    print(f"{'category':<45} {'total':>6} {'discovered':>11}")
+
+    discovered_by_category: dict[str, int] = {}
+    disc_path = os.path.join(OUTPUT_DIR, "crop_discovery_record.csv")
+    crop_to_category = {row.crop_id: row.category for row in registry}
+    if os.path.exists(disc_path):
+        import csv as _csv
+        with open(disc_path, encoding="utf-8") as fh:
+            for row in _csv.DictReader(fh):
+                cat = crop_to_category.get(row["crop_id"])
+                if cat:
+                    discovered_by_category[cat] = discovered_by_category.get(cat, 0) + 1
+
+    print(f"{'category':<55} {'total':>6} {'discovered':>11}")
     for cat, total in sorted(by_category.items()):
-        print(f"{cat:<45} {total:>6} {0:>11}  (discovery not yet run)")
+        done = discovered_by_category.get(cat, 0)
+        note = "" if done else "  (discovery not yet run)"
+        print(f"{cat:<55} {total:>6} {done:>11}{note}")
     return 0
 
 
@@ -80,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_dash = sub.add_parser("dashboard", help="print the discovery_progress_dashboard")
     p_dash.set_defaults(func=cmd_dashboard)
+
+    p_disc = sub.add_parser("discover", help="run the Section 3 automated discovery pass")
+    p_disc.add_argument("--category", default=None,
+                        help="category prefix to restrict discovery to, e.g. 'Vegetables'")
+    p_disc.set_defaults(func=cmd_discover)
 
     return parser
 
