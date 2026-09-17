@@ -159,7 +159,9 @@ def load_curated_from_papers(*, retrieved_at: str | None = None) -> list[YieldEl
             continue
         if row.get("element_type") not in YS.ELEMENT_TYPES:
             continue
-        if not (row.get("claimed_effect") or "").strip():
+        claimed = (row.get("claimed_effect") or "").strip()
+        # Tier C extension guidance must not backfill a percentage; empty claimed_effect is allowed.
+        if not claimed and row.get("source_type") != "extension_guidance":
             continue
         out.append(YieldElement(
             element_id=row["element_id"],

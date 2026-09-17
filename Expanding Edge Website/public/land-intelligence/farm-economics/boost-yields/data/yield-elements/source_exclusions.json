@@ -1,0 +1,26 @@
+[
+  {
+    "crop_id": "macadamia",
+    "rejected_source": "US Patent 11,858,869 Example 7 Macadamia Trials",
+    "url": "https://patents.google.com/patent/US11858869",
+    "reason": "Single-farm unreplicated commercial patent claim (~70 t vs 35 t/year average); no true control. Industry/patent trial, not research evidence. Same exclusion applies to similar patent-embedded 'trials' for avocado/walnut/spinach.",
+    "would_have_been_tier": "D",
+    "checked_at": "2026-09-17"
+  },
+  {
+    "crop_id": "banana",
+    "rejected_source": "Haifa Group Banana Fertilizer Schedule",
+    "url": "https://www.haifa-group.com",
+    "reason": "Fertilizer-manufacturer marketing page; conflict of interest; not a controlled trial.",
+    "would_have_been_tier": "D",
+    "checked_at": "2026-09-17"
+  },
+  {
+    "crop_id": "any",
+    "rejected_source": "tdev.umb.edu-style emoji success-story pages",
+    "url": "",
+    "reason": "Generic bullet-point success-story formatting, emoji tip boxes, unsourced percentage claims with no study/year/author. Pattern filter, not a single domain.",
+    "would_have_been_tier": "E",
+    "checked_at": "2026-09-17"
+  }
+]

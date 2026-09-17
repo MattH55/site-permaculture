@@ -23,6 +23,10 @@ def test_import_requires_source_url_and_known_crop():
         "cauliflower", "spinach", "melon-all-types",
         "ginseng", "stevia", "coneflower", "st-john-s-wort",
         "medicinal-herbs-fenugreek", "medicinal-herbs-lavender",
+        "artichoke", "okra", "beet-table", "sugar-beet", "pumpkin",
+        "squash-summer-and-winter", "sweet-corn", "fig", "blackberry",
+        "pistachio", "avocado", "walnut", "apricot", "kiwi", "macadamia",
+        "pineapple", "papaya", "citrus", "date", "peach", "olive",
     }
     assert all(r.crop_id in mapped for r in rows)
     assert all(r.element_type in YS.ELEMENT_TYPES for r in rows)
@@ -61,7 +65,10 @@ def test_curated_papers_have_quantified_effects_and_urls():
     by_crop = {r.crop_id for r in rows}
     assert {"hops", "mushroom-cultivated", "honey", "maple-syrup"} <= by_crop
     assert all(r.source_url.startswith("http") for r in rows)
-    assert all(r.claimed_effect.strip() for r in rows)
+    assert all(
+        r.claimed_effect.strip() or r.source_type == "extension_guidance"
+        for r in rows
+    )
     hops_n = next(r for r in rows if r.element_id.startswith("hops-n-rate"))
     assert "386.7" in hops_n.claimed_effect and "245.8" in hops_n.claimed_effect
     assert "10.1371/journal.pone.0258430" not in " ".join(r.source_url for r in rows)
@@ -87,6 +94,19 @@ def test_curated_papers_have_quantified_effects_and_urls():
     fenugreek = next(r for r in rows if r.crop_id == "medicinal-herbs-fenugreek")
     assert "15.29" in fenugreek.claimed_effect
     assert fenugreek.source_url.startswith("http")
+    pistachio = next(r for r in rows if r.crop_id == "pistachio")
+    assert pistachio.effect_direction == "no_significant_effect"
+    citrus = next(r for r in rows if r.crop_id == "citrus")
+    assert any(r.effect_direction == "no_significant_effect" for r in rows if r.crop_id == "citrus")
+    pineapple = next(r for r in rows if r.element_id.startswith("pineapple-density"))
+    assert "25 and 33" in pineapple.claimed_effect
+    beet_table = [r for r in rows if r.crop_id == "beet-table"]
+    sugar = [r for r in rows if r.crop_id == "sugar-beet" and r.raw_source_path.endswith("curated_from_papers.json")]
+    assert beet_table and sugar
+    assert all(r.crop_id != "sugar-beet" for r in beet_table)
+    kiwi = next(r for r in rows if r.crop_id == "kiwi")
+    assert "regulatory_flag=true" in kiwi.reviewer_notes
+    assert "11,858,869" not in " ".join(r.source_url for r in rows)
 
 
 def test_cli_exposes_yield_commands():

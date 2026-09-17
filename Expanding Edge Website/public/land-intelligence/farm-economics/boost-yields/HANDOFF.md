@@ -155,11 +155,12 @@ census/trade still open).
 
 CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
 
-`output/yield_elements.csv`: **114 rows** — 78 imported from `data/yield-factors`
-(URL required) plus **36 transcribed from papers actually opened**
+`output/yield_elements.csv`: **142 rows** — 78 imported from `data/yield-factors`
+(URL required) plus **64 transcribed from papers actually opened**
 (`data/yield-elements/curated_from_papers.json`). Peas→`pea-dry-edible`,
 pepper→Capsicum, tomato→`tomato-including-tomatillo`. Livestock/ornamental
 buckets skipped. Taxonomy: `protected_environment` (v1.1), `colony_nutrition` (v1.2).
+Loader now allows empty `claimed_effect` on `source_type=extension_guidance` (Tier C; no backfilled %).
 
 Quantified rows (effects stored as the paper reported them, not averaged or
 converted to a single % unless the authors stated one):
@@ -208,16 +209,39 @@ Third veg/fruit pass + first medicinal-herb pass:
 - fenugreek 90 vs 0 kg N: seed **15.29 vs 11.67 q ha−1**; 120 kg N below the 90 kg peak (Jagdale & Dalve 2011; stored on `medicinal-herbs-fenugreek`)
 - lavender/lavandin Super A 0 vs 100 kg N, 2010 dry flower **217.9 vs 3849 kg ha−1**; 150 kg N below 100 kg peak (Kucukyumuk et al. 2015; stored on `medicinal-herbs-lavender`). Extreme 0-N jump stored as published.
 
+25-crop ingest (`ingest-25-crop-yield-findings.md`; cauliflower/cranberry excluded as already resolved / out of report):
+- artichoke Schrader 1992: **highest numerical yield at 200 lb/ac N** (Table 2 cells not in accessible text; medium). Shinohara 2011: authors **20% to 35%** yield reduction at 50% ETc; N-rate **null**.
+- okra Manipur 2024: **11.42 vs 17.14 t ha−1** at 0 vs 150 kg N (geographic_scope=non_US).
+- beet-table: OSU FG13 **Tier C guidance**, empty claimed_effect. sugar-beet UNL AONR **166 kg ha−1 sugar / 179 root** — separate `crop_id`, not copied onto table beet.
+- pumpkin Illinois 2018 + squash NC State 2020 / MSU 2022: cultivar trials (discovery-spec Tier B).
+- sweet corn Paranhos 2025: N treatment **ns**; site-years **17,380 / 15,951 / 14,470 kg ha−1** (AL22 / GA20 / AL21) not averaged.
+- watermelon UGA 2019: **52,959–99,924 lb/acre** across cultivars (`melon-all-types`).
+- fig Gordon Acta Hort 1310: LSU/Italian 376/Aklo Lalo highest yield; **LSU not commercially viable** (small fruit).
+- blackberry Reynoso: 10 and 10-split **2.5 kg** highest vs other N treatments. Clark 2005 Prime-Jan/Jim **AR vs OR not averaged**.
+- pistachio Lovatt FREP 09-0584: **null** on split-nut yield. Funding public (FREP+UCR); Paramount orchard cooperator, COI false.
+- avocado Duke 7 **103.5** vs G755B **19.5 kg/tree** (Phytophthora-free). walnut SDI Chandler **6.7/6.4/12.2 vs 13.9 kg/tree**.
+- apricot Rab 2012: **0.794 vs 0.408 kg/branch** at 0 vs 40% thinning. peach Horticulturae: size up, **yield down in one year**.
+- kiwi Cruz-Castillo 2014: authors **about 12% (+12.6 g fruit−1)**; `regulatory_flag=true` (CPPU).
+- macadamia Stephenson 2000: authors **17% lower** yield at high N; NIS **33.8/29.6/28.8 kg/tree**. Hawaii Res-039 is Tier C only.
+- pineapple Djido 2021: authors **25 and 33%** density increase (not computed here from 54.9–69.1 to 90.1).
+- citrus Kadyampakeni 2024: **no yield differences** among N/P rates (null kept). SL253 is Tier C.
+- date Khadrawi: 30% strand thinning **lowest yield/palm** vs control. olive Curtright 2025: **same yield at 25–50% less N**.
+- papaya: UH-CTAHR F&N-3 **Tier C only** (US rate-trial gap).
+
+Excluded (logged in `data/yield-elements/source_exclusions.json`): US Patent 11,858,869 macadamia; Haifa banana schedule; tdev.umb.edu-style success-story pages.
+
 Retracted PLOS ONE Ahmad 2021 honey-feeding paper was **not** used. CrossRef
 title-only files remain in `raw/yield-literature/` and still do not contribute
-effect sizes. **42 crops** now have elements (Vegetables 20, Fruits 7,
+effect sizes. **62 crops** now have elements (Vegetables 26, Fruits 21,
 Medicinal Herbs 6, plus prior hops/honey/maple and imported grains).
+`yield-review-queue --tier D` is empty.
 
 Price-A/B veg/fruit still without a paper-read yield row (honest zeros, do not
-borrow): artichoke, okra, beet-table, celery, pumpkin, squash, sweet-corn;
-apricot, kiwi, avocado, macadamia, banana, blackberry, nectarine, olive,
-papaya, peach, citrus, pear, pecan, pineapple, pistachio, cranberry, date,
-fig, walnut.
+borrow): celery; banana, nectarine, pear, pecan, cranberry.
+
+Price-data **manual_sourcing_required** notes on `crop_discovery_record`:
+macadamia (NASS Hawaii ended 2018–19), banana, pineapple, okra, artichoke,
+date, fig, kiwi.
 
 Medicinal herbs still without a paper-read yield row (do not borrow):
 artemissia, mullein, arum, passion-flower, astragalus, patchouli, boldo,
@@ -231,10 +255,10 @@ peer-reviewed-search on crops that now have elements.
 
 ## What's explicitly NOT done — next agent starts here
 
-0. **Yield elements:** remaining veg/fruit zeros above; remaining medicinal
-   herbs. Fenugreek/lavender dual USDA listings: yield rows live on the
-   medicinal `crop_id`. No cross-crop borrowing. Sweet-corn still chart-only.
-   Garlic Cornell null among 50–150 lb is stored. Spinach yield-null is stored.
+0. **Yield elements:** remaining veg/fruit zeros (celery; banana, nectarine,
+   pear, pecan, cranberry). Remaining medicinal herbs. Papaya/beet-table have
+   Tier C guidance only. Fenugreek/lavender dual listings stay on medicinal
+   `crop_id`. No cross-crop borrowing. Do not promote patent/Haifa exclusions.
 1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
    (snapdragon, rose, lily). Do not dump 142 names onto one row.
 2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
