@@ -485,6 +485,17 @@ def discover_crop(
             ams_group = "vegetables"
         elif category.startswith("Fruits and Tree Nuts"):
             ams_group = "fruit"
+        elif category.startswith("Floriculture"):
+            ams_group = "ornamentals"
+        elif category.startswith("Culinary Herbs"):
+            rec.checked_us_ams = True
+            n_disc = len(ams_index.get("discontinued_herb_reports") or [])
+            notes.append(
+                "ams_api_coverage=not_yet_migrated: Wholesale Market Misc Herbs "
+                f"FV055 reports ({n_disc} slugs) are discontinued in MARS; AMS "
+                "migration gap, not a parser miss. Traditional mnreports PDF "
+                "remains a valid Tier B fallback and was not re-parsed this run"
+            )
         if ams_group and groups.get(ams_group):
             rec.checked_us_ams = True
             notes.append(

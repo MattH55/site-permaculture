@@ -8,10 +8,11 @@ def test_mustard_maps_to_oilseed_not_greens():
     }
 
 
-def test_maple_syrup_and_honey_are_intentionally_unmapped():
-    mapped = set(NASS.NASS_COMMODITY_TO_CROP_IDS)
-    assert "MAPLE SYRUP" not in mapped
-    assert "HONEY" not in mapped
+def test_maple_syrup_and_honey_map_to_product_rows_not_trees():
+    assert NASS.NASS_COMMODITY_TO_CROP_IDS["MAPLE SYRUP"] == ["maple-syrup"]
+    assert NASS.NASS_COMMODITY_TO_CROP_IDS["HONEY"] == ["honey"]
+    assert "maple" not in NASS.NASS_COMMODITY_TO_CROP_IDS["MAPLE SYRUP"]
+    assert "honey-locust" not in NASS.NASS_COMMODITY_TO_CROP_IDS["HONEY"]
 
 
 def test_peppers_map_to_vegetable_not_spice():

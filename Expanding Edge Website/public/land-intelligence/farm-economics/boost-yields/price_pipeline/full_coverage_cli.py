@@ -131,6 +131,17 @@ def cmd_retrieve_us(args: argparse.Namespace) -> int:
         print(f"AMS catalog: {doc['n_reports_in_catalog']} reports")
         for group, rows in doc["active_us_terminal"].items():
             print(f"  active US terminal {group}: {len(rows)}")
+        print(f"  discontinued herb FV055 slugs: {len(doc.get('discontinued_herb_reports') or [])}")
+        from . import nass_quickstats as NASS_MAP
+        extracts = []
+        for slug in ("2315", "2314", "BH_FV201"):
+            print(f"  pulling Report Details extract for {slug}...")
+            extracts.append(AMS.retrieve_report_details(slug))
+            n = len(extracts[-1].get("commodities") or [])
+            priced = sum(1 for c in extracts[-1].get("commodities") or [] if c.get("n_with_price"))
+            print(f"    commodities {n} with_price {priced}")
+        merged = AMS.merge_details_into_index(extracts, NASS_MAP.NASS_COMMODITY_TO_CROP_IDS)
+        print(f"  AMS crop_ids with priced details: {len(merged.get('by_commodity') or {})}")
     return 0
 
 

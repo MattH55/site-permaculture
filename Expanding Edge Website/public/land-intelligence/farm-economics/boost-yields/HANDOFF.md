@@ -1,16 +1,9 @@
 # Handoff: Full Specialty Crop Price Database build
 
-Status as of 2026-09-17 (third session — `next-session-extend-coverage.md`).
+Status as of 2026-09-17 (`next-session-live-key-retrieval.md`).
 
-Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices.**
-
-**NASS QuickStats and AMS Market News keys are wired via environment variables
-only (never committed). Section 2 live retrieval is done for NASS PRICE RECEIVED
-(mushrooms, hops, then Vegetables and Fruits/Tree Nuts against the 129-commodity
-universe). AMS catalog is retrieved (1,051 reports; 10 active US terminal
-fruit/veg/nut reports each). Per-crop AMS Report Details unit prices were not
-bulk-loaded (100k-row payloads); checked_us_ams is a catalog check for those
-categories, not a Tier B assignment.**
+Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices.
+API keys are environment-only; never committed.**
 
 ## What's built and verified
 
@@ -104,75 +97,76 @@ report. What it honestly *can* do, and does:
 1.2 Mustard spot-check: Alberta `mustard` average_farm_price is attached to
     **mustard-seed** (oilseed), not mustard-and-other-greens. Both reviewer_notes
     contain `SPOT-CHECK 1.2`.
-1.3 Named special surveys:
-    - mushrooms — confirmed, `has_price_field=true`, blocked on NASS_API_KEY
-    - hops — confirmed, `has_price_field=true`, blocked on NASS_API_KEY
-    - maple_syrup — survey exists with a price field, but the USDA master list
-      has **Maple the shade tree**, not maple syrup. Not attached.
-    - honey — survey exists with a price field, but the master list has
-      **Honey Locust**, not honey. Not attached.
-    - census_horticultural_specialties (lavender) — applies to both lavender
-      rows; `has_price_field=false`; Tier C at best; not retrieved.
+1.3 Named special surveys (retrieved where a crop_id exists):
+    - mushrooms — US Tier A, 2026 $1.45/lb national PRICE RECEIVED
+    - hops — US Tier A, 2025 $5.38/lb
+    - honey — new `crop_id=honey` (not Honey Locust); US Tier A 2025 $3.05/lb
+    - maple-syrup — new `crop_id=maple-syrup` (not Maple the tree); US Tier A
+      2025 $35.60/gallon
+    - census_horticultural_specialties (lavender) — value only, not retrieved
 
-### extend-coverage.md Section 2 (NASS done; AMS catalog only)
+### live-key-retrieval.md (this session)
 
-- `python -m price_pipeline.full_coverage_cli retrieve-us` uses `NASS_API_KEY` /
-  `AMS_API_KEY` from the environment. Raw JSON lands in gitignored `raw/nass/`
-  and `raw/ams/`.
-- Mushrooms retrieved: `MUSHROOMS - PRICE RECEIVED, MEASURED IN $ / LB` 2026
-  1.45 USD/lb (national). Hops: `HOPS - PRICE RECEIVED` 2025 5.38 USD/lb.
-- NASS PRICE RECEIVED universe: 129 commodities. 61 mapped crop_ids have a
-  retrieved unit price. MUSTARD maps only to mustard-seed; maple syrup and
-  honey stay unmapped (no matching specialty crop_id).
-- Vegetables after live re-run: 25/55 US Tier A. Fruits and Tree Nuts: 21/47
-  US Tier A. Distribution is uneven, as required.
-- AMS: HTTP Basic (key as username, empty password). Catalog 1,051 reports.
-  `checked_us_ams` is true for the 102 vegetable + fruit/tree-nut rows because
-  active US terminal FV reports exist. No per-crop AMS Tier B yet.
+Health checks: NASS CORN 2025 $4.10/bu; AMS `/reports` 1051 items.
 
-### extend-coverage.md Section 3 (group pass done)
+`output/crop_nass_series_map.csv` from retrieved PRICE RECEIVED (63 crop_ids).
+Raw files get `.meta.json` sidecars (`sha256`, `retrieved_at`; no key in URL).
 
-Floriculture (127 crops) ran as a group against NASS Floriculture Crops:
-`has_price_field=false` (wholesale value). No Tier A assigned. Individualized
-nursery/terminal prices need AMS_API_KEY; not invented.
+AMS Report Details extracts (commodity+price counts, not 100k-row dumps):
+- NY vegetables `2315`: 132 commodities, 131 priced
+- NY fruit `2314`: 78 / 77
+- Boston ornamentals `BH_FV201`: 142 / 141
+- 41 crop_ids mapped; 8 with no NASS unit price are US Tier B
+  (okra, eggplant, banana, blackberry, pineapple, cranberry, fig, ginger)
 
-### Current tier picture (plausibly uneven)
+AMS coverage gap: 13 Wholesale Market Misc Herbs FV055 slugs are discontinued
+in MARS. Culinary herbs: `checked_us_ams=true`,
+`ams_api_coverage=not_yet_migrated`. Traditional mnreports PDF remains a valid
+Tier B fallback and was not re-parsed.
 
-59 US Tier A (NASS PRICE RECEIVED, retrieved). 11 CA Tier B (Alberta farm-gate).
-Dashboard counts a crop once at its best tier, so vegetables show 25 A (including
-crops that also have CA B). 0 discovery_complete: farmers-market, census, trade,
-CA census/trade still open. `review-queue` remains large for that reason.
+Floriculture: AMS ornamentals are live, but strings are botanical cut-flower
+names that do not 1:1 to Appendix E crop_ids. Catalog-checked; 0 floriculture
+unit-price tiers.
 
-| bucket | crops | CA Tier B | notes |
-|---|---:|---:|---|
-| Vegetables | 55 | 3 | mushrooms NASS lead unretrieved |
-| Fruits and Tree Nuts | 47 | 0 | |
-| Culinary Herbs and Spices | 71 | 0 | hops NASS lead; lavender census value-only |
-| Medicinal Herbs | 38 | 0 | medicinal lavender census value-only |
-| Ineligible Crops | 37 | 8 | |
-| Floriculture and Nursery Crops | 127 | 0 | group-checked, value-only survey |
+Medicinal herbs: 0 A/B after live NASS/AMS — matches C/D/E expectation.
+
+Mustard NASS MUSTARD $31/cwt 2025 is on **mustard-seed**, not greens.
+Honey/maple live series are on the new product rows, not the shade trees.
+
+### Current dashboard (uneven)
+
+377 registry rows (375 USDA + honey + maple-syrup). **61 US A, 8 US B, 11 CA B.**
+0 discovery_complete. review-queue still 377 (farmers-market, census, trade, CA
+census/trade still open).
+
+| bucket | n | US A | US B |
+|---|---:|---:|---:|
+| Vegetables | 55 | 25 | 2 |
+| Fruits and Tree Nuts | 47 | 21 | 5 |
+| Culinary Herbs and Spices | 71 | 1 (hops) | 1 |
+| Medicinal Herbs | 38 | 0 | 0 |
+| Horticulture / Honey | 1 | 1 | 0 |
+| Horticulture / Maple Syrup | 1 | 1 | 0 |
+| Floriculture | 127 | 0 | 0 |
+| Ineligible | 37 | NASS grains/oilseeds A | |
 
 ## What's explicitly NOT done — next agent starts here
 
-1. **AMS Report Details per commodity** — catalog is in `raw/ams/`. Pull
-   `/reports/{slug_id}/Report Details` with a date filter (unfiltered NY veg
-   is 100k rows) and attach Tier B only when the `commodity` field names this
-   crop. Do not promote from report-title keywords (Orangeburg ≠ oranges).
-2. **Remaining `checked_*`:** `checked_us_ams_farmers_market`,
-   `checked_us_census_specialty` (except lavender), `checked_us_trade`,
-   `checked_ca_census`, `checked_ca_trade`.
-3. **Floriculture individualized AMS/nursery prices** — NASS floriculture
-   survey is still value-only. AMS ornamentals reports exist (e.g. BH_FV201).
-4. Live re-fetch of the USDA PDF / NAPCS CSV.
+1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
+   (snapdragon, rose, lily). Do not dump 142 names onto one row.
+2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
+   not_yet_migrated in the API.
+3. Remaining `checked_*`: farmers-market, census (non-lavender), US trade,
+   CA census, CA trade.
+4. Date-filtered AMS details to shrink payloads.
 
-Never commit API keys. `retrieve-us` reads them from the environment only.
+Never commit API keys.
 
 ## How to resume
 
 ```bash
 cd farm-economics/boost-yields
-python -m pytest tests/test_full_coverage.py tests/test_discovery.py -q
-python -m price_pipeline.full_coverage_cli retrieve-us --nass --ams   # needs env keys
-python -m price_pipeline.full_coverage_cli discover --category "Vegetables"
+python -m pytest tests/test_full_coverage.py tests/test_discovery.py tests/test_nass_quickstats.py -q
 python -m price_pipeline.full_coverage_cli dashboard
 ```
+

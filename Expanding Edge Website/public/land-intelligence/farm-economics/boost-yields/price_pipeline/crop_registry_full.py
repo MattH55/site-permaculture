@@ -124,6 +124,42 @@ KNOWN_IDENTITY_TRAPS = [
                        "two lint rows are duplicate listings of the same commodity, "
                        "not a third product.",
     },
+    {
+        "crop_ids": ["honey", "honey-locust"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["honey_product", "deciduous_shade_tree"],
+        "resolution": "NASS Honey PRICE RECEIVED is the food product. USDA master "
+                       "list 'Honey Locust' is a shade tree. Tracked as two rows; "
+                       "never share a price series.",
+    },
+    {
+        "crop_ids": ["maple-syrup", "maple"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["maple_syrup_product", "deciduous_shade_tree"],
+        "resolution": "NASS Maple Syrup PRICE RECEIVED is the syrup commodity. USDA "
+                       "master list 'Maple' is a shade tree. Tracked as two rows.",
+    },
+]
+
+# Commodities priced by NASS/AMS that are not rows on the USDA specialty-crop
+# PDF (honey and maple syrup vs. Honey Locust / Maple shade trees).
+EXTRA_REGISTRY_ROWS = [
+    {
+        "crop_id": "honey",
+        "crop_name": "Honey",
+        "category": "Horticulture / Honey",
+        "usda_master_list_match": False,
+        "aliases": ["honey, extracted"],
+        "is_eligible_specialty_us": True,
+    },
+    {
+        "crop_id": "maple-syrup",
+        "crop_name": "Maple Syrup",
+        "category": "Horticulture / Maple Syrup",
+        "usda_master_list_match": False,
+        "aliases": ["maple syrup"],
+        "is_eligible_specialty_us": True,
+    },
 ]
 
 # Keyword-collision candidates from the scanner that a human has now read.
@@ -356,6 +392,20 @@ def build_crop_registry(
             usda_master_list_match=True,
             napcs_code_match=napcs_match,
             is_eligible_specialty_us=is_eligible,
+            added_at=retrieved_at,
+        ))
+    for extra in EXTRA_REGISTRY_ROWS:
+        if extra["crop_id"] in seen_ids:
+            continue
+        seen_ids[extra["crop_id"]] = 1
+        out.append(CropRegistryRow(
+            crop_id=extra["crop_id"],
+            crop_name=extra["crop_name"],
+            category=extra["category"],
+            usda_master_list_match=bool(extra["usda_master_list_match"]),
+            napcs_code_match=_match_napcs(extra["crop_name"], napcs_rows),
+            aliases=list(extra.get("aliases") or []),
+            is_eligible_specialty_us=bool(extra["is_eligible_specialty_us"]),
             added_at=retrieved_at,
         ))
     return out

@@ -151,6 +151,18 @@ class TestCropRegistry:
         # against an unrelated leaf.
         assert rose.napcs_code_match is None
 
+    def test_honey_and_maple_syrup_are_extra_rows_not_trees(self, registry_and_findings):
+        registry, findings = registry_and_findings
+        by_id = {r.crop_id: r for r in registry}
+        assert by_id["honey"].usda_master_list_match is False
+        assert by_id["maple-syrup"].usda_master_list_match is False
+        assert by_id["honey-locust"].usda_master_list_match is True
+        assert by_id["maple"].usda_master_list_match is True
+        traps = {frozenset(f["crop_ids"]) for f in findings
+                 if f["flag_type"] == "multi_commodity_same_name"}
+        assert frozenset(["honey", "honey-locust"]) in traps
+        assert frozenset(["maple-syrup", "maple"]) in traps
+
     def test_identity_candidates_are_reviewed(self, registry_and_findings):
         _, findings = registry_and_findings
         unreviewed = [

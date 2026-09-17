@@ -5,6 +5,9 @@ index ``raw/nass/price_received_index.json``, not the API, so tests stay offline
 """
 from __future__ import annotations
 
+import csv
+import datetime
+import hashlib
 import json
 import os
 import re
@@ -17,6 +20,7 @@ PROJECT_ROOT = os.path.dirname(PACKAGE_DIR)
 RAW_DIR = os.path.join(PROJECT_ROOT, "raw", "nass")
 INDEX_PATH = os.path.join(RAW_DIR, "price_received_index.json")
 UNIVERSE_PATH = os.path.join(RAW_DIR, "price_received_commodities.json")
+SERIES_MAP_PATH = os.path.join(PROJECT_ROOT, "output", "crop_nass_series_map.csv")
 
 API_GET = "https://quickstats.nass.usda.gov/api/api_GET/"
 API_PARAMS = "https://quickstats.nass.usda.gov/api/get_param_values/"
@@ -105,8 +109,9 @@ NASS_COMMODITY_TO_CROP_IDS: dict[str, list[str]] = {
     "OATS": ["oats"],
     "RYE": ["rye"],
     "SORGHUM": ["grain-sorghum"],
-    # MAPLE SYRUP and HONEY exist in NASS; they have no matching USDA specialty
-    # crop_id (maple/honey-locust are shade trees). Left unmapped on purpose.
+    # Real NASS commodities that are NOT the USDA shade-tree rows maple / honey-locust.
+    "HONEY": ["honey"],
+    "MAPLE SYRUP": ["maple-syrup"],
 }
 
 _UNIT_PRICE_RE = re.compile(r"\$\s*/\s*(LB|TON|CWT|BU|TONNE|KG|GAL|BOX)", re.I)
@@ -146,11 +151,22 @@ def param_values(param: str, **filters) -> list[str]:
     return []
 
 
-def write_raw(name: str, payload: dict | list) -> str:
+def write_raw(name: str, payload: dict | list, *, source_url: str = "") -> str:
     os.makedirs(RAW_DIR, exist_ok=True)
     path = os.path.join(RAW_DIR, name)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh)
+    text = json.dumps(payload)
+    data = text.encode("utf-8")
+    with open(path, "wb") as fh:
+        fh.write(data)
+    sidecar = {
+        "raw_file": os.path.relpath(path, PROJECT_ROOT).replace("\\", "/"),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "retrieved_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "n_bytes": len(data),
+        "source_url": source_url,
+    }
+    with open(path + ".meta.json", "w", encoding="utf-8") as fh:
+        json.dump(sidecar, fh, indent=2)
     return path
 
 
@@ -224,7 +240,11 @@ def retrieve_commodity(commodity_desc: str, *, national: bool = True) -> list[Na
         params["agg_level_desc"] = "NATIONAL"
     data = api_get(**params)
     slug = re.sub(r"[^A-Z0-9]+", "_", commodity_desc.upper()).strip("_")
-    path = write_raw(f"price_received_{slug}.json", data)
+    public = {k: v for k, v in params.items()}
+    path = write_raw(
+        f"price_received_{slug}.json", data,
+        source_url=API_GET + "?" + urllib.parse.urlencode(public),
+    )
     return _rows_to_hits(data.get("data") or [], os.path.relpath(path, PROJECT_ROOT))
 
 
@@ -289,7 +309,38 @@ def build_index(hits: list[NassPriceHit], commodities: list[str]) -> dict:
     os.makedirs(RAW_DIR, exist_ok=True)
     with open(INDEX_PATH, "w", encoding="utf-8") as fh:
         json.dump(doc, fh, indent=2)
+    write_series_map_csv(doc)
     return doc
+
+
+def write_series_map_csv(index: dict, path: str | None = None) -> str:
+    out_path = path or SERIES_MAP_PATH
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    special = {"MUSHROOMS", "HOPS", "HONEY", "MAPLE SYRUP"}
+    with open(out_path, "w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[
+            "crop", "commodity_desc", "short_desc", "statisticcat_desc",
+            "is_special_survey", "confidence", "year", "value", "unit_desc",
+            "raw_file", "notes",
+        ])
+        writer.writeheader()
+        for crop_id, hits in sorted((index.get("by_crop_id") or {}).items()):
+            latest = max(hits, key=lambda h: str(h.get("year") or ""))
+            commodity = (latest.get("commodity_desc") or "")
+            writer.writerow({
+                "crop": crop_id,
+                "commodity_desc": commodity,
+                "short_desc": latest.get("short_desc") or "",
+                "statisticcat_desc": "PRICE RECEIVED",
+                "is_special_survey": str(commodity.upper() in special),
+                "confidence": "high",
+                "year": latest.get("year") or "",
+                "value": latest.get("value") or "",
+                "unit_desc": latest.get("unit_desc") or "",
+                "raw_file": latest.get("raw_file") or "",
+                "notes": "retrieved via NASS QuickStats; unit-price series only",
+            })
+    return out_path
 
 
 def load_index(path: str | None = None) -> dict | None:
