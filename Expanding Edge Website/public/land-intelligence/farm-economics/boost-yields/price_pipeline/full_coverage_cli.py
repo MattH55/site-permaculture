@@ -167,6 +167,106 @@ def cmd_review_queue(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_yield_discover(args: argparse.Namespace) -> int:
+    from . import yield_discovery as YD
+    from . import yield_elements as YE
+    registry, _ = REG.ingest_and_audit()
+    all_elements = YE.import_existing_yield_factors()
+    YE.write_taxonomy()
+    YE.write_elements_csv(all_elements)
+    elements = all_elements
+    work_registry = registry
+    if args.element_type:
+        elements = [e for e in elements if e.element_type == args.element_type]
+    if args.crop:
+        needle = args.crop.strip().lower()
+        elements = [e for e in elements if needle in (e.crop_id, e.element_name.lower())]
+        work_registry = [r for r in registry if needle in (r.crop_id, r.crop_name.lower())]
+    if args.category:
+        work_registry = [r for r in work_registry if r.category.startswith(args.category)]
+        ids = {r.crop_id for r in work_registry}
+        elements = [e for e in elements if e.crop_id in ids]
+    checked_at = __import__("datetime").datetime.now(
+        __import__("datetime").timezone.utc).date().isoformat()
+    records = YD.records_from_elements(work_registry, all_elements, checked_at=checked_at)
+    existing = {r["crop_id"]: r for r in YD.load_discovery_csv()}
+    if args.crossref:
+        targets = work_registry
+        et = args.element_type or "soil_fertility"
+        for row in targets[:12]:  # cap live searches this run
+            try:
+                result = YD.crossref_search(row.crop_name, et)
+            except Exception as exc:
+                rec = next(r for r in records if r.crop_id == row.crop_id)
+                rec.reviewer_notes = f"CrossRef search failed: {type(exc).__name__}"
+                continue
+            rec = next(r for r in records if r.crop_id == row.crop_id)
+            YD.apply_crossref(rec, result)
+    if existing:
+        merged = {r["crop_id"]: YD.YieldDiscoveryRecord(
+            crop_id=r["crop_id"],
+            crop_name=r.get("crop_name") or "",
+            category=r.get("category") or "",
+            checked_peer_reviewed_search=r.get("checked_peer_reviewed_search") in (True, "True", "true"),
+            checked_extension_trials=r.get("checked_extension_trials") in (True, "True", "true"),
+            checked_extension_guidance=r.get("checked_extension_guidance") in (True, "True", "true"),
+            checked_industry_trials=r.get("checked_industry_trials") in (True, "True", "true"),
+            elements_found_count=int(r.get("elements_found_count") or 0),
+            highest_tier_found=r.get("highest_tier_found") or "",
+            reviewer_notes=r.get("reviewer_notes") or "",
+            checked_at=r.get("checked_at") or checked_at,
+        ) for r in existing.values()}
+        for rec in records:
+            merged[rec.crop_id] = rec
+        records = list(merged.values())
+    YD.write_discovery_csv(records)
+    print(f"yield_elements: {len(all_elements)} rows -> output/yield_elements.csv")
+    print(f"yield_discovery_record: {len(records)} rows")
+    print(f"  with elements: {sum(1 for r in records if r.elements_found_count)}")
+    return 0
+
+
+def cmd_yield_review_queue(args: argparse.Namespace) -> int:
+    from . import yield_discovery as YD
+    rows = YD.load_discovery_csv()
+    queue = [r for r in rows if YD.in_review_queue(r, tier=args.tier)]
+    if args.json:
+        print(json.dumps(queue, indent=2))
+        return 0
+    print(f"yield-review-queue: {len(queue)} of {len(rows)}"
+          f"{f' (tier {args.tier})' if args.tier else ''}")
+    for r in queue[:40]:
+        print(f"{r.get('crop_id',''):<36} tier={r.get('highest_tier_found') or '-':<2} "
+              f"n={r.get('elements_found_count')} {(r.get('reviewer_notes') or '')[:70]}")
+    if len(queue) > 40:
+        print(f"... {len(queue) - 40} more")
+    return 0
+
+
+def cmd_yield_dashboard(args: argparse.Namespace) -> int:
+    from . import yield_discovery as YD
+    from . import yield_elements as YE
+    registry, _ = REG.ingest_and_audit()
+    elements = YE.import_existing_yield_factors()
+    records = YD.load_discovery_csv()
+    rows = YD.dashboard_rows(registry, elements, records)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    print(f"{'category':<55} {'crops':>6} {'with_el':>7} {'A':>4} {'B':>4} {'C':>4} {'D':>4} {'E':>4}")
+    for r in rows:
+        if r["with_elements"] == 0 and r["crops"] > 20:
+            continue
+        print(f"{r['category']:<55} {r['crops']:>6} {r['with_elements']:>7} "
+              f"{r['tier_a']:>4} {r['tier_b']:>4} {r['tier_c']:>4} "
+              f"{r['tier_d']:>4} {r['tier_e']:>4}")
+    shown = [r for r in rows if not (r["with_elements"] == 0 and r["crops"] > 20)]
+    hidden = len(rows) - len(shown)
+    if hidden:
+        print(f"... {hidden} categories with 0 elements omitted")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="full_coverage_cli",
@@ -203,6 +303,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_ret.add_argument("--ams", action="store_true")
     p_ret.add_argument("--years", nargs="*", default=None)
     p_ret.set_defaults(func=cmd_retrieve_us)
+
+    p_yd = sub.add_parser("yield-discover", help="import/search yield-improvement elements")
+    p_yd.add_argument("--category", default=None)
+    p_yd.add_argument("--crop", default=None)
+    p_yd.add_argument("--element-type", default=None, dest="element_type")
+    p_yd.add_argument("--crossref", action="store_true",
+                      help="run a CrossRef title search; does not invent effect sizes")
+    p_yd.set_defaults(func=cmd_yield_discover)
+
+    p_yq = sub.add_parser("yield-review-queue", help="yield discovery review queue")
+    p_yq.add_argument("--tier", default=None, help="filter by highest_tier_found, e.g. D")
+    p_yq.add_argument("--json", action="store_true")
+    p_yq.set_defaults(func=cmd_yield_review_queue)
+
+    p_yda = sub.add_parser("yield-dashboard", help="yield coverage by category x tier")
+    p_yda.add_argument("--json", action="store_true")
+    p_yda.set_defaults(func=cmd_yield_dashboard)
 
     return parser
 

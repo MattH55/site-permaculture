@@ -1,9 +1,10 @@
 # Handoff: Full Specialty Crop Price Database build
 
-Status as of 2026-09-17 (`next-session-live-key-retrieval.md`).
+Status as of 2026-09-17. Price live-key retrieval is in; yield-element discovery
+(`yield-improvement-element-discovery-spec.md`) has a first honest pass.
 
-Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices.
-API keys are environment-only; never committed.**
+Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices
+or yield percentages. API keys are environment-only; never committed.**
 
 ## What's built and verified
 
@@ -150,8 +151,31 @@ census/trade still open).
 | Floriculture | 127 | 0 | 0 |
 | Ineligible | 37 | NASS grains/oilseeds A | |
 
+### yield-improvement-element-discovery-spec.md (first pass)
+
+CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
+
+`output/yield_elements.csv`: **78 rows** imported from `data/yield-factors/*.json`
+only when a `source_url`/`doi` exists and the crop maps onto `crop_registry`
+(peas→`pea-dry-edible`, pepper→vegetable Capsicum, tomato→`tomato-including-tomatillo`).
+Livestock (beef/dairy) and undifferentiated `ornamentals` / `tree-seedlings` buckets
+were skipped. Taxonomy added `protected_environment` (logged v1.1) for greenhouse
+LED/CO2 evidence that does not fit the original 10 types.
+
+12 crops have elements, all highest_tier A. No claimed_effect was invented on import
+(empty when `effect_size` is null). CrossRef title searches were run for hops,
+mushroom-cultivated, honey, maple-syrup (`raw/yield-literature/`); **no effect
+sizes were taken from titles**.
+
+`yield-review-queue --tier D` is empty. Discovery checklists are incomplete except
+peer-reviewed-search on the 12 imported crops plus those four CrossRef crops.
+
 ## What's explicitly NOT done — next agent starts here
 
+0. **Yield elements:** extension-trial/guidance searches; fertility pass across a
+   whole category with actual paper reads (not titles); hops/mushroom substrate
+   trials once a PDF/HTML with a quantified yield effect is retrieved; do not
+   copy canola boron findings onto mustard greens.
 1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
    (snapdragon, rose, lily). Do not dump 142 names onto one row.
 2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
