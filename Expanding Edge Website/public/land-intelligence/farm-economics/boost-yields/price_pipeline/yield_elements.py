@@ -13,6 +13,7 @@ from . import yield_schema as YS
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(PACKAGE_DIR)
 YF_DIR = os.path.join(PROJECT_ROOT, "data", "yield-factors")
+CURATED_PATH = os.path.join(PROJECT_ROOT, "data", "yield-elements", "curated_from_papers.json")
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
 ELEMENTS_CSV = os.path.join(OUTPUT_DIR, "yield_elements.csv")
 TAXONOMY_JSON = os.path.join(OUTPUT_DIR, "element_taxonomy.json")
@@ -141,6 +142,47 @@ def import_existing_yield_factors(*, retrieved_at: str | None = None) -> list[Yi
                 raw_source_path=rel,
                 reviewer_notes="imported from data/yield-factors; pass=existing_literature",
             ))
+    out.extend(load_curated_from_papers(retrieved_at=retrieved_at))
+    return out
+
+
+def load_curated_from_papers(*, retrieved_at: str | None = None) -> list[YieldElement]:
+    """Rows transcribed from papers this session actually opened (not titles)."""
+    retrieved_at = retrieved_at or datetime.datetime.now(datetime.timezone.utc).isoformat()
+    if not os.path.exists(CURATED_PATH):
+        return []
+    with open(CURATED_PATH, encoding="utf-8") as fh:
+        payload = json.load(fh)
+    out: list[YieldElement] = []
+    for row in payload:
+        if not (row.get("source_url") or "").strip():
+            continue
+        if row.get("element_type") not in YS.ELEMENT_TYPES:
+            continue
+        if not (row.get("claimed_effect") or "").strip():
+            continue
+        out.append(YieldElement(
+            element_id=row["element_id"],
+            crop_id=row["crop_id"],
+            element_type=row["element_type"],
+            element_name=row["element_name"],
+            claimed_effect=row["claimed_effect"],
+            effect_direction=row["effect_direction"],
+            baseline_comparison=row.get("baseline_comparison") or "",
+            study_context=row.get("study_context") or "",
+            source_tier=row["source_tier"],
+            source_type=row["source_type"],
+            source_url=row["source_url"],
+            source_citation=row.get("source_citation") or "",
+            publication_year=str(row.get("publication_year") or ""),
+            study_design=row.get("study_design") or "none",
+            sample_size_or_reps=str(row.get("sample_size_or_reps") or ""),
+            conflict_of_interest_flag=bool(row.get("conflict_of_interest_flag")),
+            confidence=row.get("confidence") or "medium",
+            retrieval_timestamp=retrieved_at,
+            raw_source_path="data/yield-elements/curated_from_papers.json",
+            reviewer_notes=row.get("reviewer_notes") or "pass=paper_read",
+        ))
     return out
 
 

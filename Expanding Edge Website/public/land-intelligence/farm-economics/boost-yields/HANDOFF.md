@@ -155,17 +155,26 @@ census/trade still open).
 
 CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
 
-`output/yield_elements.csv`: **78 rows** imported from `data/yield-factors/*.json`
-only when a `source_url`/`doi` exists and the crop maps onto `crop_registry`
-(peas→`pea-dry-edible`, pepper→vegetable Capsicum, tomato→`tomato-including-tomatillo`).
-Livestock (beef/dairy) and undifferentiated `ornamentals` / `tree-seedlings` buckets
-were skipped. Taxonomy added `protected_environment` (logged v1.1) for greenhouse
-LED/CO2 evidence that does not fit the original 10 types.
+`output/yield_elements.csv`: **85 rows** — 78 imported from `data/yield-factors`
+(URL required) plus **7 transcribed from papers actually opened**
+(`data/yield-elements/curated_from_papers.json`). Peas→`pea-dry-edible`,
+pepper→Capsicum, tomato→`tomato-including-tomatillo`. Livestock/ornamental
+buckets skipped. Taxonomy: `protected_environment` (v1.1), `colony_nutrition` (v1.2).
 
-12 crops have elements, all highest_tier A. No claimed_effect was invented on import
-(empty when `effect_size` is null). CrossRef title searches were run for hops,
-mushroom-cultivated, honey, maple-syrup (`raw/yield-literature/`); **no effect
-sizes were taken from titles**.
+Quantified rows added this pass (effects stored as the paper reported them, not
+averaged or converted to a single % unless the authors stated one):
+
+- hops N 250 vs 0 kg ha−1: cone DM **386.7 vs 245.8 kg ha−1** (Lagos et al. 2023 Ceres)
+- hops in-row 300×114 vs 300×100 cm: **2.80 vs 2.58 t ha−1**; authors: **+10%** (Kořen 2008 PSE)
+- A. bisporus 1 in vs 5 in cocopeat casing: **638 vs 355 g/bag**
+- A. bisporus 2% vs 1% spawn: **45.67 vs 20.79 kg m−2** (Shibli 2025)
+- honey Diet 1 vs Megabee: **14 ± 2 vs 8 ± 1 kg/colony** (Kim et al. 2024 Insects; n=3)
+- maple vacuum vs unpumped: **43.7 vs 16.4 qt/taphole** Area I (USDA FS NE-91)
+- maple high-yield retubing: authors **70.6%** (0.58 vs 0.34 gal/tap, UVM 20 yr)
+
+Retracted PLOS ONE Ahmad 2021 honey-feeding paper was **not** used. CrossRef
+title-only files remain in `raw/yield-literature/` and still do not contribute
+effect sizes. 16 crops now have elements.
 
 `yield-review-queue --tier D` is empty. Discovery checklists are incomplete except
 peer-reviewed-search on the 12 imported crops plus those four CrossRef crops.

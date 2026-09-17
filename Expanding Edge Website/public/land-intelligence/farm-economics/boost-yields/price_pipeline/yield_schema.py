@@ -19,9 +19,17 @@ ELEMENT_TYPES = (
     # Logged 2026-09-17: greenhouse lighting / CO2 / temperature evidence already
     # exists in data/yield-factors and does not fit irrigation_practice.
     "protected_environment",
+    "colony_nutrition",
 )
 
 TAXONOMY_CHANGELOG = [
+    {
+        "version": "1.2",
+        "date": "2026-09-17",
+        "change": "added colony_nutrition",
+        "reason": "Honey is a livestock-adjacent product; pollen-substitute feeding "
+                  "trials do not fit soil_fertility or harvest_technique without lying.",
+    },
     {
         "version": "1.1",
         "date": "2026-09-17",
