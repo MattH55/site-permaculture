@@ -79,7 +79,10 @@ MANUAL_LEAD_REVIEWS: dict[str, dict] = {
     "mustard-and-other-greens": {
         "decision": "reject_lead",
         "note": "REJECTED: ca_ab_weekly_crop_market_review covers mustard seed "
-                "(oilseed cash bids), not leafy mustard greens.",
+                "(oilseed cash bids), not leafy mustard greens. "
+                "SPOT-CHECK 1.2: Alberta usable observations attach to crop_id "
+                "'mustard' (oilseed). This leafy-greens row has no Alberta "
+                "match and must not inherit that series.",
     },
     "flax": {
         "decision": "reject_lead",
@@ -127,7 +130,90 @@ MANUAL_LEAD_REVIEWS: dict[str, dict] = {
                 "has_price_field=true, verbatim 'HOPS - PRICE RECEIVED, "
                 "MEASURED IN $ / LB'. Needs NASS_API_KEY before Tier A.",
     },
+    "mustard-seed": {
+        "decision": "confirm_lead_unretrieved",
+        "note": "SPOT-CHECK 1.2: Alberta alias mustard-seed -> 'mustard' "
+                "(average_farm_price) is the OILSEED crop_id, not "
+                "mustard-and-other-greens. Identity split holds.",
+    },
+    "lavender": {
+        "decision": "confirm_lead_unretrieved",
+        "note": "NASS Census of Horticultural Specialties includes a lavender "
+                "line item; has_price_field=false (operations/area/sales value "
+                "only). Tier C at best; not retrieved. Not a unit-price series.",
+    },
+    "medicinal-herbs-lavender": {
+        "decision": "confirm_lead_unretrieved",
+        "note": "Same Census of Horticultural Specialties lavender line as "
+                "culinary lavender; has_price_field=false. Keep this medicinal "
+                "row separate; do not merge price series.",
+    },
+    "maple": {
+        "decision": "reject_lead",
+        "note": "NASS Maple Syrup special survey (has_price_field=true) does "
+                "NOT apply to this crop_id: USDA lists Maple as a deciduous "
+                "shade tree, not maple syrup. No maple-syrup row exists on "
+                "the master list.",
+    },
+    "honey-locust": {
+        "decision": "reject_lead",
+        "note": "NASS Honey special survey (has_price_field=true) does NOT "
+                "apply to this crop_id: USDA lists Honey Locust as a "
+                "deciduous shade tree, not honey. No honey row exists on "
+                "the master list.",
+    },
 }
+
+# Retrieved StatCan Table 18-10-0245-01 product labels (fresh/packaged grocery,
+# not canned/frozen/processed) mapped to crop_registry ids. Built by reading
+# the 110 unique Products values in raw/18100245.zip. Retail is CA Tier A in
+# the spec but sources.json marks retail_price usable_for_farm_economics=false,
+# so a hit here is recorded as a checked source, not selected as selected_tier_ca.
+STATCAN_18100245_PRODUCT_TO_CROP_IDS: dict[str, list[str]] = {
+    "Almonds, 200 grams": ["almond"],
+    "Apples, per kilogram": ["apple"],
+    "Avocado, unit": ["avocado"],
+    "Bananas, per kilogram": ["banana"],
+    "Broccoli, unit": ["broccoli-including-broccoli-raab"],
+    "Cabbage, per kilogram": ["cabbage-including-chinese"],
+    "Cantaloupe, unit": ["melon-all-types"],
+    "Carrots, 1.36 kilograms": ["carrot"],
+    "Celery, unit": ["celery"],
+    "Cucumber, unit": ["cucumber"],
+    "Dried lentils, 900 grams": ["lentils"],
+    "Dry beans and legumes, 900 grams": ["bean-dry-edible"],
+    "Grapes, per kilogram": ["grape-including-raisin"],
+    "Iceberg lettuce, unit": ["lettuce"],
+    "Romaine lettuce, unit": ["lettuce"],
+    "Lemons, unit": ["citrus"],
+    "Limes, unit": ["citrus"],
+    "Oranges, 1.36 kilograms": ["citrus"],
+    "Oranges, per kilogram": ["citrus"],
+    "Mushrooms, 227 grams": ["mushroom-cultivated"],
+    "Onions, 1.36 kilograms": ["onion"],
+    "Onions, per kilogram": ["onion"],
+    "Pears, per kilogram": ["pear"],
+    "Peppers, per kilogram": ["pepper"],  # Capsicum vegetable, not Piper spice
+    "Potatoes, 4.54 kilograms": ["potato"],
+    "Potatoes, per kilogram": ["potato"],
+    "Squash, per kilogram": ["squash-summer-and-winter"],
+    "Strawberries, 454 grams": ["strawberry"],
+    "Sunflower seeds, 400 grams": ["sunflower-seed"],
+    "Sweet potatoes, per kilogram": ["sweet-potato"],
+    "Tomatoes, per kilogram": ["tomato-including-tomatillo"],
+    "Peanuts, 450 grams": ["peanut"],
+}
+
+# crop_id -> (survey_key, applies). Keyword matching is not used: maple syrup
+# must not attach to shade-tree Maple, honey must not attach to Honey Locust.
+NAMED_SPECIAL_SURVEY_CROPS: dict[str, str] = {
+    "mushroom-cultivated": "mushrooms",
+    "hops": "hops",
+    "lavender": "census_horticultural_specialties",
+    "medicinal-herbs-lavender": "census_horticultural_specialties",
+}
+
+STATCAN_18100245_ZIP = os.path.join(PROJECT_ROOT, "raw", "18100245.zip")
 
 ALBERTA_OBSERVATIONS_PATH = os.path.join(
     PROJECT_ROOT, "data", "price-observations", "observations.json")
@@ -135,6 +221,9 @@ ALBERTA_SOURCES_PATH = os.path.join(
     PROJECT_ROOT, "data", "price-observations", "sources.json")
 
 WIDE_REGISTRY_PATH = os.path.join(PROJECT_ROOT, "wide_price_sources.yaml")
+
+_STATCAN_PRODUCTS_CACHE: set[str] | None = None
+_STATCAN_HITS_BY_CROP: dict[str, list[str]] | None = None
 
 
 @dataclass
@@ -226,6 +315,50 @@ def _load_wide_registry_crop_keys() -> set[str]:
     return set((doc or {}).get("crops", {}).keys())
 
 
+def load_statcan_18100245_products(path: str | None = None) -> set[str]:
+    """Unique Products values from the already-retrieved Table 18-10-0245 ZIP."""
+    global _STATCAN_PRODUCTS_CACHE
+    zip_path = path or STATCAN_18100245_ZIP
+    if path is None and _STATCAN_PRODUCTS_CACHE is not None:
+        return _STATCAN_PRODUCTS_CACHE
+    import zipfile
+    import io
+    products: set[str] = set()
+    with zipfile.ZipFile(zip_path) as zf:
+        name = next(n for n in zf.namelist()
+                    if n.lower().endswith(".csv") and "metadata" not in n.lower())
+        with zf.open(name) as fh:
+            reader = csv.DictReader(io.TextIOWrapper(fh, encoding="utf-8-sig", newline=""))
+            for row in reader:
+                label = (row.get("Products") or "").strip()
+                if label:
+                    products.add(label)
+    if path is None:
+        _STATCAN_PRODUCTS_CACHE = products
+    return products
+
+
+def statcan_products_for_crop(crop_id: str, products: set[str] | None = None) -> list[str]:
+    global _STATCAN_HITS_BY_CROP
+    if _STATCAN_HITS_BY_CROP is None:
+        hits: dict[str, list[str]] = {}
+        present = products if products is not None else load_statcan_18100245_products()
+        for label, crop_ids in STATCAN_18100245_PRODUCT_TO_CROP_IDS.items():
+            if label not in present:
+                continue
+            for cid in crop_ids:
+                hits.setdefault(cid, []).append(label)
+        _STATCAN_HITS_BY_CROP = hits
+    return list(_STATCAN_HITS_BY_CROP.get(crop_id, []))
+
+
+def _survey_by_key(surveys: list[WC.SpecialSurvey], key: str) -> WC.SpecialSurvey | None:
+    for s in surveys:
+        if s.key == key:
+            return s
+    return None
+
+
 def _match_alberta(crop_id: str, crop_name: str, alberta_usable: dict[str, set[str]]) -> str | None:
     slug = _slug(crop_name)
     candidates = {slug, slug.rstrip("s"), slug + "s", crop_id}
@@ -287,12 +420,55 @@ def discover_crop(
     else:
         notes.append("no matching crop_id in the already-retrieved Alberta observations")
 
-    # 2. NASS special-survey checklist (Section 3.2) -- a lead, not a confirmed tier.
-    survey_hit = _match_special_survey(crop_name, surveys)
-    if survey_hit is not None:
+    # 1b. StatCan Table 18-10-0245-01 -- always actually looked up (spec 3.1 /
+    # next-session 1.1). Presence in the 110-item grocery list is recorded;
+    # retail_price is not usable_for_farm_economics, so it never becomes
+    # selected_tier_ca.
+    rec.checked_ca_statcan = True
+    statcan_hits = statcan_products_for_crop(crop_id)
+    if statcan_hits:
+        notes.append(
+            "StatCan 18-10-0245 checked: present as "
+            + "; ".join(statcan_hits)
+            + " (retail scanner, not farm-gate; not selected as CA tier)"
+        )
+    else:
+        notes.append(
+            "StatCan 18-10-0245 checked: not in the retrieved 110-product "
+            "grocery list (ca_tier not_applicable)"
+        )
+
+    # 2. NASS special-survey checklist (Section 3.2) -- named surveys, not
+    # substring search. Passing surveys=[] in unit tests means "do not claim
+    # this checklist was run."
+    if surveys:
         rec.checked_us_nass_special_survey = True
-        notes.append(f"NASS special survey lead: {survey_hit.key!r} "
-                     f"({survey_hit.report_title}) -- not retrieved, needs manual_review")
+        mapped_key = NAMED_SPECIAL_SURVEY_CROPS.get(crop_id)
+        if mapped_key:
+            survey_hit = _survey_by_key(surveys, mapped_key)
+            if survey_hit is not None:
+                if mapped_key == "census_horticultural_specialties":
+                    rec.checked_us_census_specialty = True
+                notes.append(
+                    f"NASS special survey {survey_hit.key!r} applies "
+                    f"({survey_hit.report_title}); has_price_field="
+                    f"{survey_hit.has_price_field}; not retrieved"
+                )
+        elif category.startswith("Floriculture and Nursery Crops"):
+            flor = _survey_by_key(surveys, "floriculture_crops")
+            if flor is not None:
+                notes.append(
+                    "NASS Floriculture Crops special survey group-check "
+                    f"(has_price_field={flor.has_price_field}, wholesale value "
+                    "only; Tier C at best; not retrieved). Individual "
+                    "terminal-market prices were not pulled."
+                )
+        else:
+            notes.append(
+                "NASS special-survey checklist (mushrooms, hops, maple_syrup, "
+                "honey, floriculture_crops, census_horticultural_specialties) "
+                "checked: none apply to this crop_id"
+            )
 
     # 3. CA source catalog (provincial/AAFC programs beyond Alberta's already-parsed ones).
     ca_hit = _match_ca_catalog(crop_name, ca_sources)

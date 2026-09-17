@@ -82,8 +82,9 @@ def test_rice_does_not_match_price_substring_in_mushroom_survey():
         alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
         ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
     )
-    assert rec.checked_us_nass_special_survey is False
-    assert "NASS special survey lead" not in rec.reviewer_notes
+    assert rec.checked_us_nass_special_survey is True
+    assert "none apply to this crop_id" in rec.reviewer_notes
+    assert "NASS special survey 'mushrooms' applies" not in rec.reviewer_notes
 
 
 def test_table_beet_does_not_match_statcan_table_title():
@@ -139,6 +140,81 @@ def test_mushroom_special_survey_is_a_confirmed_unretrieved_lead():
     assert rec.selected_tier_us is None
     assert rec.checked_by == "manual_review"
     assert "CONFIRMED LEAD" in rec.reviewer_notes
+
+
+def test_statcan_lookup_is_always_recorded():
+    rec = DISC.discover_crop(
+        "cacao", "Cacao", "Fruits and Tree Nuts",
+        alberta_usable={}, surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert rec.checked_ca_statcan is True
+    assert "ca_tier not_applicable" in rec.reviewer_notes
+
+
+def test_statcan_tomato_is_present_but_not_selected_as_farm_gate_tier():
+    rec = DISC.discover_crop(
+        "tomato-including-tomatillo", "Tomato (including Tomatillo)", "Vegetables",
+        alberta_usable={}, surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert rec.checked_ca_statcan is True
+    assert "Tomatoes, per kilogram" in rec.reviewer_notes
+    assert rec.selected_tier_ca is None
+
+
+def test_statcan_peppers_do_not_attach_to_spice_pepper():
+    rec = DISC.discover_crop(
+        "culinary-herbs-and-spices-pepper", "Pepper", "Culinary Herbs and Spices",
+        alberta_usable={}, surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert rec.checked_ca_statcan is True
+    assert "Peppers, per kilogram" not in rec.reviewer_notes
+    assert "ca_tier not_applicable" in rec.reviewer_notes
+
+
+def test_mustard_seed_spot_check_is_oilseed_not_greens():
+    seed = DISC.discover_crop(
+        "mustard-seed", "Mustard seed", "Ineligible Crops",
+        alberta_usable=DISC._load_alberta_usable_crops(),
+        surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    greens = DISC.discover_crop(
+        "mustard-and-other-greens", "Mustard and Other Greens", "Vegetables",
+        alberta_usable=DISC._load_alberta_usable_crops(),
+        surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert seed.selected_tier_ca == "B"
+    assert "OILSEED" in seed.reviewer_notes
+    assert greens.selected_tier_ca is None
+    assert "SPOT-CHECK 1.2" in greens.reviewer_notes
+    assert "mustard" not in (greens.selected_source_ca or "")
+
+
+def test_lavender_census_survey_has_no_price_field():
+    rec = DISC.discover_crop(
+        "lavender", "Lavender", "Culinary Herbs and Spices",
+        alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
+        ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert rec.checked_us_nass_special_survey is True
+    assert rec.checked_us_census_specialty is True
+    assert rec.selected_tier_us is None
+    assert "has_price_field=False" in rec.reviewer_notes
+
+
+def test_maple_shade_tree_is_not_maple_syrup():
+    rec = DISC.discover_crop(
+        "maple", "Maple", "Floriculture and Nursery Crops / Deciduous Shade Trees",
+        alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
+        ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert "maple_syrup" not in rec.reviewer_notes or "does NOT apply" in rec.reviewer_notes
+    assert rec.selected_tier_us is None
+    assert "deciduous shade tree" in rec.reviewer_notes
 
 
 def test_review_queue_flags_incomplete_checklist():

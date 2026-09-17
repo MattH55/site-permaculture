@@ -1,19 +1,12 @@
 # Handoff: Full Specialty Crop Price Database build
 
-Status as of 2026-09-17 (second session). This picks up
-`full-specialty-crop-price-database-spec.md`, which supersedes the two prior specs.
+Status as of 2026-09-17 (third session — `next-session-extend-coverage.md`).
 
-**Section 1 (master crop list ingestion) is built, tested, and now writes a
-changelog on re-fetch. Section 2 identity audit: the original 3 traps plus 5 more
-confirmed commodity splits; all 26 scanner candidates have been human-read (0
-unreviewed). Section 3 automated discovery still covers 248/375 crops (floriculture
-not run, by spec 3.4). CLI now has `discover --crop`, `review-queue`, and a Section
-5.2 dashboard with tier columns. The 13 automated-pass leads have been reviewed:
-false keyword hits rejected, two NASS special-survey leads confirmed but not
-retrieved (no API key), Alberta aliases applied for mustard seed and dry beans/peas.**
+Picks up `full-specialty-crop-price-database-spec.md`. **Do not invent prices.**
 
-The remaining blocker for real Tier A/B US coverage is still a NASS/AMS API key.
-Do not invent prices.
+**This session closed the three review gaps, then ran the floriculture group
+pass. NASS_API_KEY and AMS_API_KEY are still unset, so Section 2 of the
+extend-coverage note (live US retrieval) was not run.**
 
 ## What's built and verified
 
@@ -93,63 +86,80 @@ report. What it honestly *can* do, and does:
    Market Review catalog entry, whose real coverage is mustard *seed*, a different
    commodity) — this is now caught and flagged rather than silently trusted.
 
-**Run so far** — 5 of the spec's priority-ordered categories, 248 of 375 crops.
-Keyword matching now uses word boundaries, stopwords, and qualifier-preferring
-terms. Alberta aliases: `mustard-seed`→`mustard`, `bean-dry-edible`→`dry-beans`,
-`pea-dry-edible`→`dry-peas`.
+**Run so far** — all 375 crop_registry rows have a discovery record.
 
-| category | crops | real CA Tier B | confirmed unretrieved NASS lead | rejected false leads |
-|---|---:|---:|---:|---:|
-| Vegetables | 55 | 3 (lentils, dry beans, dry peas) | 1 (cultivated mushrooms) | 4 (mustard greens, parent Bean, snap, lima) |
-| Fruits and Tree Nuts | 47 | 0 | 0 | 0 |
-| Culinary Herbs and Spices | 71 | 0 | 1 (hops) | 0 |
-| Medicinal Herbs | 38 | 0 | 0 | 0 |
-| Ineligible Crops (all 4 subsections) | 37 | 8 (canola, flaxseed, mustard seed, buckwheat, oats, rye, sugar-beet, hay) | 0 | 3 (fiber flax, grain sorghum, rice) |
+### extend-coverage.md Section 1 (done)
 
-Open catalog leads remaining: **0**. `review-queue` still lists all 248 because the
-checklist is incomplete (only `checked_ca_provincial` is true) and confidence stays
-low until a NASS/AMS retrieval happens. That is correct, not a bug.
+1.1 `checked_ca_statcan` is **true on all 375** after an actual lookup against
+    retrieved `raw/18100245.zip` (110 grocery products). 26 crops are present in
+    that table as fresh/packaged items; retail_price is `usable_for_farm_economics:
+    false`, so those hits are **not** selected as `selected_tier_ca`. The other 349
+    are `ca_tier not_applicable`. Mapping is explicit (Capsicum `pepper` gets
+    "Peppers, per kilogram"; Piper culinary pepper does not; lemons do not attach
+    to lemon-balm).
+1.2 Mustard spot-check: Alberta `mustard` average_farm_price is attached to
+    **mustard-seed** (oilseed), not mustard-and-other-greens. Both reviewer_notes
+    contain `SPOT-CHECK 1.2`.
+1.3 Named special surveys:
+    - mushrooms — confirmed, `has_price_field=true`, blocked on NASS_API_KEY
+    - hops — confirmed, `has_price_field=true`, blocked on NASS_API_KEY
+    - maple_syrup — survey exists with a price field, but the USDA master list
+      has **Maple the shade tree**, not maple syrup. Not attached.
+    - honey — survey exists with a price field, but the master list has
+      **Honey Locust**, not honey. Not attached.
+    - census_horticultural_specialties (lavender) — applies to both lavender
+      rows; `has_price_field=false`; Tier C at best; not retrieved.
 
-Not yet run: Floriculture and Nursery Crops (127 crops across 14 subsections) — per
-spec Section 3.4, last on purpose.
+### extend-coverage.md Section 2 (not done)
 
-## Follow-up session additions
+`NASS_API_KEY` and `AMS_API_KEY` are unset. No live US retrieval. Do not skip
+this by scraping a substitute.
 
-- `discover --crop <id-or-name>`
-- `review-queue` / `review-queue --json`
-- `dashboard` Section 5.2 columns: total, discovery_complete, A/B/B2/C/D/E, avg_confidence
-- USDA master-list changelog (`output/usda_master_crop_list_changelog.csv`) on re-ingest
-- Manual lead reviews in `discovery.MANUAL_LEAD_REVIEWS` so they survive re-runs
+### extend-coverage.md Section 3 (group pass done)
+
+Floriculture (127 crops) ran as a group against NASS Floriculture Crops:
+`has_price_field=false` (wholesale value). No Tier A assigned. Individualized
+nursery/terminal prices need AMS_API_KEY; not invented.
+
+### Current tier picture (plausibly uneven)
+
+11 CA Tier B from already-retrieved Alberta farm-gate series (3 vegetables +
+8 ineligible field/oilseed/forage). 0 US tiers. 0 discovery_complete (US NASS
+general, AMS, farmers-market, census, trade, CA census, CA trade still
+unchecked). `review-queue` = 375 for that reason, not because leads are open
+(open catalog leads = 0).
+
+| bucket | crops | CA Tier B | notes |
+|---|---:|---:|---|
+| Vegetables | 55 | 3 | mushrooms NASS lead unretrieved |
+| Fruits and Tree Nuts | 47 | 0 | |
+| Culinary Herbs and Spices | 71 | 0 | hops NASS lead; lavender census value-only |
+| Medicinal Herbs | 38 | 0 | medicinal lavender census value-only |
+| Ineligible Crops | 37 | 8 | |
+| Floriculture and Nursery Crops | 127 | 0 | group-checked, value-only survey |
 
 ## What's explicitly NOT done — next agent starts here
 
-1. **A NASS/AMS API key** (`NASS_API_KEY`, `AMS_API_KEY`) to retrieve real US Tier A/B
-   series. Confirmed-but-unretrieved: cultivated mushrooms and hops (NASS special
-   surveys with `has_price_field: true`). Most fruit/vegetable/herb rows are "no lead"
-   only because this environment cannot query QuickStats/Market News. Do not invent
-   prices.
-2. **Complete the `checked_*` checklist** (spec 3.1). Today only `checked_ca_provincial`
-   is true. Do not mark discovery-complete, and do not assign Tier E, until every
-   applicable tier has been opened or explicitly marked not-applicable with a source.
-3. **Floriculture and Nursery Crops (127 crops)** — not run, by design. Use
-   `discover --category "Floriculture and Nursery Crops"` if requested.
-4. **Live re-fetch of the USDA PDF / NAPCS CSV.** Changelog/diff logic exists; this
-   tree still uses the first cached fetch.
-5. **Do not treat `review-queue`'s 248 rows as unfinished lead review.** The catalog
-   leads are done. The queue is the incomplete-checklist working list.
+1. **Wire NASS_API_KEY (and/or AMS_API_KEY) and retrieve** mushrooms then hops
+   first, then re-check Vegetables and Fruits/Tree Nuts against live NASS/AMS
+   (extend-coverage.md Section 2). Do not assign Tier A from catalog existence.
+2. **Remaining `checked_*` fields:** `checked_us_nass`, `checked_us_ams`,
+   `checked_us_ams_farmers_market`, `checked_us_census_specialty` (except the
+   two lavender rows), `checked_us_trade`, `checked_ca_census`,
+   `checked_ca_trade`. Do not mark complete or assign Tier E without opening
+   each source or recording not-applicable with a citation.
+3. **Floriculture individualized AMS/nursery prices** — group survey does not
+   resolve unit prices. Expect many Tier C/E. Needs AMS_API_KEY.
+4. Live re-fetch of the USDA PDF / NAPCS CSV (changelog logic exists; still on
+   the first cached fetch).
 
 ## How to resume
 
 ```bash
 cd farm-economics/boost-yields
 python -m pytest tests/test_full_coverage.py tests/test_discovery.py -q
-python -m price_pipeline.full_coverage_cli audit-identity
-python -m price_pipeline.full_coverage_cli discover --crop saffron
-python -m price_pipeline.full_coverage_cli review-queue
 python -m price_pipeline.full_coverage_cli dashboard
+python -m price_pipeline.full_coverage_cli review-queue
 ```
 
-Wire a NASS/AMS key, retrieve (do not guess) the two confirmed special-survey leads
-first, then work `review-queue` crop by crop.
-
-Full suite: `python -m pytest -q` → 190 passed. Prior wide-coverage pipeline untouched.
+Full suite should stay at 190+ passing. Prior wide-coverage pipeline untouched.
