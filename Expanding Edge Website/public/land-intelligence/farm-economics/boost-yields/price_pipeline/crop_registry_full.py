@@ -69,6 +69,193 @@ KNOWN_IDENTITY_TRAPS = [
                        "industrial-hemp use (NAPCS 115139211) is a different product "
                        "and must not be blended with a hemp-seed price series.",
     },
+    {
+        "crop_ids": ["pepper", "culinary-herbs-and-spices-pepper"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["vegetable_capsicum", "spice_piper"],
+        "resolution": "USDA Appendix B lists Pepper next to potato/cauliflower "
+                       "(Capsicum vegetable); Appendix C lists Pepper next to bay/"
+                       "dill/fennel (spice). Keep two crop_ids; never share a price "
+                       "series.",
+    },
+    {
+        "crop_ids": ["citrus", "citrus-trees"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["fresh_fruit", "nursery_planting_stock"],
+        "resolution": "Fruit vs fruit-and-nut planting stock. Different markets; "
+                       "keep separate crop_ids.",
+    },
+    {
+        "crop_ids": ["asparagus", "asparagus-fern"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["vegetable_spear", "ornamental_cut_green"],
+        "resolution": "Vegetable asparagus vs floriculture Asparagus fern (cut "
+                       "cultivated greens). Different commodities.",
+    },
+    {
+        "crop_ids": ["passion-fruit", "passion-flower"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["fresh_fruit", "medicinal_herb"],
+        "resolution": "Passion fruit (edible) vs passion flower (medicinal herb). "
+                       "Related genus, different commodities.",
+    },
+    {
+        "crop_ids": ["bean", "bean-snap-or-green", "bean-lima", "bean-dry-edible"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["parent_heading", "snap_bean", "lima_bean", "dry_edible_bean"],
+        "resolution": "USDA compound entry: parent heading plus three priced "
+                       "commodities. Snap/lima/dry edible have distinct markets; "
+                       "the parent 'Bean' row is not itself a price series.",
+    },
+    {
+        "crop_ids": ["pea", "pea-garden", "pea-english-or-edible-pod", "pea-dry-edible"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["parent_heading", "garden_pea", "edible_pod_pea", "dry_edible_pea"],
+        "resolution": "USDA compound entry: parent heading plus garden / English "
+                       "or edible-pod / dry edible. Dry peas are a prairie pulse "
+                       "market; garden/pod peas are not the same series.",
+    },
+    {
+        "crop_ids": ["cotton", "cottonseed", "fiber-crops-cotton"],
+        "flag_type": "multi_commodity_same_name",
+        "conflicting_uses": ["lint_field_crop", "oilseed", "lint_fiber_crop"],
+        "resolution": "Cottonseed (oilseed) is distinct from cotton lint. Appendix F "
+                       "lists lint twice (Field and Grain Crops + Fiber Crops); those "
+                       "two lint rows are duplicate listings of the same commodity, "
+                       "not a third product.",
+    },
+]
+
+# Keyword-collision candidates from the scanner that a human has now read.
+# Keyed by frozenset of crop_ids. Genuine commodity splits were promoted into
+# KNOWN_IDENTITY_TRAPS above; everything here is a reviewed non-trap or a
+# same-plant dual listing that must stay as separate rows but is not a
+# mustard-greens-vs-seed class of error.
+REVIEWED_IDENTITY_CANDIDATES = [
+    {
+        "crop_ids": ["azalea", "potted-flowering-plants-azalea"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["nursery_shrub", "potted_flowering_plant"],
+        "resolution": "Same plant in two Appendix E subsections. Keep distinct "
+                       "crop_ids; not a commodity-identity trap.",
+    },
+    {
+        "crop_ids": ["comfrey", "medicinal-herbs-comfrey"],
+        "flag_type": "same_plant_dual_usda_listing",
+        "conflicting_uses": ["culinary_herb", "medicinal_herb"],
+        "resolution": "Same plant on Appendix C and Appendix D. Keep both rows; "
+                       "do not merge until a source names which use it prices.",
+    },
+    {
+        "crop_ids": ["delphinium", "potted-herbaceous-perennials-delphinium"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["cut_or_garden_form", "potted_perennial"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["fenugreek", "medicinal-herbs-fenugreek"],
+        "flag_type": "same_plant_dual_usda_listing",
+        "conflicting_uses": ["culinary_herb", "medicinal_herb"],
+        "resolution": "Same plant on Appendix C and Appendix D. Keep both rows.",
+    },
+    {
+        "crop_ids": ["flowering-bulbs", "flowering-cherry", "flowering-pear",
+                     "flowering-plum"],
+        "flag_type": "scanner_false_positive",
+        "conflicting_uses": [],
+        "resolution": "Shared leading word 'flowering' only. Four unrelated "
+                       "nursery items; not an identity trap.",
+    },
+    {
+        "crop_ids": ["cut-cultivated-greens-holly", "holly"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["cut_cultivated_green", "landscape_plant"],
+        "resolution": "Same plant, cut-greens vs landscape form. Keep distinct "
+                       "crop_ids; not a mustard-class trap.",
+    },
+    {
+        "crop_ids": ["horehound", "medicinal-herbs-horehound"],
+        "flag_type": "same_plant_dual_usda_listing",
+        "conflicting_uses": ["culinary_herb", "medicinal_herb"],
+        "resolution": "Same plant on Appendix C and Appendix D. Keep both rows.",
+    },
+    {
+        "crop_ids": ["hydrangea", "potted-flowering-plants-hydrangea"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["nursery_form", "potted_flowering_plant"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["ivy", "potted-herbaceous-perennials-ivy"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["nursery_form", "potted_perennial"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["lavender", "medicinal-herbs-lavender"],
+        "flag_type": "same_plant_dual_usda_listing",
+        "conflicting_uses": ["culinary_herb", "medicinal_herb"],
+        "resolution": "Same plant on Appendix C and Appendix D. Keep both rows.",
+    },
+    {
+        "crop_ids": ["lemon-balm", "lemon-thyme"],
+        "flag_type": "scanner_false_positive",
+        "conflicting_uses": [],
+        "resolution": "Shared leading word 'lemon' only. Two distinct culinary herbs.",
+    },
+    {
+        "crop_ids": ["lily", "potted-flowering-plants-lily"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["nursery_form", "potted_flowering_plant"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["orchid", "potted-flowering-plants-orchid"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["nursery_form", "potted_flowering_plant"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["parsley", "culinary-herbs-and-spices-parsley"],
+        "flag_type": "same_plant_dual_usda_listing",
+        "conflicting_uses": ["vegetable", "culinary_herb"],
+        "resolution": "Same plant listed as a vegetable (Appendix B) and a culinary "
+                       "herb (Appendix C). Keep both rows; not Capsicum-vs-Piper.",
+    },
+    {
+        "crop_ids": ["peanut", "field-and-grain-crops-peanut"],
+        "flag_type": "same_plant_duplicate_ineligible_listing",
+        "conflicting_uses": ["oilseed", "field_and_grain"],
+        "resolution": "Appendix F lists peanut under Oil Seed Crops and again under "
+                       "Field and Grain Crops. Duplicate ineligible listing of one "
+                       "commodity; keep both rows, do not treat as two products.",
+    },
+    {
+        "crop_ids": ["deciduous-shrubs-rose", "potted-flowering-plants-rose", "rose"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["cut_flower_or_unspecified", "deciduous_shrub",
+                             "potted_flowering_plant"],
+        "resolution": "Same plant across Appendix E subsections. Distinct crop_ids "
+                       "already; not a commodity-identity trap.",
+    },
+    {
+        "crop_ids": ["cut-flowers-snapdragon", "snapdragon"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["cut_flower", "other_nursery_form"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
+    {
+        "crop_ids": ["sweet-corn", "sweet-potato"],
+        "flag_type": "scanner_false_positive",
+        "conflicting_uses": [],
+        "resolution": "Shared leading word 'sweet' only. Unrelated crops.",
+    },
+    {
+        "crop_ids": ["deciduous-shrubs-viburnum", "viburnum"],
+        "flag_type": "same_plant_multiple_nursery_forms",
+        "conflicting_uses": ["deciduous_shrub", "other_nursery_form"],
+        "resolution": "Same plant, two Appendix E subsections. Not a trap.",
+    },
 ]
 
 
@@ -195,6 +382,9 @@ def audit_identity(registry: list[CropRegistryRow]) -> list[dict]:
     only the pre-researched ones.
     """
     known_ids = {cid for trap in KNOWN_IDENTITY_TRAPS for cid in trap["crop_ids"]}
+    reviewed_by_ids = {
+        frozenset(item["crop_ids"]): item for item in REVIEWED_IDENTITY_CANDIDATES
+    }
     by_keyword: dict[str, list[str]] = {}
     for row in registry:
         kw = _keyword_for_match(row.crop_name)
@@ -208,6 +398,10 @@ def audit_identity(registry: list[CropRegistryRow]) -> list[dict]:
             continue
         if set(unique_ids) & known_ids:
             continue  # already accounted for above
+        reviewed = reviewed_by_ids.get(frozenset(unique_ids))
+        if reviewed:
+            findings.append(dict(reviewed))
+            continue
         findings.append({
             "crop_ids": unique_ids,
             "flag_type": "candidate_ambiguous_shared_keyword",

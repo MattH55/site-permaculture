@@ -65,3 +65,105 @@ def test_run_discovery_respects_category_filter():
     ]
     records = DISC.run_discovery(registry, category_filter="Vegetables")
     assert [r.crop_id for r in records] == ["carrot"]
+
+
+def test_run_discovery_respects_crop_filter():
+    registry = [
+        FakeRow("apple", "Apple", "Fruits and Tree Nuts"),
+        FakeRow("saffron", "Saffron", "Culinary Herbs and Spices"),
+    ]
+    records = DISC.run_discovery(registry, crop_filter="saffron")
+    assert [r.crop_id for r in records] == ["saffron"]
+
+
+def test_rice_does_not_match_price_substring_in_mushroom_survey():
+    rec = DISC.discover_crop(
+        "rice-including-wild", "Rice (including wild)", "Ineligible Crops",
+        alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
+        ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert rec.checked_us_nass_special_survey is False
+    assert "NASS special survey lead" not in rec.reviewer_notes
+
+
+def test_table_beet_does_not_match_statcan_table_title():
+    rec = DISC.discover_crop(
+        "beet-table", "Beet, Table", "Vegetables",
+        alberta_usable={}, surveys=[], ca_sources=DISC.WC.load_ca_catalog(),
+        wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert "ca_statcan_1810024501" not in rec.reviewer_notes
+    assert rec.selected_tier_ca is None
+
+
+def test_grain_sorghum_does_not_match_generic_grains_coverage():
+    rec = DISC.discover_crop(
+        "grain-sorghum", "Grain sorghum", "Ineligible Crops",
+        alberta_usable={}, surveys=[], ca_sources=DISC.WC.load_ca_catalog(),
+        wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert "ca_ab_cropping_alternatives" not in rec.reviewer_notes
+    assert "REJECTED:" in rec.reviewer_notes
+
+
+def test_mustard_seed_aliases_to_alberta_mustard():
+    rec = DISC.discover_crop(
+        "mustard-seed", "Mustard seed", "Ineligible Crops",
+        alberta_usable=DISC._load_alberta_usable_crops(),
+        surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert rec.selected_tier_ca == "B"
+    assert rec.confidence_ca == "high"
+    assert "mustard" in (rec.selected_source_ca or "")
+
+
+def test_bean_dry_edible_aliases_to_alberta_dry_beans():
+    rec = DISC.discover_crop(
+        "bean-dry-edible", "Bean, Dry, Edible", "Vegetables",
+        alberta_usable=DISC._load_alberta_usable_crops(),
+        surveys=[], ca_sources=[], wide_crop_keys=set(),
+        checked_at="2026-01-01",
+    )
+    assert rec.selected_tier_ca == "B"
+    assert "dry-beans" in rec.reviewer_notes
+
+
+def test_mushroom_special_survey_is_a_confirmed_unretrieved_lead():
+    rec = DISC.discover_crop(
+        "mushroom-cultivated", "Mushroom (Cultivated)", "Vegetables",
+        alberta_usable={}, surveys=DISC.WC.load_special_surveys(),
+        ca_sources=[], wide_crop_keys=set(), checked_at="2026-01-01",
+    )
+    assert rec.checked_us_nass_special_survey is True
+    assert rec.selected_tier_us is None
+    assert rec.checked_by == "manual_review"
+    assert "CONFIRMED LEAD" in rec.reviewer_notes
+
+
+def test_review_queue_flags_incomplete_checklist():
+    rec = DISC.CropDiscoveryRecord(
+        crop_id="cacao", crop_name="Cacao", checked_ca_provincial=True,
+        confidence_us="high", confidence_ca="high",
+    )
+    assert DISC.checklist_incomplete(rec)
+    assert DISC.in_review_queue(rec)
+
+
+def test_dashboard_rows_count_confirmed_tiers():
+    registry = [
+        FakeRow("lentils", "Lentils", "Vegetables"),
+        FakeRow("apple", "Apple", "Fruits and Tree Nuts"),
+    ]
+    records = [
+        DISC.CropDiscoveryRecord(
+            crop_id="lentils", crop_name="Lentils",
+            selected_tier_ca="B", confidence_ca="high", confidence_us="low",
+            checked_ca_provincial=True,
+        ),
+    ]
+    rows = {r["category"]: r for r in DISC.dashboard_rows(registry, records)}
+    assert rows["Vegetables"]["total_crops"] == 1
+    assert rows["Vegetables"]["tier_b"] == 1
+    assert rows["Vegetables"]["discovery_complete"] == 0
+    assert rows["Fruits and Tree Nuts"]["discovered"] == 0

@@ -11,8 +11,20 @@ import os
 import pytest
 
 from price_pipeline import crop_registry_full as REG
+from price_pipeline import full_coverage_cli as CLI
 from price_pipeline import napcs_ca as NAPCS
 from price_pipeline import usda_master_list as USDA
+
+
+class TestCliSurface:
+    def test_parser_exposes_crop_and_review_queue(self):
+        parser = CLI.build_parser()
+        disc = parser.parse_args(["discover", "--crop", "saffron"])
+        assert disc.crop == "saffron"
+        queue = parser.parse_args(["review-queue", "--json"])
+        assert queue.command == "review-queue"
+        dash = parser.parse_args(["dashboard", "--json"])
+        assert dash.command == "dashboard"
 
 
 def _require(path: str) -> str:
@@ -57,6 +69,30 @@ class TestUsdaMasterList:
         by_name = {r.crop_name: r for r in rows}
         assert by_name["Flax"].subsection == "Fiber Crops"
         assert by_name["Flaxseed"].subsection == "Oil Seed Crops (including oil and non-oil cultivars)"
+
+    def test_changelog_records_additions(self, tmp_path):
+        previous = [{
+            "crop_name": "Apple", "category": "Fruits and Tree Nuts", "parent_crop": "",
+        }]
+        current = [
+            USDA.MasterListRow(
+                crop_name="Apple", category="Fruits and Tree Nuts",
+                appendix="A", subsection=None, parent_crop=None,
+                is_eligible_specialty=True, source_url="x", retrieved_at="2026-01-01",
+            ),
+            USDA.MasterListRow(
+                crop_name="Kiwi", category="Fruits and Tree Nuts",
+                appendix="A", subsection=None, parent_crop=None,
+                is_eligible_specialty=True, source_url="x", retrieved_at="2026-01-01",
+            ),
+        ]
+        out = tmp_path / "changelog.csv"
+        events = USDA.write_master_list_changelog(
+            previous, current, str(out),
+            pdf_sha256="abc", retrieved_at="2026-01-01",
+        )
+        assert [e["change_type"] for e in events] == ["added"]
+        assert events[0]["crop_name"] == "Kiwi"
 
 
 class TestNapcsCa:
@@ -114,3 +150,20 @@ class TestCropRegistry:
         # matching leaf for it, so this must stay null rather than mis-matching
         # against an unrelated leaf.
         assert rose.napcs_code_match is None
+
+    def test_identity_candidates_are_reviewed(self, registry_and_findings):
+        _, findings = registry_and_findings
+        unreviewed = [
+            f for f in findings
+            if f["flag_type"] == "candidate_ambiguous_shared_keyword"
+            or "NOT YET REVIEWED" in f["resolution"]
+        ]
+        assert unreviewed == []
+        flag_types = {f["flag_type"] for f in findings}
+        assert "scanner_false_positive" in flag_types
+        assert "same_plant_multiple_nursery_forms" in flag_types
+        pepper = next(
+            f for f in findings
+            if set(f["crop_ids"]) == {"pepper", "culinary-herbs-and-spices-pepper"}
+        )
+        assert pepper["flag_type"] == "multi_commodity_same_name"

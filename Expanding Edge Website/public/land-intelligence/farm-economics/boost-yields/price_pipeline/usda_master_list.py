@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import csv
 import datetime
+import hashlib
 import os
 from dataclasses import dataclass, field
 
@@ -235,11 +236,88 @@ def write_master_list_csv(rows: list[MasterListRow], out_path: str) -> None:
             writer.writerow(row.to_dict())
 
 
+def _row_key(crop_name: str, category: str, parent_crop: str = "") -> tuple[str, str, str]:
+    return (crop_name, category, parent_crop or "")
+
+
+def _load_previous_master_list(path: str) -> list[dict]:
+    if not os.path.exists(path):
+        return []
+    with open(path, encoding="utf-8") as fh:
+        return list(csv.DictReader(fh))
+
+
+def write_master_list_changelog(
+    previous: list[dict],
+    current: list[MasterListRow],
+    out_path: str,
+    *,
+    pdf_sha256: str,
+    retrieved_at: str,
+) -> list[dict]:
+    old_keys = {
+        _row_key(r.get("crop_name", ""), r.get("category", ""), r.get("parent_crop", ""))
+        for r in previous
+    }
+    new_keys = {_row_key(r.crop_name, r.category, r.parent_crop or "") for r in current}
+    events: list[dict] = []
+    if not previous:
+        events.append({
+            "change_type": "initial_ingest",
+            "crop_name": "",
+            "category": "",
+            "parent_crop": "",
+            "pdf_sha256": pdf_sha256,
+            "retrieved_at": retrieved_at,
+        })
+    else:
+        for key in sorted(new_keys - old_keys):
+            events.append({
+                "change_type": "added",
+                "crop_name": key[0],
+                "category": key[1],
+                "parent_crop": key[2],
+                "pdf_sha256": pdf_sha256,
+                "retrieved_at": retrieved_at,
+            })
+        for key in sorted(old_keys - new_keys):
+            events.append({
+                "change_type": "removed",
+                "crop_name": key[0],
+                "category": key[1],
+                "parent_crop": key[2],
+                "pdf_sha256": pdf_sha256,
+                "retrieved_at": retrieved_at,
+            })
+        if not events:
+            return []
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    file_exists = os.path.exists(out_path)
+    with open(out_path, "a", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[
+            "change_type", "crop_name", "category", "parent_crop",
+            "pdf_sha256", "retrieved_at",
+        ])
+        if not file_exists:
+            writer.writeheader()
+        writer.writerows(events)
+    return events
+
+
 def ingest(pdf_path: str | None = None, out_path: str | None = None) -> list[MasterListRow]:
     pdf_path = pdf_path or PDF_PATH
     out_path = out_path or os.path.join(OUTPUT_DIR, "usda_master_crop_list.csv")
+    changelog_path = os.path.join(OUTPUT_DIR, "usda_master_crop_list_changelog.csv")
+    previous = _load_previous_master_list(out_path)
     raw_text = _extract_pdf_text(pdf_path)
     rows = parse_master_list(raw_text)
+    with open(pdf_path, "rb") as fh:
+        pdf_sha256 = hashlib.sha256(fh.read()).hexdigest()
+    retrieved_at = rows[0].retrieved_at if rows else ""
+    write_master_list_changelog(
+        previous, rows, changelog_path,
+        pdf_sha256=pdf_sha256, retrieved_at=retrieved_at,
+    )
     write_master_list_csv(rows, out_path)
     return rows
 

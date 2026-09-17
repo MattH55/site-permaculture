@@ -1,16 +1,19 @@
 # Handoff: Full Specialty Crop Price Database build
 
-Status as of 2026-09-17. This picks up `full-specialty-crop-price-database-spec.md`,
-which supersedes the two prior specs. **Section 1 (master crop list ingestion) is
-built and tested. Section 2 (identity audit) has a working first pass. Section 3
-(discovery) has a working AUTOMATED first pass, run for 5 of the spec's priority
-categories (248 of 375 crops). Sections 3's manual-review layer, the dashboard's
-tier-count rollup, `discover --crop`, and `review-queue` are NOT started** — that's
-intentionally where this session stopped, not an oversight. The spec itself says the
-discovery phase is not a one-sitting job (Section 3.4's priority ordering exists
-precisely because it's a multi-session rollout), so this handoff draws the line where
-the automated-pass mechanism is proven and has run once, leaving the manual-review /
-API-key-equipped retrieval layer for the next agent.
+Status as of 2026-09-17 (second session). This picks up
+`full-specialty-crop-price-database-spec.md`, which supersedes the two prior specs.
+
+**Section 1 (master crop list ingestion) is built, tested, and now writes a
+changelog on re-fetch. Section 2 identity audit: the original 3 traps plus 5 more
+confirmed commodity splits; all 26 scanner candidates have been human-read (0
+unreviewed). Section 3 automated discovery still covers 248/375 crops (floriculture
+not run, by spec 3.4). CLI now has `discover --crop`, `review-queue`, and a Section
+5.2 dashboard with tier columns. The 13 automated-pass leads have been reviewed:
+false keyword hits rejected, two NASS special-survey leads confirmed but not
+retrieved (no API key), Alberta aliases applied for mustard seed and dry beans/peas.**
+
+The remaining blocker for real Tier A/B US coverage is still a NASS/AMS API key.
+Do not invent prices.
 
 ## What's built and verified
 
@@ -53,25 +56,15 @@ to a cached file under `data/raw/`.
   Deciduous Shrubs, *and* Potted Flowering Plants; "Azalea" in two subsections) are
   resolved by suffixing the subsection name, verified unique across all 375 rows.
   Output: `output/crop_registry.csv`, `output/crop_identity_audit.csv`.
-- **Identity audit findings**: the 3 traps named in the spec (mustard: greens vs
-  seed; flax: fiber vs oilseed, both distinct rows in the USDA PDF itself; hemp:
-  excluded from the US specialty definition but hemp seed still has a real NAPCS
-  oilseed code) are hard-coded with their reasoning in `KNOWN_IDENTITY_TRAPS`, plus an
-  automated keyword-collision scanner that surfaced **26 more candidate pairs**
-  needing a human read (e.g. "Bean" vs its own variant rows — mostly false positives
-  from the scanner's crude first-word heuristic, but a couple worth checking, like
-  `citrus` vs `citrus-trees`).
-- **`price_pipeline/full_coverage_cli.py`** — implements exactly two of the spec's
-  Section 6 commands (`ingest-master-list --source usda|napcs-ca`, `audit-identity`)
-  plus a `dashboard` command that's honest about being empty (every category shows 0
-  discovered, because discovery hasn't run — not a placeholder pretending otherwise).
-- **`tests/test_full_coverage.py`** — 12 tests against the real cached files (not
-  mocks), pinning: all 6 appendices parse, Bean/Pea variants link correctly,
-  subsection headers never leak in as crop rows, mustard/flax identity traps are
-  distinct rows, NAPCS herb-bucketing and pulse-itemization findings, crop_id
-  uniqueness, and that NAPCS matching never forces a wrong guess (spot-checked on
-  "Rose", which has no NAPCS agricultural-goods leaf and correctly gets `null`).
-  Full suite: **174 passed** (162 pre-existing + 12 new), no regressions.
+- **Identity audit findings**: original spec traps (mustard greens vs seed; flax vs
+  flaxseed; hemp excluded-but-priced) plus confirmed splits: Capsicum pepper vs
+  Piper spice pepper; citrus fruit vs citrus trees; asparagus vs asparagus fern;
+  passion fruit vs passion flower; bean and pea parent+variant compounds; cotton
+  lint vs cottonseed. All 26 scanner candidates have been read (0 "NOT YET REVIEWED").
+- **`price_pipeline/full_coverage_cli.py`** — spec Section 6:
+  `ingest-master-list --source usda|napcs-ca`, `audit-identity`,
+  `discover --category` / `discover --crop`, `dashboard`, `review-queue`.
+- Tests pin the above against cached source files. Full suite: **190 passed**.
 
 ## Section 3 discovery: what was built and what it found
 
@@ -100,90 +93,63 @@ report. What it honestly *can* do, and does:
    Market Review catalog entry, whose real coverage is mustard *seed*, a different
    commodity) — this is now caught and flagged rather than silently trusted.
 
-**Run so far** — 5 of the spec's priority-ordered categories, 248 of 375 crops:
+**Run so far** — 5 of the spec's priority-ordered categories, 248 of 375 crops.
+Keyword matching now uses word boundaries, stopwords, and qualifier-preferring
+terms. Alberta aliases: `mustard-seed`→`mustard`, `bean-dry-edible`→`dry-beans`,
+`pea-dry-edible`→`dry-peas`.
 
-| category | crops | real tier confirmed | leads for manual review | no lead |
+| category | crops | real CA Tier B | confirmed unretrieved NASS lead | rejected false leads |
 |---|---:|---:|---:|---:|
-| Vegetables | 55 | 1 (lentils) | 6 | 48 |
-| Fruits and Tree Nuts | 47 | 0 | 0 | 47 |
-| Culinary Herbs and Spices | 71 | 0 | 1 | 70 |
-| Medicinal Herbs | 38 | 0 | 0 | 38 |
-| Ineligible Crops (all 4 subsections) | 37 | 7 (canola, flaxseed, buckwheat, oats, rye, sugar-beet, hay) | 6 | 24 |
+| Vegetables | 55 | 3 (lentils, dry beans, dry peas) | 1 (cultivated mushrooms) | 4 (mustard greens, parent Bean, snap, lima) |
+| Fruits and Tree Nuts | 47 | 0 | 0 | 0 |
+| Culinary Herbs and Spices | 71 | 0 | 1 (hops) | 0 |
+| Medicinal Herbs | 38 | 0 | 0 | 0 |
+| Ineligible Crops (all 4 subsections) | 37 | 8 (canola, flaxseed, mustard seed, buckwheat, oats, rye, sugar-beet, hay) | 0 | 3 (fiber flax, grain sorghum, rice) |
 
-The low real-tier-confirmed count is an honest reflection of reality, not a bug to
-chase: almost nothing in this repo has been actually retrieved from a live NASS/AMS/
-provincial source yet — only the Alberta `price_pipeline`'s own prior work has. That
-is exactly the gap the next agent's manual-review pass (or a NASS/AMS API key) needs
-to close.
+Open catalog leads remaining: **0**. `review-queue` still lists all 248 because the
+checklist is incomplete (only `checked_ca_provincial` is true) and confidence stays
+low until a NASS/AMS retrieval happens. That is correct, not a bug.
 
 Not yet run: Floriculture and Nursery Crops (127 crops across 14 subsections) — per
-the spec's own Section 3.4 priority order, this is deliberately last ("lowest
-relevance to a 'price database' in the commodity sense... deprioritize unless
-explicitly requested").
+spec Section 3.4, last on purpose.
+
+## Follow-up session additions
+
+- `discover --crop <id-or-name>`
+- `review-queue` / `review-queue --json`
+- `dashboard` Section 5.2 columns: total, discovery_complete, A/B/B2/C/D/E, avg_confidence
+- USDA master-list changelog (`output/usda_master_crop_list_changelog.csv`) on re-ingest
+- Manual lead reviews in `discovery.MANUAL_LEAD_REVIEWS` so they survive re-runs
 
 ## What's explicitly NOT done — next agent starts here
 
-1. **Manual review of the 13 leads** recorded by the automated pass (`output/crop_discovery_record.csv`,
-   filter for non-empty `selected_source_us`/`reviewer_notes` containing "lead") —
-   each needs a human (or API-equipped agent) to actually open the named report and
-   confirm/reject before it becomes a real `selected_tier`.
-2. **A NASS/AMS API key** (`NASS_API_KEY`, `AMS_API_KEY` env vars) would unlock real
-   Tier A/B retrieval for the 340+ crops currently at "no lead found" — most of those
-   are ordinary fruits/vegetables/herbs that very likely DO have NASS or AMS coverage;
-   this pass simply has no way to query it without a key.
-3. **Floriculture and Nursery Crops category (127 crops)** — not run, by design (lowest
-   spec priority). Run with `discover --category "Floriculture and Nursery Crops"`
-   when/if it becomes a priority.
-4. **`ingest-master-list` re-fetch/diff** — the spec wants this to be periodic
-   (Section 1.1: "the page is a living list, not a frozen one"). This session did one
-   fetch; no changelog table or diff logic exists yet.
-5. **`discover --crop` single-crop command** — not built; `--category` exists,
-   `--crop` doesn't.
-6. **`review-queue` command** — not started. Should list every discovery record with
-   `confidence_ca`/`confidence_us == "low"` or an incomplete checklist (i.e. almost
-   all of them right now) for the manual pass in item 1.
-7. **`discovery_progress_dashboard` tier-count rollup** — `dashboard` currently only
-   shows total-vs-discovered counts per category; it should also break down by tier
-   (A/B/B2/C/D/E) per category once more real tiers exist, per spec Section 5.2's
-   exact column layout.
-8. **The 26 unreviewed identity-audit candidates** in `output/crop_identity_audit.csv`
-   still need a human pass, same as before — this session did NOT work through them,
-   only used the known 3 traps to guard the discovery pass above.
+1. **A NASS/AMS API key** (`NASS_API_KEY`, `AMS_API_KEY`) to retrieve real US Tier A/B
+   series. Confirmed-but-unretrieved: cultivated mushrooms and hops (NASS special
+   surveys with `has_price_field: true`). Most fruit/vegetable/herb rows are "no lead"
+   only because this environment cannot query QuickStats/Market News. Do not invent
+   prices.
+2. **Complete the `checked_*` checklist** (spec 3.1). Today only `checked_ca_provincial`
+   is true. Do not mark discovery-complete, and do not assign Tier E, until every
+   applicable tier has been opened or explicitly marked not-applicable with a source.
+3. **Floriculture and Nursery Crops (127 crops)** — not run, by design. Use
+   `discover --category "Floriculture and Nursery Crops"` if requested.
+4. **Live re-fetch of the USDA PDF / NAPCS CSV.** Changelog/diff logic exists; this
+   tree still uses the first cached fetch.
+5. **Do not treat `review-queue`'s 248 rows as unfinished lead review.** The catalog
+   leads are done. The queue is the incomplete-checklist working list.
 
 ## How to resume
 
 ```bash
 cd farm-economics/boost-yields
-python -m pytest tests/test_full_coverage.py tests/test_discovery.py -q   # confirm this work still passes
-python -m price_pipeline.full_coverage_cli audit-identity   # regenerate crop_registry + audit
-python -m price_pipeline.full_coverage_cli discover --category "Vegetables"  # re-run/extend discovery
-python -m price_pipeline.full_coverage_cli dashboard         # see current coverage
+python -m pytest tests/test_full_coverage.py tests/test_discovery.py -q
+python -m price_pipeline.full_coverage_cli audit-identity
+python -m price_pipeline.full_coverage_cli discover --crop saffron
+python -m price_pipeline.full_coverage_cli review-queue
+python -m price_pipeline.full_coverage_cli dashboard
 ```
 
-Then open `output/crop_discovery_record.csv`, work the leads down to confirmed/rejected
-tiers (item 1 above), and/or wire up a NASS/AMS API key to unlock real retrieval for
-the ~340 crops currently unmatched.
+Wire a NASS/AMS key, retrieve (do not guess) the two confirmed special-survey leads
+first, then work `review-queue` crop by crop.
 
-## Files touched this session (all untracked except as noted — see `git log` for the commit)
-
-```
-price_pipeline/usda_master_list.py       (new, committed)
-price_pipeline/napcs_ca.py               (new, committed)
-price_pipeline/crop_registry_full.py     (new, committed)
-price_pipeline/discovery.py              (new)
-price_pipeline/full_coverage_cli.py      (new, committed — updated after commit with `discover`)
-tests/test_full_coverage.py              (new, committed)
-tests/test_discovery.py                  (new)
-data/raw/usda_master_list/               (new — cached PDF + HTML + text dump; gitignored)
-data/raw/napcs/                          (new — cached NAPCS CSV; gitignored)
-output/usda_master_crop_list.csv         (generated; gitignored)
-output/napcs_agricultural_codes.csv      (generated; gitignored)
-output/crop_registry.csv                 (generated; gitignored)
-output/crop_identity_audit.csv           (generated; gitignored)
-output/crop_discovery_record.csv         (generated; gitignored)
-HANDOFF.md                               (this file, committed)
-```
-
-No existing tracked file (from commit `b196f23`) was modified. This is purely
-additive — the prior wide-coverage (v1/v2/v3) pipeline is untouched and still works
-(`python -m pytest -q` at the package root: 179/179 passing, including this work).
+Full suite: `python -m pytest -q` → 190 passed. Prior wide-coverage pipeline untouched.

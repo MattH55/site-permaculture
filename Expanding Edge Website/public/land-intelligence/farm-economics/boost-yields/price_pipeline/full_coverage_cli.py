@@ -1,9 +1,7 @@
 """CLI for the full-coverage specialty-crop price database build (Section 6).
 
-Implements the two ingestion commands and the identity audit from the spec. The
-per-crop and per-category ``discover`` commands are deliberately NOT implemented here
--- see HANDOFF.md at the boost-yields root for why, and what the next agent needs to
-build them.
+Commands: ingest-master-list, audit-identity, discover (--category / --crop),
+dashboard, review-queue.
 """
 from __future__ import annotations
 
@@ -19,6 +17,7 @@ from . import usda_master_list as USDA
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(PACKAGE_DIR)
 OUTPUT_DIR = os.path.join(PROJECT_ROOT, "output")
+DISCOVERY_CSV = os.path.join(OUTPUT_DIR, "crop_discovery_record.csv")
 
 
 def cmd_ingest_master_list(args: argparse.Namespace) -> int:
@@ -51,65 +50,74 @@ def cmd_audit_identity(args: argparse.Namespace) -> int:
 
 
 def cmd_discover(args: argparse.Namespace) -> int:
-    """Run the Section 3 automated discovery pass for one category (or all)."""
+    """Run the Section 3 discovery pass for one category, one crop, or all."""
     registry, _ = REG.ingest_and_audit()
-    records = DISC.run_discovery(registry, category_filter=args.category)
-    out_path = os.path.join(OUTPUT_DIR, "crop_discovery_record.csv")
-    # Merge with any existing records from a prior category run rather than clobbering.
-    existing: dict[str, DISC.CropDiscoveryRecord] = {}
-    if os.path.exists(out_path):
-        import csv as _csv
-        with open(out_path, encoding="utf-8") as fh:
-            for row in _csv.DictReader(fh):
-                for boolfield in ("checked_us_nass", "checked_us_nass_special_survey",
-                                  "checked_us_ams", "checked_us_ams_farmers_market",
-                                  "checked_us_census_specialty", "checked_us_trade",
-                                  "checked_ca_statcan", "checked_ca_provincial",
-                                  "checked_ca_census", "checked_ca_trade"):
-                    row[boolfield] = row[boolfield] == "True"
-                for nullable in ("selected_tier_us", "selected_tier_ca",
-                                  "selected_source_us", "selected_source_ca"):
-                    row[nullable] = row[nullable] or None
-                existing[row["crop_id"]] = DISC.CropDiscoveryRecord(**row)
-    for rec in records:
-        existing[rec.crop_id] = rec
-    merged = list(existing.values())
-    DISC.write_discovery_records_csv(merged, out_path)
+    records = DISC.run_discovery(
+        registry, category_filter=args.category, crop_filter=args.crop)
+    if args.crop and not records:
+        print(f"no crop_registry row matched --crop {args.crop!r}")
+        return 1
+    existing = DISC.load_discovery_records_csv(DISCOVERY_CSV)
+    merged = DISC.merge_discovery_records(existing, records)
+    DISC.write_discovery_records_csv(merged, DISCOVERY_CSV)
 
     tier_selected = sum(1 for r in records if r.selected_tier_ca or r.selected_tier_us)
-    leads = sum(1 for r in records if "lead" in r.reviewer_notes)
+    open_leads = sum(1 for r in records if DISC.has_open_catalog_lead(r))
+    confirmed_leads = sum(1 for r in records if "CONFIRMED LEAD" in r.reviewer_notes)
+    rejected = sum(1 for r in records if r.reviewer_notes.startswith("REJECTED:")
+                   or "; REJECTED:" in r.reviewer_notes)
     print(f"discovered {len(records)} crops in this run"
-          f"{f' (category filter: {args.category})' if args.category else ''}")
+          f"{f' (category: {args.category})' if args.category else ''}"
+          f"{f' (crop: {args.crop})' if args.crop else ''}")
     print(f"  real retrieved tier confirmed : {tier_selected}")
-    print(f"  leads recorded for manual review: {leads}")
-    print(f"  no lead found                 : {len(records) - tier_selected - leads}")
+    print(f"  confirmed leads (not retrieved): {confirmed_leads}")
+    print(f"  rejected false leads          : {rejected}")
+    print(f"  open leads still needing review: {open_leads}")
     print(f"wrote output/crop_discovery_record.csv ({len(merged)} total records across all runs)")
     return 0
 
 
 def cmd_dashboard(args: argparse.Namespace) -> int:
-    """Section 5.2 dashboard. Categories with no discovery run yet show 0/total."""
+    """Section 5.2 discovery_progress_dashboard."""
     registry, _ = REG.ingest_and_audit()
-    by_category: dict[str, int] = {}
-    for row in registry:
-        by_category[row.category] = by_category.get(row.category, 0) + 1
+    records = DISC.load_discovery_records_csv(DISCOVERY_CSV)
+    rows = DISC.dashboard_rows(registry, records)
+    if args.json:
+        print(json.dumps(rows, indent=2))
+        return 0
+    headers = ("category", "total", "done", "A", "B", "B2", "C", "D", "E", "avg_conf")
+    print(f"{headers[0]:<55} {headers[1]:>6} {headers[2]:>6} "
+          f"{headers[3]:>4} {headers[4]:>4} {headers[5]:>4} "
+          f"{headers[6]:>4} {headers[7]:>4} {headers[8]:>4} {headers[9]:>8}")
+    for row in rows:
+        note = "" if row["discovered"] else "  (discovery not yet run)"
+        avg = "" if row["avg_confidence"] is None else f"{row['avg_confidence']:.2f}"
+        print(f"{row['category']:<55} {row['total_crops']:>6} "
+              f"{row['discovery_complete']:>6} {row['tier_a']:>4} {row['tier_b']:>4} "
+              f"{row['tier_b2']:>4} {row['tier_c']:>4} {row['tier_d']:>4} "
+              f"{row['tier_e']:>4} {avg:>8}{note}")
+    return 0
 
-    discovered_by_category: dict[str, int] = {}
-    disc_path = os.path.join(OUTPUT_DIR, "crop_discovery_record.csv")
-    crop_to_category = {row.crop_id: row.category for row in registry}
-    if os.path.exists(disc_path):
-        import csv as _csv
-        with open(disc_path, encoding="utf-8") as fh:
-            for row in _csv.DictReader(fh):
-                cat = crop_to_category.get(row["crop_id"])
-                if cat:
-                    discovered_by_category[cat] = discovered_by_category.get(cat, 0) + 1
 
-    print(f"{'category':<55} {'total':>6} {'discovered':>11}")
-    for cat, total in sorted(by_category.items()):
-        done = discovered_by_category.get(cat, 0)
-        note = "" if done else "  (discovery not yet run)"
-        print(f"{cat:<55} {total:>6} {done:>11}{note}")
+def cmd_review_queue(args: argparse.Namespace) -> int:
+    """List discovery records with low confidence or an incomplete checklist."""
+    records = DISC.load_discovery_records_csv(DISCOVERY_CSV)
+    queue = [r for r in records if DISC.in_review_queue(r)]
+    queue.sort(key=lambda r: (r.crop_id, r.crop_name))
+    if args.json:
+        print(json.dumps([r.to_dict() for r in queue], indent=2))
+        return 0
+    print(f"review-queue: {len(queue)} of {len(records)} discovery records")
+    print(f"{'crop_id':<36} {'conf_us':>7} {'conf_ca':>7} {'tier_us':>7} "
+          f"{'tier_ca':>7} incomplete  notes")
+    for rec in queue:
+        incomplete = "yes" if DISC.checklist_incomplete(rec) else "no"
+        notes = (rec.reviewer_notes or "").replace("\n", " ")
+        if len(notes) > 90:
+            notes = notes[:87] + "..."
+        print(f"{rec.crop_id:<36} {rec.confidence_us:>7} {rec.confidence_ca:>7} "
+              f"{(rec.selected_tier_us or '-'):>7} {(rec.selected_tier_ca or '-'):>7} "
+              f"{incomplete:<11} {notes}")
     return 0
 
 
@@ -129,12 +137,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit.set_defaults(func=cmd_audit_identity)
 
     p_dash = sub.add_parser("dashboard", help="print the discovery_progress_dashboard")
+    p_dash.add_argument("--json", action="store_true")
     p_dash.set_defaults(func=cmd_dashboard)
 
-    p_disc = sub.add_parser("discover", help="run the Section 3 automated discovery pass")
+    p_disc = sub.add_parser("discover", help="run the Section 3 discovery pass")
     p_disc.add_argument("--category", default=None,
-                        help="category prefix to restrict discovery to, e.g. 'Vegetables'")
+                        help="category prefix, e.g. 'Vegetables'")
+    p_disc.add_argument("--crop", default=None,
+                        help="single crop_id or crop_name, e.g. saffron")
     p_disc.set_defaults(func=cmd_discover)
+
+    p_queue = sub.add_parser("review-queue",
+                             help="list low-confidence or incomplete discovery records")
+    p_queue.add_argument("--json", action="store_true")
+    p_queue.set_defaults(func=cmd_review_queue)
 
     return parser
 
