@@ -16,6 +16,8 @@ def test_import_requires_source_url_and_known_crop():
     assert all(r.source_url for r in rows)
     mapped = set(YS.YIELD_FACTOR_CROP_MAP.values()) | {
         "hops", "mushroom-cultivated", "honey", "maple-syrup",
+        "potato", "onion", "bean-dry-edible", "broccoli-including-broccoli-raab",
+        "carrot", "strawberry", "apple", "almond", "blueberry",
     }
     assert all(r.crop_id in mapped for r in rows)
     assert all(r.element_type in YS.ELEMENT_TYPES for r in rows)
@@ -58,6 +60,13 @@ def test_curated_papers_have_quantified_effects_and_urls():
     hops_n = next(r for r in rows if r.element_id.startswith("hops-n-rate"))
     assert "386.7" in hops_n.claimed_effect and "245.8" in hops_n.claimed_effect
     assert "10.1371/journal.pone.0258430" not in " ".join(r.source_url for r in rows)
+    onion_n = next(r for r in rows if r.element_id == "onion-n-rate-82kg-vs-0-yeshiwas-2024")
+    assert "26.77" in onion_n.claimed_effect and "19.09" in onion_n.claimed_effect
+    assert "57.84" not in onion_n.claimed_effect
+    blueberry = next(r for r in rows if r.crop_id == "blueberry")
+    assert "R²" in blueberry.claimed_effect or "R2" in blueberry.claimed_effect
+    almond = next(r for r in rows if r.crop_id == "almond")
+    assert almond.conflict_of_interest_flag is True
 
 
 def test_cli_exposes_yield_commands():

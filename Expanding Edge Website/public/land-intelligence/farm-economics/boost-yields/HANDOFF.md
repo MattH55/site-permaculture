@@ -155,15 +155,16 @@ census/trade still open).
 
 CLI: `yield-discover`, `yield-review-queue --tier D`, `yield-dashboard`.
 
-`output/yield_elements.csv`: **85 rows** — 78 imported from `data/yield-factors`
-(URL required) plus **7 transcribed from papers actually opened**
+`output/yield_elements.csv`: **97 rows** — 78 imported from `data/yield-factors`
+(URL required) plus **19 transcribed from papers actually opened**
 (`data/yield-elements/curated_from_papers.json`). Peas→`pea-dry-edible`,
 pepper→Capsicum, tomato→`tomato-including-tomatillo`. Livestock/ornamental
 buckets skipped. Taxonomy: `protected_environment` (v1.1), `colony_nutrition` (v1.2).
 
-Quantified rows added this pass (effects stored as the paper reported them, not
-averaged or converted to a single % unless the authors stated one):
+Quantified rows (effects stored as the paper reported them, not averaged or
+converted to a single % unless the authors stated one):
 
+Prior pass:
 - hops N 250 vs 0 kg ha−1: cone DM **386.7 vs 245.8 kg ha−1** (Lagos et al. 2023 Ceres)
 - hops in-row 300×114 vs 300×100 cm: **2.80 vs 2.58 t ha−1**; authors: **+10%** (Kořen 2008 PSE)
 - A. bisporus 1 in vs 5 in cocopeat casing: **638 vs 355 g/bag**
@@ -172,19 +173,42 @@ averaged or converted to a single % unless the authors stated one):
 - maple vacuum vs unpumped: **43.7 vs 16.4 qt/taphole** Area I (USDA FS NE-91)
 - maple high-yield retubing: authors **70.6%** (0.58 vs 0.34 gal/tap, UVM 20 yr)
 
+First-tier vegetables/fruit (price A/B) paper-read pass — medicinal herbs not started:
+- potato NPK vs none (China meta, 180 studies): authors **+33.64%** overall; NPK together **+49.18%** (Li et al. 2025 PSE)
+- onion 82 kg N ha−1 vs 0: marketable **26.77 vs 19.09 t ha−1** (Yeshiwas et al. 2024 PLOS ONE). Do not use 57.84/21.74 — those are not in the paper.
+- onion Russet/Jambar vs Bombay Red: marketable **26.50 / 24.57 vs 19.86 t ha−1** (same trial, cultivar main effect)
+- onion BARI Piaz-4 150 kg N vs 0: **22.15 vs 10.05 t ha−1** (Khan et al. 2024 BARI; Tier B)
+- dry bean Rhizobium vs CK: authors **+32.96%** seed yield; mineral N **+46.69%** (dos Santos Sousa et al. 2022; 68 studies)
+- broccoli 0/120/240 kg N: relative head yield **100 / 232 / 295**; authors more than doubled / almost tripled (Vågen 2007)
+- broccoli OSU 1992: **1.6 t/ac at 0 N vs 6.8 at 180 lb N/ac** (NWREC; Tier B)
+- carrot 29 vs 67 vs 135 kg N (MI processing): 2019 total **78.7 / 91.3 / 92.8 Mg ha−1**; did not plateau (Metiva 2023)
+- strawberry silver-on-black + Ir100 vs no mulch + Ir100: **71.9 vs 51.5 t ha−1** (Sarıdaş et al. 2021). Skipped an unverified 28.4 vs 12.3 agriculturaljournals.com PDF.
+- apple insects vs exclusion: fruit set **+71%**, seed set **+62%**; open vs hand: fruit set **−41%** (Olhnuud et al. 2022)
+- almond Independence bees vs isolation: fruit set **~60%** higher; kernel **5.53 vs 4.49 kg/tree** (~20%); Beeflow-funded, COI flag true (Sáez et al. 2020)
+- blueberry insect pollination: authors report **R² 64.8 / 75.9 / 75.2%** for fruit set / berry weight / seed set — not percent yield. USDA-ARS blurb that restated R² as “increased by 64.8%” was not stored (Eeraerts et al. 2023)
+
 Retracted PLOS ONE Ahmad 2021 honey-feeding paper was **not** used. CrossRef
 title-only files remain in `raw/yield-literature/` and still do not contribute
-effect sizes. 16 crops now have elements.
+effect sizes. **25 crops** now have elements (Vegetables 12, Fruits 4, plus
+prior hops/honey/maple and imported grains).
+
+Price-A/B veg/fruit still without a paper-read yield row (honest zeros, do not
+borrow): artichoke, asparagus, okra, beet-table, cabbage, cauliflower, celery,
+pumpkin, spinach, eggplant, squash, sweet-corn, garlic, sweet-potato, melon;
+grape, apricot, kiwi, avocado, macadamia, banana, blackberry, nectarine, olive,
+papaya, peach, citrus, pear, pecan, cherry, pineapple, pistachio, cranberry,
+date, raspberry, fig, walnut.
 
 `yield-review-queue --tier D` is empty. Discovery checklists are incomplete except
-peer-reviewed-search on the 12 imported crops plus those four CrossRef crops.
+peer-reviewed-search on crops that now have elements.
 
 ## What's explicitly NOT done — next agent starts here
 
-0. **Yield elements:** extension-trial/guidance searches; fertility pass across a
-   whole category with actual paper reads (not titles); hops/mushroom substrate
-   trials once a PDF/HTML with a quantified yield effect is retrieved; do not
-   copy canola boron findings onto mustard greens.
+0. **Yield elements:** remaining first-tier veg/fruit listed above; then
+   medicinal herbs (price C/D/E — do not start until the veg/fruit zeros are
+   either filled from opened papers or left explicit). No cross-crop borrowing.
+   Garlic/sweet-corn papers were opened enough to see confounded or chart-only
+   yields and were not stored.
 1. **Floriculture botanical-name map** from BH_FV201 onto Appendix E crop_ids
    (snapdragon, rose, lily). Do not dump 142 names onto one row.
 2. **AMS herbs PDF fallback** (`ams.usda.gov/mnreports/...`) now that FV055 is
