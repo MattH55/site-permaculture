@@ -2238,7 +2238,34 @@ function topologySection(topo, a) {
   if (!topo || topo.elevation_m == null) {
     return `<section class="report-block"><h2>Topology</h2><p class="fine">Elevation samples unavailable for this parcel.</p></section>`;
   }
-  // Stats + interactive 3D terrain (HRDEM DTM when sampled, else design DEM grid)
+  // Stats only — the interactive 3D model lives at the top of the overview
+  // (see terrain3dOverviewSection), directly under the 2D map.
+  return `
+    <section class="report-block">
+      <h2>Topology</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Summary from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
+        Contour lines are shown on the satellite maps (Alberta provincial elevation).
+        Relief ${fmt(topo.relief_m, 'm')} ·
+        ${topo.keypoint_present ? 'keypoint candidate present' : 'no clear keypoint'} ·
+        erosion ${esc(topo.erosion_risk || '—')}
+      </p>
+      <div class="summary-grid" style="margin-top:0.65rem">
+        <div class="stat"><span class="k">Min elev</span><strong>${fmt(topo.elevation_min_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Mean elev</span><strong>${fmt(topo.elevation_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
+        <div class="stat"><span class="k">Slope p90</span><strong>${fmt(topo.slope_stats?.p90, '%')}</strong></div>
+      </div>
+    </section>`;
+}
+
+/**
+ * Interactive 3D terrain + tree model (HRDEM DTM when sampled, else design DEM
+ * grid). Shown right under the overview 2D map so it is one of the first things
+ * a visitor sees.
+ */
+function terrain3dOverviewSection(topo, a) {
+  if (!topo || topo.elevation_m == null) return '';
   const terrain3dId = 'terrain-3d-' + Math.random().toString(36).slice(2, 8);
   const report = state.report || {};
   const hostId = `${terrain3dId}-mesh`;
@@ -2262,21 +2289,11 @@ function topologySection(topo, a) {
   setTimeout(() => tryMount(0), 50);
 
   return `
-    <section class="report-block">
-      <h2>Topology</h2>
+    <section class="report-block report-3d-block">
+      <h2>3D terrain &amp; trees</h2>
       <p class="fine" style="margin-top:-0.35rem">
-        Summary from DEM samples${a.elevation?.source ? ` (${esc(a.elevation.source)})` : ''}.
-        Contour lines are shown on the satellite maps (Alberta provincial elevation).
-        Relief ${fmt(topo.relief_m, 'm')} ·
-        ${topo.keypoint_present ? 'keypoint candidate present' : 'no clear keypoint'} ·
-        erosion ${esc(topo.erosion_risk || '—')}
+        Your parcel in 3D${a?.elevation?.source ? ` (${esc(a.elevation.source)})` : ''} — terrain, contours, water, buildings and modelled trees.
       </p>
-      <div class="summary-grid" style="margin-top:0.65rem">
-        <div class="stat"><span class="k">Min elev</span><strong>${fmt(topo.elevation_min_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Mean elev</span><strong>${fmt(topo.elevation_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Max elev</span><strong>${fmt(topo.elevation_max_m, 'm')}</strong></div>
-        <div class="stat"><span class="k">Slope p90</span><strong>${fmt(topo.slope_stats?.p90, '%')}</strong></div>
-      </div>
       ${terrain3dBlock(terrain3dId, report)}
     </section>`;
 }
@@ -11409,6 +11426,7 @@ function renderSectionPanes(r, ctx) {
         <div class="stat"><span class="k">Nearest city</span><strong>${city ? `${esc(city.name)} · ${fmt(city.distance_km, 'km')}` : '—'}</strong></div>
       </div>
       ${mapEmbedSection('overview')}
+      ${terrain3dOverviewSection(topo, a)}
       ${flags?.length ? `<div class="flags">${flags.map((f) => `<div class="flag" data-severity="${esc(f.severity)}"><strong>${esc(severityLabel(f.severity))}</strong><p>${esc(f.message)}</p></div>`).join('')}</div>` : ''}
       <div class="overview-actions" style="display:flex;flex-wrap:wrap;gap:0.65rem;margin-top:1.1rem">
         <button type="button" class="btn btn-secondary" data-scroll-findings onclick="window.__eeScrollFindings&&window.__eeScrollFindings()">Read findings ↓</button>

@@ -212,7 +212,9 @@ export async function generateSiteReport(input = {}) {
         available: false,
         error: e.message,
       })),
-      Math.min(16_000, waveMs),
+      // Trees in the 3D model depend on this layer; give it the full wave
+      // (it runs in parallel with the others, so wall time is unchanged).
+      waveMs,
       { available: false, error: 'timeout' }
     ),
     getSurfaceWaterLayer(bbox).catch((e) => ({ available: false, water_bodies: [], predicted_streams: [], error: e.message })),
