@@ -164,9 +164,10 @@
   }
   .error-msg.visible { display: block; }
 </style>
-<!-- Three.js + OrbitControls -->
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Three.js + OrbitControls — must stay r147: it is the last UMD build that still ships
+     examples/js/controls/OrbitControls.js (r148+ is ESM-only, so the examples/js path 404s). -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.147.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
   <div id="canvas-container"></div>
