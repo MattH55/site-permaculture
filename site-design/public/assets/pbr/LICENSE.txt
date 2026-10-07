@@ -7,3 +7,6 @@ Used in this folder:
   walls/    blue_painted_planks, brick_4, beige_wall_001, blue_metal_plate
   roofs/    bitumen, box_profile_metal_sheet
   trees/    pine_tree_01 twig maps, jacaranda_tree leaf maps, bark_willow
+  trees/    conifer_impostor_atlas.png — baked offline (front+side render) from
+            fir_sapling (billboard-impostor-trees-instructions.md), single
+            sapling isolated from the source cluster, transparent background

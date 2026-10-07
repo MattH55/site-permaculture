@@ -1,0 +1,10 @@
+# Site-wide crawler rules live at the host root:
+# https://landintelligence.online/robots.txt
+# This copy is only used if this folder is served as the site root.
+
+User-agent: *
+Allow: /
+Disallow: /internet-access/data/
+Disallow: /data/
+
+Sitemap: https://landintelligence.online/sitemap.xml

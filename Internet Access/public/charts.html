@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CARI+ vs internet scatter and boxplots | Alberta</title>
+  <meta name="description" content="Alberta dissemination-area scatterplots of CARI+ 24-hour emergency access versus internet measures, plus log-scale boxplots and mean ± standard deviation by CARI+ band.">
+  <meta name="robots" content="index,follow">
+  <link rel="canonical" href="https://landintelligence.online/internet-access/charts.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="sitemap" type="application/xml" href="https://landintelligence.online/sitemap.xml">
+  <meta property="og:title" content="CARI+ vs internet scatter and boxplots | Alberta">
+  <meta property="og:url" content="https://landintelligence.online/internet-access/charts.html">
+  <meta property="og:image" content="https://landintelligence.online/internet-access/images/og-card.jpg">
+  <link rel="stylesheet" href="site.css">
+  <style>
+    main { width: min(1100px, calc(100% - 28px)); }
+    .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin: 1rem 0 1.2rem; }
+    .controls label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 4px; }
+    select { width: 100%; background: #0c120c; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .chart-card { background: #161e14; border: 1px solid var(--line); border-radius: 12px; padding: 12px 12px 8px; margin: 0 0 16px; }
+    .chart-card h2 { margin: 0 0 8px; font-size: 1.05rem; }
+    canvas { width: 100%; height: auto; display: block; background: #0c120c; border-radius: 8px; }
+    .note { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+    .row-check { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <header>
+    <strong><a href="./">Alberta internet &amp; emergency access</a></strong>
+    <nav aria-label="Primary">
+      <a href="./">Map</a>
+      <a href="charts.html" aria-current="page">Charts</a>
+      <a href="about.html">About</a>
+      <a href="methods.html">Methods</a>
+    </nav>
+  </header>
+  <main>
+    <h1>CARI+ vs internet — Alberta dissemination areas</h1>
+    <p class="lede">Every 2021 Alberta dissemination area (all 6,203) has a 24-hour emergency-access score. Higher CARI+ means worse geographic access to a hospital-based 24-hour emergency department. Use advertised 50/10 to plot the whole province; M-Lab measures are only available where a test exists. The box-and-whisker plot can use a log vertical axis. The mean±SD plot uses the arithmetic mean and SD on a linear axis, or the mean and SD of log<sub>10</sub> values (geometric mean ×/÷ geometric SD) when log scale is on.</p>
+    <div class="controls">
+      <div>
+        <label for="yKey">CARI+ measure (y-axis / groups)</label>
+        <select id="yKey">
+          <option value="cari_ed">Composite index (0–1)</option>
+          <option value="ed_min_score">Travel-time score (0–18)</option>
+          <option value="ed_dis_score">Distance score (0–18)</option>
+        </select>
+      </div>
+      <div>
+        <label for="xKey">Internet parameter</label>
+        <select id="xKey">
+          <option value="mlab_dl">M-Lab median download (Mbps)</option>
+          <option value="mlab_ul">M-Lab median upload (Mbps)</option>
+          <option value="mlab_rtt">M-Lab median min RTT (ms)</option>
+          <option value="mlab_n">M-Lab test count</option>
+          <option value="bb50_mid">Advertised 50/10 share (%)</option>
+        </select>
+      </div>
+      <div class="row-check">
+        <input id="mlabOnly" type="checkbox">
+        <label for="mlabOnly" style="text-transform:none;letter-spacing:0;margin:0">Only DAs with an M-Lab test</label>
+      </div>
+      <div class="row-check">
+        <input id="logY" type="checkbox" checked>
+        <label for="logY" style="text-transform:none;letter-spacing:0;margin:0">Log scale (and log-mean / log-SD)</label>
+      </div>
+    </div>
+
+    <section class="chart-card">
+      <h2>Scatterplot — Alberta DAs</h2>
+      <canvas id="scatter" width="1040" height="520"></canvas>
+      <p class="note" id="scatterNote"></p>
+    </section>
+    <section class="chart-card">
+      <h2>Boxplot by CARI+ band — quartiles and min / max</h2>
+      <canvas id="boxes" width="1040" height="480"></canvas>
+      <p class="note" id="boxNote"></p>
+    </section>
+    <section class="chart-card">
+      <h2>Mean and standard deviation by CARI+ band</h2>
+      <canvas id="meanSd" width="1040" height="420"></canvas>
+      <p class="note" id="meanNote"></p>
+    </section>
+  </main>
+  <footer>
+    <p>CARI+ from <a href="https://figshare.com/articles/dataset/CARI_for_24-Hour_Emergency_Department_Accessibility/30721058">figshare 30721058</a>. Internet: M-Lab NDT and ISED 50/10. <a href="./">Back to map</a></p>
+  </footer>
+  <script>
+    const LABELS = {
+      cari_ed: "CARI+ composite (0–1)",
+      ed_min_score: "CARI+ travel-time score",
+      ed_dis_score: "CARI+ distance score",
+      mlab_dl: "M-Lab download (Mbps)",
+      mlab_ul: "M-Lab upload (Mbps)",
+      mlab_rtt: "M-Lab min RTT (ms)",
+      mlab_n: "M-Lab tests",
+      bb50_mid: "Advertised 50/10 share (%)",
+    };
+
+    function parseCSV(text) {
+      const rows = [];
+      let row = [], cell = "", q = false;
+      for (let i = 0; i < text.length; i++) {
+        const c = text[i];
+        if (q) {
+          if (c === '"' && text[i + 1] === '"') { cell += '"'; i++; }
+          else if (c === '"') q = false;
+          else cell += c;
+        } else if (c === '"') q = true;
+        else if (c === ",") { row.push(cell); cell = ""; }
+        else if (c === "\n") { row.push(cell.replace(/\r$/, "")); rows.push(row); row = []; cell = ""; }
+        else cell += c;
+      }
+      if (cell.length || row.length) { row.push(cell); rows.push(row); }
+      const headers = rows[0];
+      return rows.slice(1).filter(r => r.length > 1).map(r => {
+        const o = {};
+        headers.forEach((h, i) => { o[h] = r[i]; });
+        return o;
+      });
+    }
+    function num(v) {
+      if (v == null || v === "") return null;
+      const n = +v;
+      return Number.isFinite(n) ? n : null;
+    }
+    function quantile(sorted, q) {
+      if (!sorted.length) return null;
+      const i = (sorted.length - 1) * q;
+      const lo = Math.floor(i), hi = Math.ceil(i);
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo);
+    }
+    function pearson(xs, ys) {
+      const n = xs.length;
+      if (n < 3) return null;
+      let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+      for (let i = 0; i < n; i++) {
+        sx += xs[i]; sy += ys[i];
+        sxx += xs[i] * xs[i]; syy += ys[i] * ys[i];
+        sxy += xs[i] * ys[i];
+      }
+      const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+      return den ? (n * sxy - sx * sy) / den : null;
+    }
+    function binsFor(key) {
+      if (key === "cari_ed") {
+        return [
+          { lo: 0, hi: 0.15, label: "0–0.15" },
+          { lo: 0.15, hi: 0.25, label: "0.15–0.25" },
+          { lo: 0.25, hi: 0.35, label: "0.25–0.35" },
+          { lo: 0.35, hi: 0.50, label: "0.35–0.50" },
+          { lo: 0.50, hi: 1.01, label: "0.50–1" },
+        ];
+      }
+      return [
+        { lo: 0, hi: 3, label: "0–3" },
+        { lo: 3, hi: 6, label: "3–6" },
+        { lo: 6, hi: 9, label: "6–9" },
+        { lo: 9, hi: 12, label: "9–12" },
+        { lo: 12, hi: 18.01, label: "12–18" },
+      ];
+    }
+    function meanSd(vals) {
+      const n = vals.length;
+      if (!n) return { mean: null, sd: null };
+      const mean = vals.reduce((s, v) => s + v, 0) / n;
+      if (n < 2) return { mean, sd: 0 };
+      let ss = 0;
+      for (let i = 0; i < n; i++) ss += (vals[i] - mean) * (vals[i] - mean);
+      return { mean, sd: Math.sqrt(ss / (n - 1)) };
+    }
+    function fmtNum(v) {
+      if (v == null || !Number.isFinite(v)) return "—";
+      const a = Math.abs(v);
+      if (a >= 100) return v.toFixed(0);
+      if (a >= 10) return v.toFixed(1);
+      if (a >= 1) return v.toFixed(2);
+      return v.toFixed(3);
+    }
+    function logTicks(ymin, ymax) {
+      const ticks = [];
+      const start = Math.floor(Math.log10(ymin));
+      const end = Math.ceil(Math.log10(ymax));
+      for (let e = start; e <= end; e++) {
+        const t = Math.pow(10, e);
+        if (t >= ymin * 0.999 && t <= ymax * 1.05) ticks.push(t);
+      }
+      return ticks.length ? ticks : [ymin, ymax];
+    }
+    function yMap(v, ymin, ymax, H, padB, padT, logY) {
+      const vv = Math.min(Math.max(v, ymin), ymax);
+      if (logY) {
+        const a = Math.log10(ymin), b = Math.log10(ymax);
+        return H - padB - (Math.log10(vv) - a) / (b - a || 1) * (H - padB - padT);
+      }
+      return H - padB - (vv - ymin) / (ymax - ymin || 1) * (H - padB - padT);
+    }
+    function speedFloor(xKey) {
+      return (xKey === "mlab_dl" || xKey === "mlab_ul") ? 10 : null;
+    }
+    function grouped(pts, xKey, yKey, logY) {
+      return binsFor(yKey).map(b => {
+        const raw = pts.filter(p => p[yKey] >= b.lo && p[yKey] < b.hi).map(p => p[xKey]);
+        const dropped = logY ? raw.filter(v => !(v > 0)).length : 0;
+        const vals = (logY ? raw.filter(v => v > 0) : raw.slice()).sort((a, c) => a - c);
+        if (!vals.length) return { ...b, n: 0, dropped };
+        const ms = meanSd(vals);
+        const logs = vals.filter(v => v > 0).map(v => Math.log10(v));
+        const lms = meanSd(logs);
+        const geoMean = lms.mean == null ? null : Math.pow(10, lms.mean);
+        const geoLo = lms.mean == null ? null : Math.pow(10, lms.mean - (lms.sd || 0));
+        const geoHi = lms.mean == null ? null : Math.pow(10, lms.mean + (lms.sd || 0));
+        return {
+          ...b,
+          n: vals.length,
+          dropped,
+          min: vals[0],
+          q1: quantile(vals, 0.25),
+          med: quantile(vals, 0.5),
+          q3: quantile(vals, 0.75),
+          max: vals[vals.length - 1],
+          mean: ms.mean,
+          sd: ms.sd,
+          logMean: lms.mean,
+          logSd: lms.sd,
+          geoMean,
+          geoLo,
+          geoHi,
+        };
+      });
+    }
+
+    let rows = [];
+
+    function selected() {
+      const xKey = document.getElementById("xKey").value;
+      const yKey = document.getElementById("yKey").value;
+      const mlabOnly = document.getElementById("mlabOnly").checked;
+      const pts = rows.filter(r => {
+        if (r[xKey] == null || r[yKey] == null) return false;
+        if (mlabOnly && !(r.mlab_n > 0)) return false;
+        if (xKey.startsWith("mlab_") && !(r.mlab_n > 0) && xKey !== "mlab_n") return false;
+        return true;
+      });
+      return { xKey, yKey, pts };
+    }
+
+    function drawScatter() {
+      const { xKey, yKey, pts } = selected();
+      const c = document.getElementById("scatter");
+      const ctx = c.getContext("2d");
+      const W = c.width, H = c.height;
+      ctx.clearRect(0, 0, W, H);
+      if (!pts.length) {
+        document.getElementById("scatterNote").textContent = "No Alberta DAs in this filter.";
+        return;
+      }
+      const xs = pts.map(p => p[xKey]);
+      const ys = pts.map(p => p[yKey]);
+      const xmin = 0, ymin = 0;
+      const xmax = Math.max(xKey === "bb50_mid" ? 100 : 1, quantile(xs.slice().sort((a,b)=>a-b), 0.99) * 1.05);
+      const ymax = Math.max(0.05, quantile(ys.slice().sort((a,b)=>a-b), 0.99) * 1.08);
+      const padL = 62, padB = 50, padT = 16, padR = 18;
+      const x = v => padL + (v - xmin) / (xmax - xmin || 1) * (W - padL - padR);
+      const y = v => H - padB - (v - ymin) / (ymax - ymin || 1) * (H - padB - padT);
+      ctx.strokeStyle = "#2b3828";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT); ctx.lineTo(padL, H - padB); ctx.lineTo(W - padR, H - padB);
+      ctx.stroke();
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "14px Segoe UI";
+      [0, 0.25, 0.5, 0.75, 1].forEach(t => {
+        const xv = xmin + t * (xmax - xmin), yv = ymin + t * (ymax - ymin);
+        ctx.fillText(xv >= 10 ? xv.toFixed(0) : xv.toFixed(1), x(xv) - 10, H - padB + 16);
+        ctx.fillText(yv >= 10 ? yv.toFixed(1) : yv.toFixed(2), 8, y(yv) + 4);
+      });
+      ctx.font = "16px Segoe UI";
+      ctx.fillText(LABELS[xKey], padL + 280, H - 12);
+      ctx.save();
+      ctx.translate(16, H / 2 + 80);
+      ctx.rotate(-Math.PI / 2);
+      ctx.fillText(LABELS[yKey], 0, 0);
+      ctx.restore();
+      pts.forEach(p => {
+        ctx.fillStyle = p.rural ? "#e0a14a" : "#c4e38a";
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.arc(x(p[xKey]), y(p[yKey]), 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = "#c4e38a";
+      ctx.fillRect(W - 210, 18, 10, 10);
+      ctx.fillStyle = "#e0a14a";
+      ctx.fillRect(W - 210, 36, 10, 10);
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "13px Segoe UI";
+      ctx.fillText("Urban / metro-influenced DA", W - 194, 27);
+      ctx.fillText("Rural / remote DA (SAC 4–8)", W - 194, 45);
+      const r = pearson(xs, ys);
+      document.getElementById("scatterNote").textContent =
+        `${pts.length} Alberta dissemination areas · Pearson r = ${r == null ? "—" : r.toFixed(3)}.`;
+    }
+
+    function drawBoxes() {
+      const { xKey, yKey, pts } = selected();
+      const logY = document.getElementById("logY").checked;
+      const c = document.getElementById("boxes");
+      const ctx = c.getContext("2d");
+      const W = c.width, H = c.height;
+      ctx.clearRect(0, 0, W, H);
+      const groups = grouped(pts, xKey, yKey, logY);
+      const used = groups.filter(g => g.n);
+      if (!used.length) {
+        document.getElementById("boxNote").textContent = logY
+          ? "No positive values to plot on a log axis for this filter."
+          : "No Alberta DAs in this filter.";
+        return;
+      }
+      const floor = speedFloor(xKey);
+      let ymin = logY ? Math.min(...used.map(g => g.min)) : 0;
+      let ymax = Math.max(...used.map(g => g.max));
+      if (logY) {
+        ymin = Math.max(ymin / 1.5, 1e-4);
+        ymax = ymax * 1.4;
+      } else {
+        ymax = ymax * 1.08;
+      }
+      if (floor != null) {
+        ymin = floor;
+        if (ymax <= ymin) ymax = ymin * (logY ? 10 : 1.5);
+      }
+      const padL = 62, padB = 72, padT = 20, padR = 18;
+      const slot = (W - padL - padR) / groups.length;
+      const y = v => yMap(v, ymin, ymax, H, padB, padT, logY);
+      ctx.strokeStyle = "#2b3828";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT); ctx.lineTo(padL, H - padB); ctx.lineTo(W - padR, H - padB);
+      ctx.stroke();
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "14px Segoe UI";
+      const ticks = logY ? logTicks(ymin, ymax) : [0, 0.25, 0.5, 0.75, 1].map(t => ymin + t * (ymax - ymin));
+      ticks.forEach(yv => ctx.fillText(fmtNum(yv), 8, y(yv) + 4));
+      groups.forEach((g, i) => {
+        const cx = padL + slot * (i + 0.5);
+        const bw = Math.min(52, slot * 0.45);
+        ctx.fillStyle = "#9aab94";
+        ctx.font = "13px Segoe UI";
+        ctx.textAlign = "center";
+        ctx.fillText(g.label, cx, H - padB + 18);
+        ctx.fillText("n=" + g.n, cx, H - padB + 34);
+        ctx.textAlign = "left";
+        if (!g.n) return;
+        ctx.strokeStyle = "#c4e38a";
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(cx, y(g.min)); ctx.lineTo(cx, y(g.max));
+        ctx.moveTo(cx - 10, y(g.min)); ctx.lineTo(cx + 10, y(g.min));
+        ctx.moveTo(cx - 10, y(g.max)); ctx.lineTo(cx + 10, y(g.max));
+        ctx.stroke();
+        const top = y(g.q3), bot = y(g.q1);
+        ctx.fillStyle = "rgba(196,227,138,0.18)";
+        ctx.fillRect(cx - bw, top, bw * 2, bot - top);
+        ctx.strokeRect(cx - bw, top, bw * 2, bot - top);
+        ctx.beginPath();
+        ctx.moveTo(cx - bw, y(g.med)); ctx.lineTo(cx + bw, y(g.med));
+        ctx.stroke();
+      });
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "16px Segoe UI";
+      ctx.fillText(LABELS[xKey] + "  by  " + LABELS[yKey] + " band" + (logY ? "  ·  log scale" : ""), padL, 16);
+      ctx.font = "13px Segoe UI";
+      ctx.fillText("Whiskers = min and max. Box = Q1–Q3. Line = median.", padL, H - 12);
+      const dropped = used.reduce((s, g) => s + (g.dropped || 0), 0);
+      const bits = used.map(g =>
+        `${g.label}: min ${fmtNum(g.min)}, Q1 ${fmtNum(g.q1)}, med ${fmtNum(g.med)}, Q3 ${fmtNum(g.q3)}, max ${fmtNum(g.max)} (n=${g.n})`
+      );
+      document.getElementById("boxNote").textContent =
+        bits.join(" · ") + (dropped ? ` · ${dropped} non-positive value(s) omitted on log scale.` : "");
+    }
+
+    function drawMeanSd() {
+      const { xKey, yKey, pts } = selected();
+      const logY = document.getElementById("logY").checked;
+      const c = document.getElementById("meanSd");
+      const ctx = c.getContext("2d");
+      const W = c.width, H = c.height;
+      ctx.clearRect(0, 0, W, H);
+      const groups = grouped(pts, xKey, yKey, logY);
+      const used = groups.filter(g => g.n);
+      if (!used.length) {
+        document.getElementById("meanNote").textContent = logY
+          ? "No positive values to plot on a log axis for this filter."
+          : "No Alberta DAs in this filter.";
+        return;
+      }
+      const lows = used.map(g => logY ? g.geoLo : g.mean - g.sd);
+      const highs = used.map(g => logY ? g.geoHi : g.mean + g.sd);
+      const centres = used.map(g => logY ? g.geoMean : g.mean);
+      const floor = speedFloor(xKey);
+      let ymin, ymax;
+      if (logY) {
+        ymin = Math.min(...lows, ...centres) / 1.4;
+        ymin = Math.max(ymin, 1e-4);
+        ymax = Math.max(...highs, ...centres) * 1.4;
+      } else {
+        ymin = Math.min(0, ...lows);
+        ymax = Math.max(...highs) * 1.08;
+        if (ymax === ymin) ymax = ymin + 1;
+      }
+      if (floor != null) {
+        ymin = floor;
+        if (ymax <= ymin) ymax = ymin * (logY ? 10 : 1.5);
+      }
+      const padL = 62, padB = 72, padT = 20, padR = 18;
+      const slot = (W - padL - padR) / groups.length;
+      const y = v => yMap(v, ymin, ymax, H, padB, padT, logY);
+      ctx.strokeStyle = "#2b3828";
+      ctx.beginPath();
+      ctx.moveTo(padL, padT); ctx.lineTo(padL, H - padB); ctx.lineTo(W - padR, H - padB);
+      ctx.stroke();
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "14px Segoe UI";
+      const ticks = logY ? logTicks(ymin, ymax) : [0, 0.25, 0.5, 0.75, 1].map(t => ymin + t * (ymax - ymin));
+      ticks.forEach(yv => ctx.fillText(fmtNum(yv), 8, y(yv) + 4));
+      groups.forEach((g, i) => {
+        const cx = padL + slot * (i + 0.5);
+        const bw = Math.min(28, slot * 0.28);
+        ctx.fillStyle = "#9aab94";
+        ctx.font = "13px Segoe UI";
+        ctx.textAlign = "center";
+        ctx.fillText(g.label, cx, H - padB + 18);
+        ctx.fillText("n=" + g.n, cx, H - padB + 34);
+        ctx.textAlign = "left";
+        if (!g.n) return;
+        const mid = logY ? g.geoMean : g.mean;
+        const lo = logY ? g.geoLo : g.mean - g.sd;
+        const hi = logY ? g.geoHi : g.mean + g.sd;
+        ctx.strokeStyle = "#e0a14a";
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(cx, y(lo)); ctx.lineTo(cx, y(hi));
+        ctx.moveTo(cx - 9, y(lo)); ctx.lineTo(cx + 9, y(lo));
+        ctx.moveTo(cx - 9, y(hi)); ctx.lineTo(cx + 9, y(hi));
+        ctx.stroke();
+        ctx.fillStyle = "#c4e38a";
+        ctx.beginPath();
+        ctx.arc(cx, y(mid), 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "#0c120c";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.fillStyle = "#c4e38a";
+        ctx.fillRect(cx - bw, y(mid) - 1.5, bw * 2, 3);
+      });
+      ctx.fillStyle = "#9aab94";
+      ctx.font = "16px Segoe UI";
+      ctx.fillText(LABELS[xKey] + (logY ? "  ·  log10 mean ± 1 SD(log10)" : "  ·  mean ± 1 SD"), padL, 16);
+      ctx.font = "13px Segoe UI";
+      ctx.fillText(
+        logY
+          ? "Dot = geometric mean (10^mean of log10). Whiskers = ± 1 SD of log10 values (×/÷ geometric SD)."
+          : "Dot and bar = arithmetic mean. Whiskers = ± one sample standard deviation.",
+        padL, H - 12
+      );
+      const dropped = used.reduce((s, g) => s + (g.dropped || 0), 0);
+      const bits = used.map(g => {
+        if (logY) {
+          const gsd = Math.pow(10, g.logSd || 0);
+          return `${g.label}: geo. mean ${fmtNum(g.geoMean)}, SD(log10) ${fmtNum(g.logSd)}, ×/÷ ${fmtNum(gsd)} (n=${g.n})`;
+        }
+        return `${g.label}: mean ${fmtNum(g.mean)}, SD ${fmtNum(g.sd)} (n=${g.n})`;
+      });
+      document.getElementById("meanNote").textContent =
+        bits.join(" · ") + (dropped ? ` · ${dropped} non-positive value(s) omitted on log scale.` : "");
+    }
+
+    function redraw() { drawScatter(); drawBoxes(); drawMeanSd(); }
+
+    fetch("data/alberta-da.csv").then(r => r.text()).then(text => {
+      rows = parseCSV(text).map(r => ({
+        da: r.da,
+        csd: r.csd,
+        rural: +r.rural === 1,
+        mlab_n: num(r.mlab_n) || 0,
+        cari_ed: num(r.cari_ed),
+        ed_min_score: num(r.ed_min_score),
+        ed_dis_score: num(r.ed_dis_score),
+        mlab_dl: num(r.mlab_dl),
+        mlab_ul: num(r.mlab_ul),
+        mlab_rtt: num(r.mlab_rtt),
+        bb50_mid: num(r.bb50_mid),
+      }));
+      redraw();
+    });
+    document.getElementById("xKey").addEventListener("change", redraw);
+    document.getElementById("yKey").addEventListener("change", redraw);
+    document.getElementById("mlabOnly").addEventListener("change", redraw);
+    document.getElementById("logY").addEventListener("change", redraw);
+  </script>
+</body>
+</html>

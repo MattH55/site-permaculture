@@ -1,0 +1,156 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Tree Painter Demo</title>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+  <div id="container"></div>
+  <!-- Asset picker and lightweight controls for swapping GLB assets at runtime -->
+  <div id="viewer-controls" style="position:absolute; top:8px; left:8px; z-index:10; background:rgba(255,255,255,0.95); padding:8px 10px; border-radius:6px; box-shadow:0 2px 6px rgba(0,0,0,.25);">
+    <label for="treeAssetPicker" style="font-family:Arial, sans-serif; font-size:12px; margin-right:6px;">Asset</label>
+    <select id="treeAssetPicker" style="font-family:Arial, sans-serif; font-size:12px;">
+      <option value="/assets/trees/oak_tree.glb" selected>Oak Tree (game-quality)</option>
+      <option value="/assets/trees/deciduous_tree.glb">Deciduous Tree</option>
+      <option value="/assets/trees/conifer_tree.glb">Conifer Tree</option>
+    </select>
+  </div>
+  <script type="module">
+      // Lightweight 3D viewer using Three.js to render game-like trees.
+      // Assumes that public/assets/trees/ and public/assets/nature-kit contain GLTF assets
+      // and that this page is served with those assets available.
+      import * as THREE from 'https://unpkg.com/three@0.156.0/build/three.module.js';
+      import { GLTFLoader } from 'https://unpkg.com/three@0.156.0/examples/jsm/loaders/GLTFLoader.js';
+
+      const container = document.getElementById('container');
+  const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 20, 60);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+      scene.add(ambient);
+      const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+      sun.position.set(50, 100, 50);
+      scene.add(sun);
+
+  const loader = new GLTFLoader();
+  const forestGroup = new THREE.Group();
+  forestGroup.name = 'forest';
+  scene.add(forestGroup);
+  // Helper to load and place a tree at a given x,z with a given scale
+  function addTree(x, z, scale=1, assetPathOverride) {
+        // Asset paths
+        const assetPathA = '/assets/trees/deciduous_tree.glb';
+        const assetPathB = '/public/assets/trees/deciduous_tree.glb';
+        // Resolve which path to load for this tree
+        const path = assetPathOverride || (document.getElementById('treeAssetPicker')?.value || assetPathA);
+        function loadAsset(p) {
+          loader.load(path, (gltf) => {
+            const model = gltf.scene;
+            model.scale.set(scale, scale, scale);
+            model.position.set(x, 0, z);
+            forestGroup.add(model);
+          }, undefined, (err) => {
+            // Try the other path if this fails
+            if (p === assetPathA) {
+              loadAsset(assetPathB);
+            } else {
+              console.warn('Tree asset load failed, using simple cone:', err);
+              // Fallback: simple cone geometry
+              const geo = new THREE.ConeGeometry(1, 2, 8);
+              const mat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+              const m = new THREE.Mesh(geo, mat);
+              m.position.set(x, 1, z);
+              forestGroup.add(m);
+            }
+          });
+        }
+        // Initial load uses the provided assetPathOverride or current picker value
+        const initialPath = assetPathOverride || (document.getElementById('treeAssetPicker')?.value || assetPathA);
+        loadAsset(initialPath);
+      }
+
+  // Simple ground plane for context
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(500, 500, 1, 1),
+        new THREE.MeshStandardMaterial({ color: 0x6b8e23, side: THREE.DoubleSide })
+      );
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = 0;
+      scene.add(ground);
+
+      // Populate a small forest patch in a grid
+      const gridSize = 6;
+      const spacing = 6;
+      for (let i = -Math.floor(gridSize/2); i <= Math.floor(gridSize/2); i++) {
+        for (let j = -Math.floor(gridSize/2); j <= Math.floor(gridSize/2); j++) {
+          const hScale = 0.8 + Math.random()*0.6;
+          addTree(i * spacing, j * spacing, hScale);
+        }
+      }
+
+      // Helper to (re)build forest when asset changes
+      function rebuildForest() {
+        while (forestGroup.children.length) {
+          forestGroup.remove(forestGroup.children[0]);
+        }
+        // Re-populate
+        for (let i = -Math.floor(gridSize/2); i <= Math.floor(gridSize/2); i++) {
+          for (let j = -Math.floor(gridSize/2); j <= Math.floor(gridSize/2); j++) {
+            const hScale = 0.8 + Math.random()*0.6;
+            addTree(i * spacing, j * spacing, hScale);
+          }
+        }
+      }
+
+      const picker = document.getElementById('treeAssetPicker');
+      if (picker) {
+        picker.addEventListener('change', () => {
+          // When asset changes, rebuild forest with new asset for future trees
+          rebuildForest();
+        }, { passive: true });
+      }
+
+      // Simple orbit controls
+      let isDragging = false, prevX = 0, prevY = 0;
+      function onDown(e){ isDragging = true; prevX = e.clientX; prevY = e.clientY; }
+      function onUp(){ isDragging = false; }
+      function onMove(e){
+        if(!isDragging) return;
+        const dx = e.clientX - prevX;
+        const dy = e.clientY - prevY;
+        prevX = e.clientX; prevY = e.clientY;
+        scene.rotation.y += dx * 0.005;
+        camera.position.y += -dy * 0.05;
+        camera.position.y = THREE.MathUtils.clamp(camera.position.y, 5, 120);
+      }
+      renderer.domElement.addEventListener('mousedown', onDown);
+      window.addEventListener('mouseup', onUp);
+      window.addEventListener('mousemove', onMove);
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      const clock = new THREE.Clock();
+      function animate(){
+        requestAnimationFrame(animate);
+        const dt = clock.getDelta();
+        // gentle auto-rotation for atmosphere
+        scene.rotation.y += 0.0005 * dt * 60;
+        renderer.render(scene, camera);
+      }
+      animate();
+    </script>
+  </body>
+</html>

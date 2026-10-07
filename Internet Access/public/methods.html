@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Methods and data sources | Alberta CARI+ and broadband map</title>
+  <meta name="description" content="How the Alberta map joins CARI+ 24-hour emergency department scores, McGaughey and Peters road-network travel times, M-Lab NDT speeds, and ISED National Broadband Data.">
+  <meta name="robots" content="index,follow,max-image-preview:large">
+  <link rel="canonical" href="https://landintelligence.online/internet-access/methods.html">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="sitemap" type="application/xml" href="https://landintelligence.online/sitemap.xml">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="Methods and data sources | Alberta CARI+ and broadband map">
+  <meta property="og:description" content="Sources and assumptions for CARI+ emergency access, M-Lab speeds, and ISED coverage on the Alberta map.">
+  <meta property="og:url" content="https://landintelligence.online/internet-access/methods.html">
+  <meta property="og:image" content="https://landintelligence.online/internet-access/images/og-card.jpg">
+  <meta property="og:locale" content="en_CA">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="geo.region" content="CA-AB">
+  <link rel="stylesheet" href="site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Methods and data sources for the Alberta CARI+ and broadband map",
+    "datePublished": "2026-08-14",
+    "dateModified": "2026-08-14",
+    "inLanguage": "en-CA",
+    "about": ["broadband", "emergency departments", "Alberta", "CARI+"],
+    "url": "https://landintelligence.online/internet-access/methods.html"
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <strong><a href="./">Alberta internet &amp; emergency access</a></strong>
+    <nav aria-label="Primary">
+      <a href="./">Map</a>
+      <a href="charts.html">Charts</a>
+      <a href="about.html">About</a>
+      <a href="methods.html" aria-current="page">Methods</a>
+    </nav>
+  </header>
+  <main>
+    <h1>Methods and data sources</h1>
+    <p class="lede">The map joins public Canadian datasets at the 2021 dissemination area. Higher CARI+ scores mean longer travel to a 24-hour emergency department.</p>
+
+    <h2>CARI+ 24-hour emergency departments</h2>
+    <p>Primary scores come from <a href="https://figshare.com/articles/dataset/CARI_for_24-Hour_Emergency_Department_Accessibility/30721058">CARI+ for 24-Hour Emergency Department Accessibility</a> (figshare 30721058, March 2023): standardized travel-time and travel-distance scores (0–18) and normalized scores (0–1) for each dissemination area.</p>
+    <p>The method is McGaughey and Peters, <a href="https://doi.org/10.1111/cag.70082">Introducing the Canadian Accessibility and Remoteness Index (CARI+)</a>, <cite>Canadian Geographies</cite> 2026. Road-network minutes and kilometres use the companion travel-time work in <a href="https://doi.org/10.1038/s41597-024-03691-5"><cite>Scientific Data</cite> 2024</a>: population-weighted DA centroids, 2021 Census road network, posted speeds, personal vehicle, nearest hospital-based 24-hour ED from the Open Database of Healthcare Facilities (verified as 24-hour).</p>
+    <p>Every one of Alberta’s 6,203 2021 dissemination areas has a 24-hour ED travel time, distance, and CARI+ score. Figshare 30721058 omits eight unpopulated DAs (Willmore Wilderness and northern Wood Buffalo / Old Fort 217). Those eight use companion centroid travel times where published, otherwise an OSRM driving route to the nearest Alberta hospital-based 24-hour ED, with scores taken from official Alberta DAs that have the most similar minutes and kilometres.</p>
+    <p>Assumptions: no live traffic, no traffic lights, no temporary ED closures, no air or private-boat routes. Territories and some isolated DAs have no road route.</p>
+
+    <h2>Measured internet speeds</h2>
+    <p>M-Lab NDT7 download, upload, and minimum RTT from the public archive documented at <a href="https://d3f2vqxgk3exj.cloudfront.net/data/">measurementlab.net/data</a>. Alberta clients are taken from Calgary (<code>yyc</code>) server annotations. Tests are user-initiated; MaxMind often places clients at a city centroid.</p>
+
+    <h2>Advertised coverage and dwellings</h2>
+    <p>ISED National Broadband Data supply 50/10 household-share bands. The map’s <strong>Approximate Provider Service-Area Sketch</strong> is the official last-mile coverage from <code>ISP_Hex_FSI</code>, drawn on the CanHEX ~25 km² hexagonal grid. Hexes are tiled from published centroids and dissolved by technology and by named service provider (Telus, Rogers, Xplore, MCS Net, and the rest). Each named provider in the list links to that company’s public website where one could be confirmed. Use the technology checkboxes and the provider list together: for example fibre + Telus, or fixed wireless + a regional WISP. The sketch is approximate advertised coverage, not a licensed service-area or a speed test. Mobile and satellite hexes cover most of Alberta, so those technology layers start hidden.</p>
+    <p>Logged dwelling and population counts are from the 2021 Geographic Attribute File (<code>DBTDWELL2021_IDTLOG2021</code>, usual-resident dwellings, block population).</p>
+
+    <h2>How to read the CARI+ scores</h2>
+    <table>
+      <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>Travel-time score (0–18)</td><td>Standardized access by driving time. Higher is more remote.</td></tr>
+        <tr><td>Distance score (0–18)</td><td>Standardized access by driving distance. Higher is more remote.</td></tr>
+        <tr><td>Normalized scores (0–1)</td><td>The same two measures scaled to the unit interval.</td></tr>
+        <tr><td>Composite</td><td>Mean of the two normalized scores.</td></tr>
+      </tbody>
+    </table>
+    <p><a class="cta" href="./">Open the map</a></p>
+  </main>
+  <footer>
+    <p>Licences: CARI+ CC BY 4.0 · M-Lab NDT CC0 · ISED and StatCan Open Government Licence — Canada · Alberta boundaries Open Government Licence — Alberta. <a href="https://landintelligence.online/sitemap.xml">Sitemap</a> · <a href="https://landintelligence.online/robots.txt">robots.txt</a></p>
+  </footer>
+</body>
+</html>

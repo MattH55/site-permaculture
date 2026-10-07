@@ -1,0 +1,99 @@
+{
+  "$schema": "See lib/vegetation-assets.js validateVegetationAsset() for the record shape this must satisfy.",
+  "generatedAt": "2026-09-12",
+  "assets": [
+    {
+      "id": "polyhaven-shrub_03",
+      "source": "polyhaven",
+      "sourceUrl": "https://polyhaven.com/a/shrub_03",
+      "license": "CC0",
+      "category": "shrub",
+      "species": null,
+      "commonName": "Small shrub",
+      "modelSourceFile": "asset-source/polyhaven/shrub_03/shrub_03_1k.gltf",
+      "browserModel": "/assets/vegetation/polyhaven/shrub_03/shrub_03.glb",
+      "thumbnail": "https://cdn.polyhaven.com/asset_img/thumbs/shrub_03.png?width=256&height=256",
+      "defaultScale": 1,
+      "lods": {
+        "high": "/assets/vegetation/polyhaven/shrub_03/shrub_03.glb"
+      },
+      "growthStage": "mature",
+      "metadata": {
+        "matureHeightMeters": 1.2,
+        "matureCanopyWidthMeters": 1.0
+      },
+      "variants": [],
+      "provenance": {
+        "source": "polyhaven",
+        "sourceUrl": "https://polyhaven.com/a/shrub_03",
+        "license": "CC0",
+        "downloadedAt": "2026-09-12",
+        "originalFilename": "shrub_03_1k.gltf",
+        "optimizedFilename": "shrub_03.glb",
+        "optimizationProcess": "Packed 1k-texture glTF (+ external .bin, 3 jpg textures) into a single self-contained GLB by embedding each image as a bufferView (pack-glb.js — hand-built per the glTF2/GLB binary spec; no mesh decimation, no LOD variants generated)."
+      }
+    },
+    {
+      "id": "polyhaven-fern_02",
+      "source": "polyhaven",
+      "sourceUrl": "https://polyhaven.com/a/fern_02",
+      "license": "CC0",
+      "category": "shrub",
+      "species": null,
+      "commonName": "Fern",
+      "modelSourceFile": "asset-source/polyhaven/fern_02/fern_02_1k.gltf",
+      "browserModel": "/assets/vegetation/polyhaven/fern_02/fern_02.glb",
+      "thumbnail": "https://cdn.polyhaven.com/asset_img/thumbs/fern_02.png?width=256&height=256",
+      "defaultScale": 1,
+      "lods": {
+        "high": "/assets/vegetation/polyhaven/fern_02/fern_02.glb"
+      },
+      "growthStage": "mature",
+      "metadata": {
+        "matureHeightMeters": 0.5,
+        "matureCanopyWidthMeters": 0.5
+      },
+      "variants": [],
+      "provenance": {
+        "source": "polyhaven",
+        "sourceUrl": "https://polyhaven.com/a/fern_02",
+        "license": "CC0",
+        "downloadedAt": "2026-09-12",
+        "originalFilename": "fern_02_1k.gltf",
+        "optimizedFilename": "fern_02.glb",
+        "optimizationProcess": "Packed 1k-texture glTF (+ external .bin, 3 jpg textures) into a single self-contained GLB by embedding each image as a bufferView (pack-glb.js — hand-built per the glTF2/GLB binary spec; no mesh decimation, no LOD variants generated)."
+      }
+    },
+    {
+      "id": "polyhaven-flower_empodium",
+      "source": "polyhaven",
+      "sourceUrl": "https://polyhaven.com/a/flower_empodium",
+      "license": "CC0",
+      "category": "grass",
+      "species": null,
+      "commonName": "Empodium flower",
+      "modelSourceFile": "asset-source/polyhaven/flower_empodium/flower_empodium_1k.gltf",
+      "browserModel": "/assets/vegetation/polyhaven/flower_empodium/flower_empodium.glb",
+      "thumbnail": "https://cdn.polyhaven.com/asset_img/thumbs/flower_empodium.png?width=256&height=256",
+      "defaultScale": 1,
+      "lods": {
+        "high": "/assets/vegetation/polyhaven/flower_empodium/flower_empodium.glb"
+      },
+      "growthStage": "mature",
+      "metadata": {
+        "matureHeightMeters": 0.25,
+        "matureCanopyWidthMeters": 0.2
+      },
+      "variants": [],
+      "provenance": {
+        "source": "polyhaven",
+        "sourceUrl": "https://polyhaven.com/a/flower_empodium",
+        "license": "CC0",
+        "downloadedAt": "2026-09-12",
+        "originalFilename": "flower_empodium_1k.gltf",
+        "optimizedFilename": "flower_empodium.glb",
+        "optimizationProcess": "Packed 1k-texture glTF (+ external .bin, 3 jpg textures) into a single self-contained GLB by embedding each image as a bufferView (pack-glb.js — hand-built per the glTF2/GLB binary spec; no mesh decimation, no LOD variants generated)."
+      }
+    }
+  ]
+}

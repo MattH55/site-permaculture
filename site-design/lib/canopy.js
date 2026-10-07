@@ -152,7 +152,10 @@ function writeCached(key, result) {
  */
 export async function buildCanopyLayer(bbox, opts = {}) {
   if (!bbox || bbox.west == null) return unavailable('invalid_bbox');
-  const size = Math.min(Math.max(opts.size ?? 48, 16), 96);
+  // Use a higher-resolution canopy model by default.
+  // Increase from 48 to 96 cells per CHM raster by default for finer detail.
+  // Allow up to 128 to enable even higher-res if explicitly requested in the future.
+  const size = Math.min(Math.max(opts.size ?? 96, 16), 128);
   const window = Math.min(Math.max(opts.window ?? DEFAULT_WINDOW, 8), 64);
 
   const key = cacheKey(bbox);
@@ -631,6 +634,7 @@ function extractTrees(chm, bbox, ctx) {
   }
   const canopyCoverPct = totalValid ? Math.round((coverCells / totalValid) * 100) : 0;
   const renderZones = classifyCanopyRenderZones(coverGrid, bbox, ctx.dense_cover_threshold);
+  const treeRenderTiers = buildTreeRenderTiers(renderZones);
 
   return {
     available: true,
@@ -655,6 +659,7 @@ function extractTrees(chm, bbox, ctx) {
     tree_count: instances.length,
     tree_instances: instances,
     render_zones: renderZones,
+    tree_render_tiers: treeRenderTiers,
     extraction: {
       method: 'local-maxima + watershed (lidR-style, scale-space, inverted CHM)',
       window_cells: baseWin,
@@ -765,6 +770,38 @@ function classifyCanopyRenderZones(coverGrid, bbox, denseCoverThreshold) {
     });
   }
   return zones;
+}
+
+/**
+ * Map density-classified render zones onto a near/mid tier summary for
+ * billboard-impostor-trees-instructions.md. Only 'instanced' zones
+ * (individually placed trees) are represented here, as the "mid" tier's
+ * cross-billboard impostors — 'billboard_impostor' zones (dense cover) are
+ * left out entirely: the doc's proposed "far" tier for them (a tiled bake
+ * from real tree models) was tried and dropped per feedback, so dense zones
+ * keep rendering exactly as they did before this feature and have no
+ * tier-tagged entry here. The "near" tier (full 3D geometry for trees close
+ * to a structure) isn't classifiable in this module either: it's a
+ * site-context distinction — proximity to a detected building — not a
+ * canopy-density one, and building-detection output isn't available here.
+ * It's applied client-side instead (see buildNearTrees() in public/app.js),
+ * reclassifying a subset of these "mid" zones' trees at render time.
+ * species_asset_id is left null: species-to-asset selection happens per-tree
+ * client-side (resolveTreeAsset() in public/tree-scale.js), not per-zone.
+ *
+ * @param {ReturnType<typeof classifyCanopyRenderZones>} renderZones
+ */
+function buildTreeRenderTiers(renderZones) {
+  return renderZones
+    .filter((z) => z.render_mode !== 'billboard_impostor')
+    .map((z) => ({
+      geometry: z.geometry,
+      tier: 'mid',
+      render_mode: 'billboard_impostor',
+      species_asset_id: null,
+      impostor_atlas: 'nature-kit + poly-haven-fir-sapling',
+      transition_blend_zone: true,
+    }));
 }
 
 /** Andrew's monotone chain convex hull. Input/output: [[x,y], ...]. */

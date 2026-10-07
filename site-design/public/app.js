@@ -3234,7 +3234,13 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     const denseCanopyZones = renderZones.filter((z) => z.render_mode === 'billboard_impostor' && z.geometry?.coordinates?.[0]?.length >= 4);
     const groupForest = new THREE.Group(); groupForest.name = 'forest-texture';
     const groupTrees = new THREE.Group(); groupTrees.name = 'trees';
-    scene.add(groupForest, groupTrees);
+    // Near tier (billboard-impostor-trees-instructions.md, Step 3.1): trees
+    // close to a structure render as full cloned GLB geometry instead of a
+    // billboard. Kept in its own group (not mixed into groupTrees) so
+    // buildNearTrees() and buildSparseTrees() can each clear/rebuild only
+    // their own content without racing each other across async asset loads.
+    const groupNearTrees = new THREE.Group(); groupNearTrees.name = 'near-trees';
+    scene.add(groupForest, groupTrees, groupNearTrees);
 
     const speciesPrior = priorFromSubregion(
       report?.satellite?.avi?.natural_subregion?.name
@@ -3245,7 +3251,46 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       canopyAlbedo: null, canopyNormal: null, canopyRough: null,
       wall: {}, roof: {},
       tree: { conifer: null, deciduous: null, bark: null },
+      // Populated by loadTreeImpostorAssets(): near-tier cloned-geometry
+      // templates and mid-tier cross-billboard atlases — see
+      // billboard-impostor-trees-instructions.md. The far tier (a tiled
+      // top-down cluster bake) was tried and dropped per feedback; dense
+      // canopy zones fall back to pbr.canopyAlbedo / the procedural texture,
+      // same as before this feature.
+      treeTemplates: null,
+      treeImpostorAtlas: { conifer: null, deciduous: null },
     };
+
+    // --- Near/mid tier split (Step 3 of billboard-impostor-trees-instructions.md) ---
+    // "Near" is proximity to site context (homestead/orchard/guild), not live
+    // camera distance — the doc frames it that way, and a static site-context
+    // split avoids per-frame distance recomputation in the render loop.
+    // Distances are named constants, not inlined, so the near/mid cutoff and
+    // the near-tier polygon budget are each one obvious place to retune.
+    const TREE_LOD = {
+      nearMaxDistM: 25,      // ground distance from a structure that still counts as "near"
+      nearTierMaxCount: 40,  // full-geometry GLB budget — the tier a naive impostor swap would blow first
+    };
+    const buildingCentroidsLatLon = (report?.buildings?.available ? (report.buildings.buildings || []) : [])
+      .map((b) => {
+        const ring = b.geometry?.coordinates?.[0] || b.footprint?.coordinates?.[0];
+        if (!Array.isArray(ring) || !ring.length) return null;
+        const lon = ring.reduce((s, p) => s + p[0], 0) / ring.length;
+        const lat = ring.reduce((s, p) => s + p[1], 0) / ring.length;
+        return { lat, lon };
+      })
+      .filter(Boolean);
+    const metersBetweenLatLon = (lat1, lon1, lat2, lon2) => {
+      const kmPerDegLat = 111.32;
+      const kmPerDegLng = 111.32 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
+      const dLat = (lat2 - lat1) * kmPerDegLat;
+      const dLon = (lon2 - lon1) * kmPerDegLng;
+      return Math.sqrt(dLat * dLat + dLon * dLon) * 1000;
+    };
+    // tree_instances store {x: lat, y: lon} — see buildSparseTrees below.
+    const isNearBuilding = (t) => buildingCentroidsLatLon.some(
+      (b) => metersBetweenLatLon(t.x, t.y, b.lat, b.lon) <= TREE_LOD.nearMaxDistM
+    );
 
     // --- Roads layer ---
     const groupRoads = new THREE.Group(); groupRoads.name = 'roads';
@@ -3444,12 +3489,39 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         }
         if (!deepInterior) sparse.push(t);
       }
-      sparse.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
-      renderPhotorealTreeBillboards(groupTrees, sparse.slice(0, 120), {
+      // Near-tier trees (close to a structure) get full GLB geometry via
+      // buildNearTrees() instead — excluded here so they're never rendered
+      // twice. Computed from the same isNearBuilding() predicate buildNearTrees
+      // uses, so the two tiers stay mutually exclusive regardless of which one
+      // finishes loading its (async) assets first.
+      const mid = sparse.filter((t) => !isNearBuilding(t));
+      mid.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      renderPhotorealTreeBillboards(groupTrees, mid.slice(0, 120), {
         latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
       });
     };
     buildSparseTrees();
+
+    // --- Near tier: full 3D geometry for trees close to a structure ---
+    // (billboard-impostor-trees-instructions.md, Step 3.1). No-ops until
+    // pbr.treeTemplates is populated by loadTreeImpostorAssets(); called again
+    // once that resolves (see the loadPhotorealPbr().then() below).
+    const buildNearTrees = () => {
+      for (let i = groupNearTrees.children.length - 1; i >= 0; i--) {
+        const c = groupNearTrees.children[i];
+        groupNearTrees.remove(c);
+        c.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+      }
+      if (!pbr.treeTemplates || !buildingCentroidsLatLon.length) return;
+      const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
+      if (!instances.length) return;
+      const near = instances.filter(isNearBuilding);
+      near.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      renderNearTierTreeGeometry(groupNearTrees, near.slice(0, TREE_LOD.nearTierMaxCount), pbr.treeTemplates, {
+        latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
+      });
+    };
+    buildNearTrees();
 
     // --- Roads layer ---
     let roadsGeoJSON = null;
@@ -3531,9 +3603,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     buildBuildings();
 
-    loadPhotorealPbr(pbr).then(() => {
+    loadPhotorealPbr(pbr).then(() => loadTreeImpostorAssets(pbr)).then(() => {
       buildForestTexture();
       buildSparseTrees();
+      buildNearTrees();
       buildBuildings();
     });
 
@@ -3805,6 +3878,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildZoneOverlays();
         buildForestTexture();
         buildSparseTrees();
+        buildNearTrees();
         buildRoads();
         buildBuildings();
         buildPlantingZones();
@@ -3828,6 +3902,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           groupForest.visible = !!cb.checked;
         } else if (layer === 'trees') {
           groupTrees.visible = !!cb.checked;
+          groupNearTrees.visible = !!cb.checked;
         } else if (layer === 'roads') {
           groupRoads.visible = !!cb.checked;
         } else if (layer === 'buildings') {
@@ -4234,8 +4309,12 @@ function buildForestCanopyTexture() {
 }
 
 /**
- * Canopy rendering: draped photoreal PBR texture (Poly Haven aerial_grass_rock)
- * with the procedural blotch texture as an offline fallback.
+ * Canopy rendering (dense zones): draped photoreal PBR texture (Poly Haven
+ * aerial_grass_rock) with the procedural blotch texture as an offline
+ * fallback. billboard-impostor-trees-instructions.md proposed a third "far"
+ * tier here — a tiled top-down bake of the same GLB tree models — but it
+ * didn't hold up visually and was dropped per feedback; this tier is
+ * unchanged from before that feature.
  */
 function renderDrapedForestTexture(group, cells, meshW, meshD, cols, rows, pbr = {}) {
   const canopyTex = pbr.canopyAlbedo || buildForestCanopyTexture();
@@ -4356,6 +4435,210 @@ function crossedBillboardGeometry() {
   return geo;
 }
 
+/**
+ * Same cross-billboard shape as crossedBillboardGeometry(), but with each of
+ * the two perpendicular planes mapped to its own half of a baked impostor
+ * atlas (front render on the left half, side render on the right half) —
+ * see bakeTreeImpostorAtlas(). Used once a real baked atlas is available;
+ * crossedBillboardGeometry() (a single full-UV quad pair, same texture on
+ * both planes) remains the fallback when GLB baking isn't available.
+ */
+function crossedBillboardGeometryAtlas() {
+  const geo = new THREE.BufferGeometry();
+  const w = 0.55, h = 1;
+  const positions = new Float32Array([
+    -w, 0, 0, w, 0, 0, w, h, 0, -w, 0, 0, w, h, 0, -w, h, 0,
+    0, 0, -w, 0, 0, w, 0, h, w, 0, 0, -w, 0, h, w, 0, h, -w,
+  ]);
+  const uvs = new Float32Array([
+    0, 0, 0.5, 0, 0.5, 1, 0, 0, 0.5, 1, 0, 1,
+    0.5, 0, 1, 0, 1, 1, 0.5, 0, 1, 1, 0.5, 1,
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/**
+ * Real 3D tree models this project already ships (CC0 nature-kit pack) —
+ * used as near-tier full geometry for all three species, and as the source
+ * model baked into deciduous's mid-tier billboard-impostor atlas (conifer's
+ * atlas is instead a real photoreal bake — see loadTreeImpostorAssets()).
+ * Two deciduous variants (generic + oak) give the near tier some visual
+ * variety instead of one silhouette repeated everywhere (Step 1 of
+ * billboard-impostor-trees-instructions.md — this is a 2-model start, not
+ * the full 6-10 species library the doc describes; conifer/deciduous is all
+ * lib/tree-scale.js's resolveTreeAsset() currently distinguishes).
+ */
+const TREE_GLB_ASSETS = {
+  conifer: '/assets/nature-kit/tree_pineTallA.glb',
+  deciduous: '/assets/nature-kit/tree_default.glb',
+  deciduousB: '/assets/nature-kit/tree_oak.glb',
+};
+
+const _glbTemplateCache = new Map();
+/** Load (and cache) a GLB's scene graph as a reusable clone template. */
+function loadTreeGlbTemplate(url) {
+  if (_glbTemplateCache.has(url)) return _glbTemplateCache.get(url);
+  const p = new Promise((resolve) => {
+    if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') return resolve(null);
+    new THREE.GLTFLoader().load(url, (gltf) => resolve(gltf.scene), undefined, () => resolve(null));
+  });
+  _glbTemplateCache.set(url, p);
+  return p;
+}
+
+// A dedicated, transparent-background offscreen renderer for baking impostor
+// atlases and the cluster texture — separate WebGL context from the main
+// terrain viewer's renderer so baking never disturbs the live render loop.
+let _impostorRenderer = null;
+function getImpostorRenderer() {
+  if (_impostorRenderer || typeof THREE === 'undefined') return _impostorRenderer;
+  try {
+    _impostorRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true, preserveDrawingBuffer: true });
+  } catch { /* WebGL unavailable — callers fall back to procedural textures */ }
+  return _impostorRenderer;
+}
+
+const _impostorAtlasCache = new Map();
+/**
+ * Bake a GLB model into a cross-billboard impostor atlas (Step 2 of
+ * billboard-impostor-trees-instructions.md): render it from two camera
+ * angles 90° apart (front, side) with a transparent background, and pack
+ * both into one texture (front on the left half, side on the right half —
+ * matches crossedBillboardGeometryAtlas()'s UVs). Baked once per model URL
+ * and cached at module scope, so every parcel/report in the session reuses
+ * the same atlas rather than re-baking it.
+ */
+function bakeTreeImpostorAtlas(url, viewSize = 512) {
+  if (_impostorAtlasCache.has(url)) return _impostorAtlasCache.get(url);
+  const p = loadTreeGlbTemplate(url).then((template) => {
+    const renderer = getImpostorRenderer();
+    if (!template || !renderer) return null;
+    renderer.setSize(viewSize, viewSize, false);
+    // No sRGB/tonemap here: this project's other PBR textures (walls, roofs,
+    // canopy) are all baked and consumed "gamma-naive" — the main viewer's
+    // renderer sets no outputEncoding — so this bake matches that convention
+    // rather than introducing a mismatched color-managed texture. The
+    // original ambient(0.65)+single-key(1.1) lighting read as an almost-black
+    // silhouette; these are just brighter plain lights, no encoding change.
+
+    const box = new THREE.Box3().setFromObject(template);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    const radius = Math.max(size.x, size.y, size.z) * 0.55 || 1;
+
+    const bakeScene = new THREE.Scene();
+    const model = template.clone(true);
+    model.position.sub(center);
+    bakeScene.add(model);
+    bakeScene.add(new THREE.HemisphereLight(0xdcefff, 0x2c3a24, 0.9));
+    const key = new THREE.DirectionalLight(0xfff4e0, 1.6);
+    key.position.set(1, 1.4, 1);
+    bakeScene.add(key);
+    const fill = new THREE.DirectionalLight(0xcfe8ff, 0.5);
+    fill.position.set(-1, 0.6, -0.6);
+    bakeScene.add(fill);
+
+    const cam = new THREE.OrthographicCamera(-radius, radius, radius, -radius, -radius * 4, radius * 4);
+    const atlas = document.createElement('canvas');
+    atlas.width = viewSize * 2;
+    atlas.height = viewSize;
+    const actx = atlas.getContext('2d');
+
+    const renderAngle = (angleRad, destX) => {
+      cam.position.set(Math.sin(angleRad) * radius * 3, 0, Math.cos(angleRad) * radius * 3);
+      cam.lookAt(0, 0, 0);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear(true, true, true);
+      renderer.render(bakeScene, cam);
+      actx.drawImage(renderer.domElement, destX, 0, viewSize, viewSize);
+    };
+    renderAngle(0, 0);                    // front
+    renderAngle(Math.PI / 2, viewSize);   // side — 90° apart, per Step 2
+
+    model.traverse((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
+
+    const tex = new THREE.CanvasTexture(atlas);
+    tex.needsUpdate = true;
+    return tex;
+  }).catch(() => null);
+  _impostorAtlasCache.set(url, p);
+  return p;
+}
+
+/**
+ * Load the near/mid tier's shared tree assets. Populates pbr.treeTemplates
+ * (cloned-geometry templates for the near tier) and pbr.treeImpostorAtlas
+ * (mid-tier cross-billboard textures) in place.
+ *
+ * Conifer's mid-tier atlas is NOT baked at runtime: it's loaded from
+ * /assets/pbr/trees/conifer_impostor_atlas.png, a real photoreal atlas baked
+ * offline (once, in development) from Poly Haven's CC0 "fir_sapling" scan —
+ * see billboard-impostor-trees-instructions.md and public/assets/pbr/LICENSE.txt.
+ * Poly Haven's tree scans ship as 20-200MB+ meshes, unusable for a live
+ * per-visitor bake or as near-tier geometry, but baking one down to a small
+ * static image offline sidesteps that entirely: visitors only ever download
+ * the ~800KB result. No equivalent small deciduous scan was found, so
+ * deciduous keeps baking its atlas at runtime from the CC0 nature-kit GLB,
+ * same as before.
+ *
+ * A third "far" tier (a tiled top-down cluster bake for dense canopy zones)
+ * was tried here and dropped per feedback — see renderDrapedForestTexture().
+ */
+async function loadTreeImpostorAssets(pbr) {
+  if (typeof THREE === 'undefined') return;
+  pbr.treeImpostorAtlas = pbr.treeImpostorAtlas || {};
+  pbr.treeImpostorAtlas.conifer = await loadTexture('/assets/pbr/trees/conifer_impostor_atlas.png', 1);
+
+  if (typeof THREE.GLTFLoader !== 'function') return;
+  const [conifer, deciduous, deciduousB] = await Promise.all([
+    loadTreeGlbTemplate(TREE_GLB_ASSETS.conifer),
+    loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduous),
+    loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduousB),
+  ]);
+  pbr.treeTemplates = { conifer, deciduous, deciduousB };
+  pbr.treeImpostorAtlas.deciduous = await bakeTreeImpostorAtlas(TREE_GLB_ASSETS.deciduous);
+}
+
+/**
+ * Near tier (Step 3.1): place cloned, actual GLB geometry — no billboards —
+ * for trees close to a structure. Each clone is uniformly scaled so its own
+ * bounding-box height matches the tree's real measured height in scene units
+ * (same cappedTreeHeightU()/treeInstanceDimensions() math the billboard tiers
+ * use), so near-tier trees don't visually "pop" in size against the mid-tier
+ * billboards right next to them.
+ */
+function renderNearTierTreeGeometry(group, trees, templates, opts) {
+  const { latLonToLocal, metersPerSceneUnit, meshSize, prior } = opts;
+  trees.forEach((t, i) => {
+    const kind = resolveTreeAsset(t, { prior });
+    const variants = kind === 'conifer'
+      ? [templates.conifer]
+      : [templates.deciduous, templates.deciduousB];
+    const pool = variants.filter(Boolean);
+    if (!pool.length) return;
+    const template = pool[Math.floor(deterministicJitter(i * 23 + 5) * pool.length) % pool.length];
+
+    const box = new THREE.Box3().setFromObject(template);
+    const srcH = Math.max(box.max.y - box.min.y, 0.001);
+    const dims = treeInstanceDimensions(t, metersPerSceneUnit);
+    const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
+    const scale = hU / srcH;
+
+    const model = template.clone(true);
+    model.scale.setScalar(scale);
+    const p = latLonToLocal(t.x, t.y);
+    model.position.set(p.x, p.y - box.min.y * scale, p.z);
+    model.rotation.y = deterministicJitter(i * 31 + 7) * Math.PI * 2;
+    model.userData.kind = 'near-tree';
+    group.add(model);
+  });
+}
+
 function bakeTreeCardTexture(map, kind) {
   const size = 256;
   const canvas = document.createElement('canvas');
@@ -4404,6 +4687,18 @@ function treeFoliageMaterial(map, kind, fallbackColor) {
   });
 }
 
+/**
+ * Mid tier (Step 3.2): cross-billboard impostors, individually scattered
+ * (one InstancedMesh per species, one matrix per tree — never one texture
+ * tiled over the whole zone) so it still reads as discrete trees.
+ *
+ * Texture source priority: a real baked GLB impostor atlas
+ * (pbr.treeImpostorAtlas, from bakeTreeImpostorAtlas()) when available,
+ * using crossedBillboardGeometryAtlas() so each of the two perpendicular
+ * planes shows its own baked angle; otherwise the original single
+ * photo-masked card (crossedBillboardGeometry(), same texture both planes)
+ * as a fallback for when GLB baking isn't available.
+ */
 function renderPhotorealTreeBillboards(group, trees, opts) {
   if (!trees.length) return;
   const { latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior } = opts;
@@ -4418,11 +4713,14 @@ function renderPhotorealTreeBillboards(group, trees, opts) {
   const s = new THREE.Vector3();
   for (const [asset, list] of Object.entries(buckets)) {
     if (!list.length) continue;
-    const inst = new THREE.InstancedMesh(
-      crossedBillboardGeometry(),
-      treeFoliageMaterial(pbr?.tree?.[asset], asset, colors[asset]),
-      list.length
-    );
+    const atlas = pbr?.treeImpostorAtlas?.[asset];
+    const geo = atlas ? crossedBillboardGeometryAtlas() : crossedBillboardGeometry();
+    const mat = atlas
+      ? new THREE.MeshLambertMaterial({
+          map: atlas, color: 0xffffff, transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, depthWrite: true,
+        })
+      : treeFoliageMaterial(pbr?.tree?.[asset], asset, colors[asset]);
+    const inst = new THREE.InstancedMesh(geo, mat, list.length);
     list.forEach((t, i) => {
       const p = latLonToLocal(t.x, t.y);
       const dims = treeInstanceDimensions(t, metersPerSceneUnit);
@@ -10162,7 +10460,7 @@ function pdfOpts(filename, opts = {}) {
     filename,
     image: { type: 'jpeg', quality: 0.92 },
     html2canvas: {
-      scale: 1.5,
+      scale: 2.0,
       useCORS: true,
       logging: false,
       letterRendering: true,

@@ -1,0 +1,20 @@
+Poly Haven CC0 models (https://polyhaven.com)
+License: Creative Commons Zero (CC0) — public domain, no attribution required.
+Credit is appreciated: polyhaven.com
+
+Used in this folder (see assets/vegetation/manifest.json for full provenance,
+asset-source/polyhaven/ for the original downloads):
+  polyhaven/shrub_03/          shrub_03 (Rico Cilliers)
+  polyhaven/fern_02/           fern_02 (Rob Tuytel — scanning; Rico Cilliers — modeling)
+  polyhaven/flower_empodium/   flower_empodium (Jenelle van Heerden — photography; Rico Cilliers — modeling)
+
+manifest.json in this folder is a served copy of the canonical
+assets/vegetation/manifest.json (repo root, not web-servable) — the
+ingestion script (scripts/ingest-vegetation/ingest.mjs) writes only the
+canonical copy; re-copy it here after running it.
+
+Each browserModel .glb was packed offline from the original 1k-texture glTF
+download (loose .gltf + .bin + jpg textures) into one self-contained GLB —
+see asset-source/polyhaven/<id>/pack-glb.js's approach documented in each
+manifest record's provenance.optimizationProcess. No mesh decimation was
+performed; there is only a "high" LOD for each of these three assets.
