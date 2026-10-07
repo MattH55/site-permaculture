@@ -2329,6 +2329,48 @@ function semanticLayerSwatches(type) {
  * 3D terrain panel — prefers NRCan HRDEM DTM sample grid, falls back to design DEM.
  * Overlays: contour lines, catchment, pond candidates, swale hillsides.
  */
+/**
+ * Landowner decision controls under the 3D viewer: "where does this plant
+ * grow best?" (recolours planting zones by plant_zone_matrix fit) and the
+ * pond precipitation-scenario player (pond_scenarios — water level month by
+ * month through normal / wet / dry / drought / multi-year-drought years).
+ */
+function landownerControls(id, report) {
+  const plants = report?.plant_zone_matrix?.available && report?.planting_zones?.length
+    ? report.plant_zone_matrix.plants || []
+    : [];
+  const pond = report?.pond_scenarios?.available && report.pond_scenarios.pond_point ? report.pond_scenarios : null;
+  if (!plants.length && !pond) return '';
+  const plantPicker = plants.length ? `
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+          <span style="font-weight:600">🌱 Where does it grow best?</span>
+          <select data-terrain-plant="${esc(id)}" class="fine" style="font-size:0.78rem;max-width:16rem">
+            <option value="">Overall zone suitability</option>
+            ${plants.map((p, i) => `<option value="${i}">${esc(p.common_name)} — ${esc(p.suitable_zone_count)} good zone${p.suitable_zone_count === 1 ? '' : 's'}</option>`).join('')}
+          </select>
+          <span data-terrain-plant-note="${esc(id)}" class="fine" style="opacity:0.85"></span>
+        </label>` : '';
+  const rec = pond?.recommendation?.tier_id;
+  const pondPlayer = pond ? `
+        <span style="display:flex;align-items:center;gap:0.35rem;flex-wrap:wrap">
+          <span class="fine" style="font-weight:600">💧 Pond water</span>
+          <select data-terrain-pond-tier="${esc(id)}" class="fine" style="font-size:0.78rem">
+            ${pond.tiers.map((t) => `<option value="${esc(t.tier_id)}"${t.tier_id === rec ? ' selected' : ''}>${esc(t.label)} · ${esc(t.capacity_m3)} m³${t.tier_id === rec ? ' (recommended)' : ''}</option>`).join('')}
+          </select>
+          <select data-terrain-pond-scenario="${esc(id)}" class="fine" style="font-size:0.78rem">
+            ${pond.scenarios.map((sc) => `<option value="${esc(sc.id)}"${sc.id === 'multi_year_drought' ? ' selected' : ''}>${esc(sc.label)}</option>`).join('')}
+          </select>
+          <button type="button" class="btn-quiet" data-terrain-pond-play="${esc(id)}" style="font-size:0.8rem" aria-label="Play pond level through the scenario">▶ Play</button>
+          <input type="range" min="0" max="35" step="1" value="0" data-terrain-pond-month="${esc(id)}" aria-label="Scenario month" style="width:130px;vertical-align:middle" />
+          <span data-terrain-pond-readout="${esc(id)}" class="fine" style="font-variant-numeric:tabular-nums;min-width:15rem"></span>
+        </span>` : '';
+  return `
+      <div class="terrain-landowner-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 1.1rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
+        ${plantPicker}
+        ${pondPlayer}
+      </div>`;
+}
+
 function terrain3dBlock(id, report) {
   const ht = report?.hrdem_terrain;
   const hrdem = report?.hrdem || report?.elevation_overlays?.hrdem;
@@ -2485,6 +2527,7 @@ function terrain3dBlock(id, report) {
           <span class="fine" style="opacity:0.75">Click the terrain to test a spot; optimal zones are pre-highlighted</span>
         </span>
       </div>
+      ${landownerControls(id, report)}
       <div class="terrain-semantic-controls" style="display:flex;flex-wrap:wrap;gap:0.45rem 0.9rem;align-items:center;margin-top:0.65rem;padding-top:0.55rem;border-top:1px solid var(--line)">
         <span class="mono" style="font-size:0.72rem">Mapped features</span>${semanticControls}
       </div>
@@ -3611,13 +3654,20 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     });
 
     const plantingBandHex = { excellent: 0x2f6e40, good: 0x5a8f3a, fair: 0xc4a035, poor: 0xa33b2b };
+    // "Where does it grow best?" — when a plant is picked, zones are coloured
+    // by that plant's fit (plant_zone_matrix.zone_scores, same index order as
+    // report.planting_zones) instead of overall zone suitability.
+    const plantFit = { plant: null };
+    const fitBand = (score) => (score >= 80 ? 'excellent' : score >= 65 ? 'good' : score >= 45 ? 'fair' : 'poor');
     const buildPlantingZones = () => {
       while (groupPlantingZones.children.length) {
         const c = groupPlantingZones.children[0];
         groupPlantingZones.remove(c);
         c.geometry?.dispose(); c.material?.dispose();
       }
-      for (const z of report?.planting_zones || []) {
+      const zoneList = report?.planting_zones || [];
+      for (let zi = 0; zi < zoneList.length; zi++) {
+        const z = zoneList[zi];
         const ring = z.geometry?.coordinates?.[0];
         if (!ring?.length) continue;
         const closed = ring[0][0] === ring[ring.length - 1][0] && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
@@ -3631,15 +3681,148 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
         geo.computeVertexNormals();
+        const plantScore = plantFit.plant?.zone_scores?.[zi];
+        const band = Number.isFinite(plantScore) ? fitBand(plantScore) : z.suitability_band;
         const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
-          color: plantingBandHex[z.suitability_band] || 0x777777,
-          transparent: true, opacity: 0.45, side: THREE.DoubleSide, depthWrite: false,
+          color: plantingBandHex[band] || 0x777777,
+          transparent: true, opacity: plantFit.plant ? 0.62 : 0.45, side: THREE.DoubleSide, depthWrite: false,
         }));
         mesh.userData.plantingZone = z;
         groupPlantingZones.add(mesh);
       }
     };
     buildPlantingZones();
+
+    const matrixPlants = report?.plant_zone_matrix?.plants || [];
+    const plantNote = document.querySelector(`[data-terrain-plant-note="${ctrlId}"]`);
+    document.querySelectorAll(`[data-terrain-plant="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => {
+        const p = sel.value === '' ? null : matrixPlants[Number(sel.value)] || null;
+        plantFit.plant = p;
+        groupPlantingZones.visible = true;
+        document.querySelectorAll(`[data-terrain-toggle="${ctrlId}"][data-layer="planting-zones"]`).forEach((cb) => { cb.checked = true; });
+        buildPlantingZones();
+        if (plantNote) {
+          plantNote.textContent = p
+            ? `Needs ${p.sun_need}. Good in ${p.suitable_zone_count} of ${(report?.planting_zones || []).length} zones (${Number(p.suitable_area_m2).toLocaleString()} m²)${p.best_zone_limits?.length ? ` · best zone caveat: ${p.best_zone_limits[0]}` : ''}`
+            : '';
+        }
+      });
+    });
+
+    // --- Pond scenario player ---------------------------------------------
+    // A pond basin at the recommended site; its water surface shrinks and
+    // darkens as storage falls month by month through the chosen
+    // precipitation scenario (report.pond_scenarios). Drawn at ground level
+    // rather than excavated into the terrain mesh (which would hide it); a
+    // staff gauge beside it shows % full.
+    const pondData = report?.pond_scenarios?.available && report.pond_scenarios.pond_point ? report.pond_scenarios : null;
+    const groupPondWater = new THREE.Group(); groupPondWater.name = 'pond-water';
+    scene.add(groupPondWater);
+    const pondState = {
+      tier: pondData?.recommendation?.tier_id || pondData?.tiers?.[0]?.tier_id || null,
+      scenario: 'multi_year_drought',
+      month: 0,
+    };
+    const pondReadout = document.querySelector(`[data-terrain-pond-readout="${ctrlId}"]`);
+    const pondMonthInput = document.querySelector(`[data-terrain-pond-month="${ctrlId}"]`);
+    const buildPondWater = () => {
+      while (groupPondWater.children.length) {
+        const c = groupPondWater.children[0];
+        groupPondWater.remove(c);
+        c.geometry?.dispose(); c.material?.dispose();
+      }
+      if (!pondData) return;
+      const tier = pondData.tiers.find((t) => t.tier_id === pondState.tier) || pondData.tiers[0];
+      const sc = tier?.scenarios.find((x) => x.scenario_id === pondState.scenario) || tier?.scenarios[0];
+      const row = sc?.monthly?.[pondState.month];
+      if (!tier || !row) return;
+      const frac = Math.max(0, Math.min(1, row.pct_full / 100));
+      const p = latLonToLocal(pondData.pond_point.lat, pondData.pond_point.lon);
+      // True footprint size; sloped sides mean the bottom is ~55% of the top
+      // radius, so a draining pond's water surface genuinely shrinks.
+      const minVisualU = Math.max(meshW, meshD) * 0.012;
+      const rTopU = Math.max(Math.sqrt(tier.surface_area_m2 / Math.PI) / metersPerSceneUnit, minVisualU);
+      const rBotU = rTopU * 0.55;
+      const y = p.y + 0.03;
+      const flat = (geo) => { geo.rotateX(-Math.PI / 2); return geo; };
+      // Drawn as an annotation over the canopy drape / zone overlays (which
+      // sit above the ground surface and otherwise bury a pond sited in or
+      // near trees): no depth test, fixed draw order bed → water → rim → gauge.
+      // transparent:true puts them in the transparent pass, which three.js
+      // sorts by renderOrder — so they draw AFTER the semi-transparent
+      // overlays instead of being painted over by them.
+      const onTop = (mesh, order) => {
+        mesh.material.transparent = true;
+        mesh.material.depthTest = false;
+        mesh.material.depthWrite = false;
+        mesh.renderOrder = order;
+        return mesh;
+      };
+      const rim = new THREE.Mesh(flat(new THREE.RingGeometry(rTopU, rTopU * 1.12, 48)),
+        new THREE.MeshBasicMaterial({ color: 0x7a5c3e, side: THREE.DoubleSide }));
+      rim.position.set(p.x, y, p.z);
+      onTop(rim, 32);
+      const bed = new THREE.Mesh(flat(new THREE.CircleGeometry(rTopU, 48)),
+        new THREE.MeshBasicMaterial({ color: 0x5b4632, side: THREE.DoubleSide }));
+      bed.position.set(p.x, y - 0.004, p.z);
+      onTop(bed, 30);
+      groupPondWater.add(rim, bed);
+      if (frac > 0.005) {
+        // Deep blue when full → murky green-brown as it drains.
+        const water = new THREE.Color().setHSL(0.55 - (1 - frac) * 0.33, 0.55, 0.22 + frac * 0.16);
+        const surf = new THREE.Mesh(flat(new THREE.CircleGeometry(rBotU + (rTopU - rBotU) * frac, 48)),
+          new THREE.MeshBasicMaterial({ color: water, transparent: true, opacity: 0.88, side: THREE.DoubleSide }));
+        surf.position.set(p.x, y + 0.004, p.z);
+        onTop(surf, 31);
+        groupPondWater.add(surf);
+      }
+      // Staff gauge: full-height post with a blue fill proportional to storage.
+      const gaugeH = rTopU * 1.4;
+      const gaugeX = p.x + rTopU * 1.3;
+      const post = new THREE.Mesh(new THREE.BoxGeometry(rTopU * 0.08, gaugeH, rTopU * 0.08),
+        new THREE.MeshBasicMaterial({ color: 0xe8e0d0, transparent: true, opacity: 0.55 }));
+      post.position.set(gaugeX, y + gaugeH / 2, p.z);
+      onTop(post, 33);
+      groupPondWater.add(post);
+      if (frac > 0) {
+        const fill = new THREE.Mesh(new THREE.BoxGeometry(rTopU * 0.1, gaugeH * frac, rTopU * 0.1),
+          new THREE.MeshBasicMaterial({ color: frac < 0.25 ? 0xc4553a : 0x2a8fd0 }));
+        fill.position.set(gaugeX, y + (gaugeH * frac) / 2, p.z);
+        onTop(fill, 34);
+        groupPondWater.add(fill);
+      }
+      if (pondReadout) {
+        const extra = [];
+        if (row.spill_m3 > 0) extra.push(`spilling ${Math.round(row.spill_m3)} m³`);
+        if (row.shortfall_m3 > 0) extra.push(`short ${Math.round(row.shortfall_m3)} m³`);
+        pondReadout.textContent = `Year ${row.year} ${row.month}: ${row.pct_full}% full (${Math.round(row.storage_m3)} of ${tier.capacity_m3} m³)` +
+          (extra.length ? ` · ${extra.join(' · ')}` : '') +
+          ` · lowest ${sc.min_storage_pct}% (${sc.min_storage_when})`;
+      }
+    };
+    buildPondWater();
+    document.querySelectorAll(`[data-terrain-pond-tier="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => { pondState.tier = sel.value; buildPondWater(); });
+    });
+    document.querySelectorAll(`[data-terrain-pond-scenario="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => { pondState.scenario = sel.value; buildPondWater(); });
+    });
+    pondMonthInput?.addEventListener('input', () => { pondState.month = Number(pondMonthInput.value) || 0; buildPondWater(); });
+    let pondTimer = null;
+    document.querySelectorAll(`[data-terrain-pond-play="${ctrlId}"]`).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (pondTimer) { clearInterval(pondTimer); pondTimer = null; btn.textContent = '▶ Play'; return; }
+        if (pondState.month >= 35) pondState.month = 0;
+        btn.textContent = '⏸ Pause';
+        pondTimer = setInterval(() => {
+          pondState.month += 1;
+          if (pondMonthInput) pondMonthInput.value = String(pondState.month);
+          buildPondWater();
+          if (pondState.month >= 35) { clearInterval(pondTimer); pondTimer = null; btn.textContent = '▶ Play'; }
+        }, 420);
+      });
+    });
 
     const solarIncidenceColor = (t, out) => {
       const u = Math.max(0, Math.min(1, t));
@@ -3851,6 +4034,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
             else obj.material.dispose();
           }
         });
+        if (pondTimer) clearInterval(pondTimer);
         renderer.dispose();
         el._eeTerrain = null;
       },
@@ -3882,6 +4066,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildRoads();
         buildBuildings();
         buildPlantingZones();
+        buildPondWater();
         buildPlanningOverlay();
       });
     }
@@ -5947,7 +6132,8 @@ function plantingZonesSection(zones) {
             · water ${esc(z.site_condition_profile?.distance_to_water_m ?? '—')} m
             · confidence ${esc(z.confidence || '—')}
           </p>
-          ${z.recommended_plantings?.length ? `<p class="fine" style="margin:0.2rem 0 0"><strong>Top fits:</strong> ${z.recommended_plantings.map((p) => esc(p.species_or_guild)).join(' · ')}</p>` : ''}
+          ${z.recommended_plantings?.length ? `<p class="fine" style="margin:0.2rem 0 0"><strong>Best fits here:</strong> ${z.recommended_plantings.map((p) => `${esc(p.species_or_guild)}${Number.isFinite(p.zone_fit_score) ? ` <span class="mono">${esc(p.zone_fit_score)}</span>` : ''}`).join(' · ')}</p>
+          ${z.recommended_plantings[0]?.limits?.length ? `<p class="fine" style="margin:0.15rem 0 0;opacity:0.8">Watch: ${esc(z.recommended_plantings[0].limits[0])}</p>` : ''}` : ''}
         </article>
       `).join('')}
     </section>`;
@@ -5955,6 +6141,113 @@ function plantingZonesSection(zones) {
 
 function plantingBandColor(band) {
   return { excellent: '#2f6e40', good: '#5a8f3a', fair: '#c4a035', poor: '#a33b2b' }[band] || '#777';
+}
+
+/**
+ * "Where does each plant grow best?" — per-plant view of plant-zone-match.js:
+ * each recommended plant's best zone, how many zones / how much area suit it,
+ * and the main thing holding back its best zone.
+ */
+function plantZoneMatrixSection(matrix, zoneCount) {
+  if (!matrix?.available || !matrix.plants?.length) return '';
+  const rows = matrix.plants.slice(0, 18).map((p) => `
+        <tr>
+          <td><strong>${esc(p.common_name)}</strong>${p.guild_layer ? `<br><span class="fine">${esc(p.guild_layer)}</span>` : ''}</td>
+          <td class="fine">${esc(p.sun_need)}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${esc(p.suitable_zone_count)} / ${esc(zoneCount)}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${Number(p.suitable_area_m2 || 0).toLocaleString()} m²</td>
+          <td>${p.best_zone_index != null ? `Zone ${p.best_zone_index + 1} <span class="mono" style="color:${plantingBandColor(p.best_zone_band)}">${esc(p.best_zone_score)}</span>` : '—'}</td>
+          <td class="fine">${p.best_zone_limits?.length
+            ? esc(p.best_zone_limits[0])
+            : p.best_zone_unknowns?.length
+              ? `none found — not checked: ${esc(p.best_zone_unknowns.join(', '))}`
+              : 'no limiting factor found'}</td>
+        </tr>`).join('');
+  return `
+    <section class="report-block">
+      <h2>Where each plant grows best</h2>
+      <p class="fine" style="margin-top:-0.35rem">
+        Every recommended plant scored against every planting zone's own sun (terrain, trees and
+        buildings, with deciduous trees leaf-off in spring/fall), frost-pocket risk, drainage, water,
+        pH, and slope. "Good" = fit ≥ 65/100. In the 3D twin, pick a plant under
+        <em>Where does it grow best?</em> to colour the zones by its fit.
+      </p>
+      <div class="table-wrap" style="overflow-x:auto">
+        <table class="econ-table">
+          <thead><tr><th>Plant</th><th>Needs</th><th>Good zones</th><th>Suitable area</th><th>Best zone (fit)</th><th>Best zone's main limit</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </section>`;
+}
+
+/**
+ * Pond precipitation scenarios (pond-scenarios.js): for the recommended pond
+ * size, how low the water gets and how much it can supply through normal,
+ * wet, dry, severe-drought and 3-year-drought sequences — plus a size
+ * comparison on the multi-year drought.
+ */
+function pondScenariosSection(ps) {
+  if (!ps?.available || !ps.tiers?.length) return '';
+  const tier = ps.tiers.find((t) => t.tier_id === ps.recommendation?.tier_id) || ps.tiers[0];
+  const level = (s) => `${esc(s.min_storage_pct)}%<br><span class="fine">${esc(s.min_storage_when || '')}</span>`;
+  const scenarioRows = tier.scenarios.map((s) => `
+        <tr>
+          <td><strong>${esc(s.label)}</strong></td>
+          <td style="text-align:right">${level(s)}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${s.months_empty ? `<span style="color:#a33b2b">${esc(s.months_empty)}</span>` : '0'}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${esc(s.sustainable_growing_season_draw_m3_per_month)}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${Number(s.irrigable_garden_m2 || 0).toLocaleString()}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${esc(s.supportable_cattle_head)}</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${Number(s.total_spill_m3 || 0).toLocaleString()}</td>
+        </tr>`).join('');
+  const sizeRows = ps.tiers.map((t) => {
+    const d = t.scenarios.find((s) => s.scenario_id === 'multi_year_drought');
+    return `
+        <tr>
+          <td>${esc(t.label)} · ${esc(t.capacity_m3)} m³ · ${esc(t.target_depth_m)} m deep</td>
+          <td>${t.drought_resilient ? '<span style="color:#2f6e40">Holds water</span>' : '<span style="color:#a33b2b">Runs dry</span>'}</td>
+          <td style="text-align:right">${esc(d?.min_storage_pct)}%</td>
+          <td style="text-align:right;font-variant-numeric:tabular-nums">${esc(d?.sustainable_growing_season_draw_m3_per_month)} m³/mo</td>
+          <td>${t.if_lined
+            ? `${t.if_lined.months_empty ? '<span style="color:#a33b2b">still runs dry</span>' : '<span style="color:#2f6e40">holds water</span>'} · ${esc(t.if_lined.sustainable_growing_season_draw_m3_per_month)} m³/mo`
+            : '—'}</td>
+        </tr>`;
+  }).join('');
+  return `
+    <section class="report-block">
+      <h2>Pond water through droughts and wet years</h2>
+      <p style="margin-top:-0.2rem"><strong>${esc(ps.recommendation?.reason || '')}</strong></p>
+      <p class="fine">
+        Month-by-month storage at the recommended pond site (catchment ${Number(ps.catchment_area_m2).toLocaleString()} m²,
+        curve number ${esc(ps.effective_curve_number)}, soil group ${esc(ps.hydrologic_soil_group)},
+        seepage ${esc(ps.seepage_mm_day)} mm/day — ${esc(ps.seepage_basis || '')}),
+        with winter snow building up and running off frozen ground in spring — on the prairies that melt,
+        not summer rain, does most of the filling. Each scenario runs three years.
+        Play any scenario in the 3D twin under <em>Pond water</em>.
+      </p>
+      <h3 style="margin-top:0.8rem">${esc(tier.label)} (${esc(tier.capacity_m3)} m³)</h3>
+      <div class="table-wrap" style="overflow-x:auto">
+        <table class="econ-table">
+          <thead><tr>
+            <th>Scenario</th><th>Lowest level</th><th>Months empty</th>
+            <th>Safe summer draw (m³/mo)</th><th>Garden it can irrigate (m²)</th><th>Cattle year-round</th><th>Overflow (m³, 3 yr)</th>
+          </tr></thead>
+          <tbody>${scenarioRows}</tbody>
+        </table>
+      </div>
+      <h3 style="margin-top:0.8rem">Which size survives a 3-year drought?</h3>
+      <div class="table-wrap" style="overflow-x:auto">
+        <table class="econ-table">
+          <thead><tr><th>Size</th><th>3-year drought</th><th>Lowest level</th><th>Safe summer draw</th><th>If lined / clay-packed</th></tr></thead>
+          <tbody>${sizeRows}</tbody>
+        </table>
+      </div>
+      <details style="margin-top:0.6rem">
+        <summary class="fine">Assumptions (${esc(ps.assumptions?.length || 0)}) · confidence ${esc(ps.confidence === 'unavailable' ? 'low (a key input, usually soil, was missing)' : (ps.confidence || '—').replace('_', '-'))}</summary>
+        <ul class="fine">${(ps.assumptions || []).map((a) => `<li>${esc(a)}</li>`).join('')}</ul>
+      </details>
+    </section>`;
 }
 
 function siteModelLayersSection(r) {
@@ -10829,8 +11122,10 @@ function getReportSectionList() {
     { label: 'Biodiversity', skip: !r.biodiversity },
     { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests || r.soil_profile) },
     { label: 'Planting zones', skip: !(r.planting_zones?.length) },
+    { label: 'Where each plant grows best', skip: !r.plant_zone_matrix?.available },
     { label: 'Solar hours heatmap', skip: !r.solar_horizon_shading?.available },
     { label: 'Water collection budget', skip: !r.water_collection },
+    { label: 'Pond water through droughts', skip: !r.pond_scenarios?.available },
     { label: 'Geology & minerals', skip: !r.minerals },
     { label: 'Small water sources', skip: !r.small_water },
     { label: 'Wetlands', skip: !r.wetlands },
@@ -11400,6 +11695,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
   const waterBody = [
     precipitationSection(r.precipitation || r.hydrology || r.climate),
     waterCollectionSection(r.water_collection),
+    pondScenariosSection(r.pond_scenarios),
     wellDepthSection(r.predicted_well_depth || a.well_depth, centre),
     wetlandsSection(r.wetlands || r.fecundity?.wetlands),
     smallWaterSection(r.small_water),
@@ -11428,6 +11724,7 @@ function buildFindingsHtml(r, ctx, opts = {}) {
   const vegBody = [
     treeCoverSection(r.tree_cover),
     plantingZonesSection(r.planting_zones),
+    plantZoneMatrixSection(r.plant_zone_matrix, (r.planting_zones || []).length),
     fecunditySection(r.fecundity),
   ]
     .filter(Boolean)

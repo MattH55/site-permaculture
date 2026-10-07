@@ -42,6 +42,7 @@ import { fetchMinerals } from './minerals.js';
 import { estimateWaterCollection } from './water-collection.js';
 import { modelPondHydrology } from './pond-hydrology.js';
 import { modelPondWaterBalance, rankPondCandidateZones } from './pond-water-balance.js';
+import { modelPondScenarios } from './pond-scenarios.js';
 import { computeSolarHorizonShading } from './solar-horizon-shading.js';
 import { fetchSemanticTerrain } from './semantic-terrain.js';
 import { sampleHrdemTerrain } from './hrdem-terrain.js';
@@ -66,6 +67,7 @@ import {
   viewCorridorCheck,
   computeRoofFaceSolar,
   enrichPlantingZones,
+  buildPlantZoneMatrix,
 } from './report-site-layers.js';
 
 const cache = new Map();
@@ -621,6 +623,38 @@ export async function generateSiteReport(input = {}) {
       : null,
   });
 
+  // Detected structures rendered in the 3D twin (footprint → height →
+  // type) — see building-detection-3d-instructions.md. Reuses the same
+  // structures fetch above and the canopy CHM already sampled for height.
+  // Computed here (before the suitability layers) so buildings can cast
+  // shadows in the solar exposure model below.
+  record.buildings = computeBuildingDetection({
+    structures: record.structures,
+    bbox,
+    canopy,
+    parcel_id: key,
+  });
+
+  // Re-run solar exposure with building shadows now that footprints have
+  // resolved (the first pass above ran before the structures fetch
+  // settled). Solar suitability, planting zones, and plant–zone matching
+  // below all read this, so a barn's winter shadow reaches every one of them.
+  const shadowBuildings = record.buildings?.buildings || [];
+  if (shadowBuildings.length && hrdem_terrain?.available) {
+    record.solar_horizon_shading = safeExtra('solar_horizon', record.solar_horizon_shading, () => computeSolarHorizonShading({
+      elevations: hrdem_terrain.elevations_m || [],
+      rows: hrdem_terrain.rows || 0,
+      cols: hrdem_terrain.cols || 0,
+      bbox,
+      latitude: centre.latitude,
+      longitude: centre.longitude,
+      canopy,
+      buildings: shadowBuildings,
+      dem_confidence: 'high',
+      data_source: hrdem_terrain.source,
+    }));
+  }
+
   // Independent location-suitability scoring layers (pond / solar / wind) —
   // see location-suitability-scoring-instructions.md. Each is scored on its
   // own criteria and deliberately NOT reconciled against the others here;
@@ -684,16 +718,6 @@ export async function generateSiteReport(input = {}) {
     parcel_id: key,
   });
 
-  // Detected structures rendered in the 3D twin (footprint → height →
-  // type) — see building-detection-3d-instructions.md. Reuses the same
-  // structures fetch above and the canopy CHM already sampled for height.
-  record.buildings = computeBuildingDetection({
-    structures: record.structures,
-    bbox,
-    canopy,
-    parcel_id: key,
-  });
-
   // FireSmart Home Ignition Zone assessment per detected building — a
   // composite of layers already built (footprint, canopy, tree detections,
   // slope), no new fetch. See firesmart-zone-assessment-instructions.md.
@@ -728,6 +752,28 @@ export async function generateSiteReport(input = {}) {
       bbox,
     })
   );
+
+  // Multi-year precipitation scenarios (normal / wet / 1-in-10 dry /
+  // 1-in-25 drought / 3-year drought) with spring snowmelt, run at the
+  // top-ranked pond candidate so the "will it hold water in a drought, and
+  // how much can I draw?" answer is about the site the report recommends.
+  // Runs after soil_profile so the pond bed can use subsoil texture.
+  const topPond = record.pond_candidate_zones?.candidate_zones?.find((c) => c.top_pick);
+  record.pond_scenarios = safeExtra('pond_scenarios', { available: false }, () => modelPondScenarios({
+    elevations: layers.elevation?.elevations || [],
+    rows: layers.elevation?.rows || 0,
+    cols: layers.elevation?.cols || 0,
+    bbox,
+    precipitation: climate,
+    temperature: record.temperature,
+    parcel_area_m2: areaHa * 10_000,
+    soil_data,
+    soil_profile: record.soil_profile,
+    canopy,
+    wind_rose: record.wind_rose,
+    solar: record.solar,
+    ...(topPond ? { pond_point: { lat: topPond.lat, lon: topPond.lon }, catchment_area_m2: topPond.catchment_area_m2 || undefined } : {}),
+  }));
   record.canopy_volume = safeExtra('canopy_volume', { available: false }, () => estimateCanopyVolume(canopy, bbox));
   record.cut_fill = safeExtra('cut_fill', { available: false, pads: [] }, () => estimateCutFill({
     elevations: demElev,
@@ -764,6 +810,10 @@ export async function generateSiteReport(input = {}) {
     solar_horizon_shading: record.solar_horizon_shading,
     planting_plan,
   }));
+  // Per-plant view: each recommended plant's best zone and how much of the
+  // plantable area suits it (plant-zone-match.js).
+  record.plant_zone_matrix = safeExtra('plant_zone_matrix', { available: false, plants: [] },
+    () => buildPlantZoneMatrix(record.planting_zones, planting_plan));
   }
 
   // Service packages + action menu for "Build Your Plan" UI — placed after
