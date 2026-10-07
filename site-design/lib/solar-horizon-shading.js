@@ -37,6 +37,9 @@ const HORIZON_SAMPLE_STEP_M = 15;
  * @param {number} opts.latitude Parcel centroid latitude (for solar position)
  * @param {number} opts.longitude Parcel centroid longitude
  * @param {object} [opts.canopy] buildCanopyLayer() result (tree_instances, canopy_cover_pct)
+ * @param {Array<{geometry:object,height_m:number|null}>} [opts.buildings]
+ *   computeBuildingDetection().buildings — footprints + heights cast shadows
+ *   too (a 6 m barn shades a garden bed as surely as a 6 m spruce does).
  * @param {number} opts.year Calendar year for the representative dates
  * @param {Array<{lat:number,lon:number}>} [opts.candidatePoints] Run on-demand for
  *   specific sites instead of the full parcel grid.
@@ -46,8 +49,13 @@ const HORIZON_SAMPLE_STEP_M = 15;
 export function computeSolarHorizonShading(opts = {}) {
   const { elevations, rows, cols, bbox } = opts;
   const coarse = !Array.isArray(elevations) || !rows || !cols || elevations.length < rows * cols || !bbox;
-  const canopySpeciesAware = false; // canopy.js does not currently classify species
-  const canopyAssumption = canopySpeciesAware ? 'species_aware' : 'worst_case_evergreen';
+  // canopy.js tags each tree instance with a `form` (conifer/deciduous)
+  // inferred from its height:crown ratio (avi-species.js formFromDimensions).
+  // When present, deciduous trees go leaf-off Oct–Apr instead of every tree
+  // being treated as a year-round evergreen.
+  const treeList = (opts.canopy?.available && Array.isArray(opts.canopy.tree_instances)) ? opts.canopy.tree_instances : [];
+  const canopySpeciesAware = treeList.some((t) => t.form === 'conifer' || t.form === 'deciduous');
+  const canopyAssumption = canopySpeciesAware ? 'form_aware_leaf_off' : 'worst_case_evergreen';
 
   if (coarse) {
     return {
@@ -71,7 +79,8 @@ export function computeSolarHorizonShading(opts = {}) {
   const latitude = opts.latitude ?? (bbox.north + bbox.south) / 2;
   const year = opts.year || new Date().getUTCFullYear();
 
-  const trees = (opts.canopy?.available && Array.isArray(opts.canopy.tree_instances)) ? opts.canopy.tree_instances : [];
+  const trees = treeList;
+  const buildings = prepareBuildings(opts.buildings);
 
   const sunPaths = REPRESENTATIVE_DATES.map((d) => ({
     ...d,
@@ -97,7 +106,7 @@ export function computeSolarHorizonShading(opts = {}) {
 
   const results = points.map((p) => {
     const horizon = horizonProfile({ at, rows, cols, bbox, cellWidthM, cellHeightM, r: p.r, c: p.c, lat: p.lat, lon: p.lon, elevation_m: p.elevation_m });
-    const hours = insolationHours({ horizon, sunPaths, point: p, trees, canopyAssumption });
+    const hours = insolationHours({ horizon, sunPaths, point: p, trees, buildings, canopyAssumption });
     return { point: p, horizon, ...hours };
   });
 
@@ -130,13 +139,17 @@ export function computeSolarHorizonShading(opts = {}) {
     canopy_shading_assumption: canopyAssumption,
     canopy_shading_note: canopyAssumption === 'worst_case_evergreen'
       ? 'Canopy layer does not distinguish species — nearby trees are conservatively treated as evergreen/full shading year-round. This likely understates real winter sun access wherever deciduous trees dominate.'
-      : null,
+      : `Trees are classed conifer/deciduous from their height-to-crown ratio (not species ID). Deciduous trees are leaf-off Oct–Apr and then block ~${Math.round(LEAF_OFF_DECIDUOUS_OPACITY * 100)}% of direct sun (bare branches) instead of all of it.`,
+    building_shadows: buildings.length
+      ? `${buildings.length} detected building${buildings.length === 1 ? '' : 's'} cast shadows (footprint x height${buildings.some((b) => b.assumedHeight) ? '; buildings without a measured height assume ' + DEFAULT_BUILDING_HEIGHT_M + ' m' : ''}).`
+      : 'No detected buildings supplied — only terrain and trees cast shadows.',
     data_source: opts.data_source || 'Sampled DEM (hrdem-terrain.js) + canopy tree instances (canopy.js)',
     confidence: (opts.dem_confidence) || 'moderate',
     methodology: {
       horizon_profile: 'Radial DEM sampling every 10° azimuth out to 1500 m, max elevation angle per azimuth.',
       sun_path: 'NOAA low-precision solar-position formulas, 15-minute steps, at winter/summer solstice + both equinoxes.',
-      canopy_shadow: 'Per-timestep check of nearby tree instances against shadow length (height / tan(elevation)) and shadow azimuth.',
+      canopy_shadow: 'Per-timestep check of nearby tree instances against shadow length (height / tan(elevation)) and shadow azimuth; deciduous trees partially transmit sun when leaf-off.',
+      building_shadow: 'Per-timestep ray march from the point toward the sun, out to each building shadow length, tested against the footprint polygon.',
     },
   };
 }
@@ -167,7 +180,12 @@ export function horizonProfile(ctx) {
   for (let az = 0; az < 360; az += AZIMUTH_STEP_DEG) {
     const rad = (az * Math.PI) / 180;
     const dx = Math.sin(rad); // east component
-    const dy = -Math.cos(rad); // north component (grid row decreases northward)
+    // North component, positive northward. The grid branch below converts to
+    // rows with `r - dRows` (row index grows southward); point mode adds it to
+    // latitude directly. (This was -cos, which together with that subtraction
+    // walked azimuth 0 SOUTH — a mirror that happened to cancel a matching
+    // mirror in sunPosition() for terrain-only shading.)
+    const dy = Math.cos(rad);
     let maxAngle = 0;
     for (let dist = HORIZON_SAMPLE_STEP_M; dist <= HORIZON_SEARCH_RADIUS_M; dist += HORIZON_SAMPLE_STEP_M) {
       let sr, sc, sLat, sLon;
@@ -208,7 +226,7 @@ export function horizonAngleAt(profile, azimuth) {
   return profile[lo].angle_deg * (1 - frac) + profile[hi].angle_deg * frac;
 }
 
-function insolationHours({ horizon, sunPaths, point, trees, canopyAssumption }) {
+function insolationHours({ horizon, sunPaths, point, trees, buildings = [], canopyAssumption }) {
   const byLabel = {};
   let sunriseDelayMin = null;
   let sunsetDelayMin = null;
@@ -224,13 +242,17 @@ function insolationHours({ horizon, sunPaths, point, trees, canopyAssumption }) 
 
       const horizonAngle = horizonAngleAt(horizon, step.azimuth);
       const terrainClear = step.elevation > horizonAngle;
-      const canopyClear = terrainClear && !treeShadowed(point, trees, step, canopyAssumption);
+      // Fraction of direct sun reaching the point after trees + buildings
+      // (1 = full sun). Partial values come from leaf-off deciduous trees.
+      const transmittance = terrainClear
+        ? (buildingShadowed(point, buildings, step) ? 0 : treeTransmittance(point, trees, step, canopyAssumption))
+        : 0;
 
       if (terrainClear) {
         if (firstActualVisible == null) firstActualVisible = step.minutesUTC;
         lastActualVisible = step.minutesUTC;
       }
-      if (canopyClear) unblockedMinutes += TIME_STEP_MIN;
+      unblockedMinutes += TIME_STEP_MIN * transmittance;
     }
     byLabel[path.label] = round2(unblockedMinutes / 60);
     if (path.label === 'winter_solstice' && firstFlatVisible != null && firstActualVisible != null) {
@@ -265,13 +287,14 @@ function insolationHours({ horizon, sunPaths, point, trees, canopyAssumption }) 
  * directly away from the sun) reaches the point within a width tolerance
  * derived from the tree's crown radius.
  */
-function treeShadowed(point, trees, sunStep, canopyAssumption) {
-  if (!trees.length || sunStep.elevation <= 1) return false;
+function treeTransmittance(point, trees, sunStep, canopyAssumption) {
+  if (!trees.length || sunStep.elevation <= 1) return 1;
+  let transmittance = 1;
   const shadowAzimuth = (sunStep.azimuth + 180) % 360;
   const metersPerDegLat = 111_320;
   const metersPerDegLon = 111_320 * Math.cos((point.lat * Math.PI) / 180);
   for (const tree of trees) {
-    const height = evergreenSeasonalHeight(tree.height_m, sunStep.month, canopyAssumption);
+    const height = Number(tree.height_m) || 0;
     if (height <= 0) continue;
     const shadowLength = height / Math.tan((sunStep.elevation * Math.PI) / 180);
     if (shadowLength <= 0 || shadowLength > HORIZON_SEARCH_RADIUS_M) continue;
@@ -289,19 +312,86 @@ function treeShadowed(point, trees, sunStep, canopyAssumption) {
     let diff = Math.abs(bearingNorm - shadowAzimuth);
     if (diff > 180) diff = 360 - diff;
     const angularToleranceDeg = Math.min(45, (Math.atan2(tree.crown_radius_m || 2, Math.max(distM, 1)) * 180) / Math.PI + 5);
-    if (diff <= angularToleranceDeg) return true;
+    if (diff <= angularToleranceDeg) {
+      transmittance *= 1 - treeOpacity(tree, sunStep.month, canopyAssumption);
+      if (transmittance <= 0.001) return 0;
+    }
+  }
+  return transmittance;
+}
+
+/**
+ * Fraction of direct sun a tree blocks when its shadow covers the point.
+ * Conifers block it year-round. Deciduous trees block it in leaf (May–Sep,
+ * 0-indexed months 4–8 — central-Alberta aspen/poplar leaf out mid-May and
+ * drop late Sep/early Oct) and only partially when bare: leafless broadleaf
+ * crowns still intercept roughly a third of direct beam light via stems and
+ * branches. Under worst_case_evergreen (no form data) every tree blocks
+ * fully, year-round — the previous behaviour.
+ */
+const LEAF_OFF_DECIDUOUS_OPACITY = 0.35;
+const LEAF_ON_MONTHS = new Set([4, 5, 6, 7, 8]);
+function treeOpacity(tree, month, canopyAssumption) {
+  if (canopyAssumption !== 'form_aware_leaf_off') return 1;
+  if (tree.form !== 'deciduous') return 1;
+  return LEAF_ON_MONTHS.has(month) ? 1 : LEAF_OFF_DECIDUOUS_OPACITY;
+}
+
+/** Used when a detected building has no measured height (box LOD). */
+const DEFAULT_BUILDING_HEIGHT_M = 5;
+
+function prepareBuildings(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  for (const b of list) {
+    const ring = b?.geometry?.coordinates?.[0] || b?.footprint?.coordinates?.[0];
+    if (!Array.isArray(ring) || ring.length < 4) continue;
+    const measured = Number(b.height_m);
+    const height = measured > 0 ? measured : DEFAULT_BUILDING_HEIGHT_M;
+    const lat = ring.reduce((sum, pt) => sum + pt[1], 0) / ring.length;
+    const lon = ring.reduce((sum, pt) => sum + pt[0], 0) / ring.length;
+    const mLat = 111_320;
+    const mLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+    const radiusM = Math.max(...ring.map((pt) => Math.hypot((pt[1] - lat) * mLat, (pt[0] - lon) * mLon)));
+    out.push({ ring, height, lat, lon, radiusM, assumedHeight: !(measured > 0) });
+  }
+  return out;
+}
+
+/**
+ * Ray-march from the point toward the sun: the point is in a building
+ * shadow if, within that building's shadow length (height / tan(elevation)),
+ * the ray passes over its footprint.
+ */
+function buildingShadowed(point, buildings, sunStep) {
+  if (!buildings.length || sunStep.elevation <= 1) return false;
+  const tanEl = Math.tan((sunStep.elevation * Math.PI) / 180);
+  const az = (sunStep.azimuth * Math.PI) / 180;
+  const mLat = 111_320;
+  const mLon = 111_320 * Math.cos((point.lat * Math.PI) / 180);
+  for (const b of buildings) {
+    const shadowLen = b.height / tanEl;
+    const distM = Math.hypot((b.lat - point.lat) * mLat, (b.lon - point.lon) * mLon);
+    if (distM - b.radiusM > shadowLen) continue;
+    const reach = Math.min(shadowLen, distM + b.radiusM);
+    const stepM = Math.max(0.75, Math.min(2, b.radiusM / 4));
+    for (let d = stepM; d <= reach; d += stepM) {
+      const lat = point.lat + (Math.cos(az) * d) / mLat;
+      const lon = point.lon + (Math.sin(az) * d) / mLon;
+      if (pointInRingLonLat(lon, lat, b.ring)) return true;
+    }
   }
   return false;
 }
 
-/** Deciduous trees would lose shading capacity in winter; canopy.js has no
- * species field, so under the worst_case_evergreen assumption every tree
- * holds full height/shading year-round. */
-function evergreenSeasonalHeight(heightM, month, canopyAssumption) {
-  if (canopyAssumption === 'species_aware') {
-    // Reserved for when the canopy layer gains a species/type field.
+function pointInRingLonLat(lon, lat, ring) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if ((yi > lat) !== (yj > lat) && lon < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) inside = !inside;
   }
-  return heightM;
+  return inside;
 }
 
 function extractCandidateZones(results, { rows, cols, stride, bbox, rankBy = 'annual_hours' }) {
@@ -408,8 +498,14 @@ function sunPosition(latDeg, lonDeg, date) {
   } else {
     let cosAz = (Math.sin(latRad) * Math.cos(zenithRad) - Math.sin(declRad)) / (Math.cos(latRad) * Math.sin(zenithRad));
     cosAz = clamp(cosAz, -1, 1);
-    azimuth = rad2deg(Math.acos(cosAz));
-    if (hourAngle > 0) azimuth = 360 - azimuth;
+    // NOAA Solar Calculator: acos() here is measured from SOUTH, so it must
+    // be rotated into "clockwise from true north" — afternoon (hour angle
+    // > 0) is acos + 180, morning is 540 - acos. Omitting that rotation (as
+    // an earlier version did) mirrors the sun into the northern sky: noon
+    // came out as azimuth 0, so ridges and trees NORTH of a point were
+    // treated as blocking its sun and those to the south were not.
+    const fromSouth = rad2deg(Math.acos(cosAz));
+    azimuth = hourAngle > 0 ? (fromSouth + 180) % 360 : (540 - fromSouth) % 360;
   }
 
   return { azimuth: normalizeDeg(azimuth), elevation };

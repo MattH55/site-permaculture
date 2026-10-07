@@ -4,6 +4,7 @@
  * enrichment. See report-layer-soil-solar-planting-instructions.md.
  */
 
+import { matchPlantsToZones } from './plant-zone-match.js';
 import { horizonProfile } from './solar-horizon-shading.js';
 import { scoreBand, weakestConfidence, round0, round1 } from './suitability-common.js';
 
@@ -217,9 +218,11 @@ export function enrichPlantingZones(opts = {}) {
   const zones = opts.plantable_area?.planting_zones || [];
   const soilProfile = opts.soil_profile || {};
   const solar = opts.solar_horizon_shading?.solar_exposure_raster;
-  const catalog = (opts.planting_plan?.recommended || []).slice(0, 5);
+  // Every recommended plant is matched against every zone (plant-zone-match.js)
+  // instead of copying the parcel-wide top 5 into each zone.
+  const catalog = opts.planting_plan?.recommended || [];
 
-  return zones.map((z) => {
+  const enriched = zones.map((z) => {
     const ring = z.geometry?.coordinates?.[0] || [];
     const cx = ring.length ? ring.reduce((s, p) => s + p[0], 0) / ring.length : null;
     const cy = ring.length ? ring.reduce((s, p) => s + p[1], 0) / ring.length : null;
@@ -256,29 +259,56 @@ export function enrichPlantingZones(opts = {}) {
     const suitability_band = scoreBand(score) || 'fair';
     const factors = compactFactors(scp, z);
 
-    // Reuse the parcel planting plan — calling planPlantings() per zone
-    // re-scored the catalog and was a common cause of /api/report timeouts.
-    const recommended = catalog.map((p) => ({
-      species_or_guild: p.common_name || p.name || p.id || p.species_or_guild,
-      latin: p.latin_name || p.latin || null,
-      confidence: p.score >= 75 ? 'high' : p.score >= 55 ? 'moderate' : 'low',
-      score: p.score,
-      suitability: p.suitability,
-      driving_factors: factors,
-    }));
-
     return {
       geometry: z.geometry,
       area_m2: z.area_m2,
       suitability_band,
       suitability_score: score,
       site_condition_profile: scp,
-      recommended_plantings: recommended,
+      frost_risk_level: z.frost_risk_level || null,
+      recommended_plantings: [],
       driving_factors: factors,
       confidence: z.confidence || weakestConfidence(['moderate', soilProfile.confidence]),
       constraints: z.constraints || [],
     };
   });
+
+  // Reuse the parcel planting plan's already-scored list — calling
+  // planPlantings() per zone re-scored the catalog and was a common cause of
+  // /api/report timeouts — but rank it per zone by that zone's own sun,
+  // frost, drainage, water, pH, texture and slope.
+  const match = matchPlantsToZones(enriched, catalog, { perZone: 5 });
+  enriched.forEach((zone, i) => {
+    zone.recommended_plantings = (match.zones[i]?.best_plants || []).map((bp) => ({
+      ...bp,
+      // Fields earlier report code reads:
+      confidence: bp.zone_fit_score >= 80 ? 'high' : bp.zone_fit_score >= 65 ? 'moderate' : 'low',
+      score: bp.zone_fit_score,
+      suitability: bp.zone_fit_band,
+      driving_factors: zone.driving_factors,
+    }));
+  });
+  return enriched;
+}
+
+/**
+ * Per-plant view of the same matching: for each recommended plant, its best
+ * zone and how much of the parcel's plantable area suits it. Runs on the
+ * enriched zones (enrichPlantingZones output).
+ */
+export function buildPlantZoneMatrix(plantingZones, plantingPlan) {
+  const zones = Array.isArray(plantingZones) ? plantingZones : [];
+  const plants = plantingPlan?.recommended || [];
+  if (!zones.length || !plants.length) {
+    return { available: false, reason: !zones.length ? 'No plantable zones on this parcel.' : 'No recommended plants.', plants: [] };
+  }
+  const match = matchPlantsToZones(zones, plants);
+  return {
+    available: true,
+    zone_count: zones.length,
+    plants: match.plants,
+    methodology: match.methodology,
+  };
 }
 
 function compactFactors(scp, z) {

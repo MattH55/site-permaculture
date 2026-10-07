@@ -486,3 +486,25 @@ function round0(value) { return Math.round(value); }
 function round1(value) { return Math.round(value * 10) / 10; }
 function round2(value) { return Math.round(value * 100) / 100; }
 function round3(value) { return Math.round(value * 1000) / 1000; }
+
+/**
+ * Internals shared with pond-scenarios.js (multi-year precipitation
+ * scenario engine) so it reuses this module's exact runoff/evaporation/
+ * seepage/soil-group logic rather than a drifting copy. Not part of the
+ * public pipeline API.
+ */
+export const _pondBalanceInternals = Object.freeze({
+  MONTHS,
+  DAYS_IN_MONTH,
+  ANNUAL_PAN_EVAP_MM,
+  EVAP_MONTHLY_FRACTION,
+  scsRunoffMm,
+  normalizeMonthly,
+  landcoverBreakdown,
+  hydrologicSoilGroup,
+  effectiveCurveNumber,
+  seepageAt,
+  evaporationExposureFactor,
+  soilConfidence,
+  weakestConfidence,
+});
