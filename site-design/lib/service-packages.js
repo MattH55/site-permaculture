@@ -634,8 +634,8 @@ export function recommendServicePackages(ctx = {}) {
     flow: [
       { step: 1, id: 'value', label: 'Your site insights', description: 'Map, water, soil, climate — free analysis' },
       { step: 2, id: 'choose', label: 'Choose interventions', description: 'Select planting, shelter, water options' },
-      { step: 3, id: 'report', label: 'Full report', description: 'Download with your email' },
-      { step: 4, id: 'estimate', label: 'Estimate & inquire', description: 'Itemized planning costs → talk to EE' },
+      { step: 3, id: 'report', label: 'Full report', description: 'Download the PDF' },
+      { step: 4, id: 'estimate', label: 'Estimate & inquire', description: 'Email your selections to Land Intelligence' },
     ],
     propertyLabel: ctx.propertyLabel || null,
     generatedAt: new Date().toISOString(),
