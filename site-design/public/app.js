@@ -72,47 +72,47 @@ const EE_SERVICE_META = {
   water_earthworks_consult: {
     label: 'Water & earthworks consult',
     cta: 'Talk earthworks',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   well_drilling: {
     label: 'Groundwater well',
     cta: 'Plan a well',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   shelterbelt_design: {
     label: 'Shelterbelt design',
     cta: 'Design a shelterbelt',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   food_forest_design: {
     label: 'Food forest design',
     cta: 'Plan a food forest',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   soil_carbon_building: {
     label: 'Soil carbon building',
     cta: 'Build soil carbon',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   kitchen_garden_design: {
     label: 'Kitchen garden design',
     cta: 'Design Zone 1',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   solar_energy_package: {
     label: 'Solar + generator',
     cta: 'View energy packages',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   off_grid_garage: {
     label: 'Off-grid garage',
     cta: 'Reserve garage package',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   full_site_design: {
     label: 'Full site design',
     cta: 'Book full design',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
 };
 
@@ -162,9 +162,9 @@ const state = {
   plantReplanning: false,
   /** Build-your-plan: selected intervention ids */
   selectedInterventions: null,
-  /** Email captured for full report download */
+  /** The full PDF is not gated behind an email */
   reportEmail: null,
-  reportUnlocked: false,
+  reportUnlocked: true,
   draw: {
     active: false,
     kind: null, // 'polygon' | 'rectangle'
@@ -7109,7 +7109,7 @@ function servicesCtaSection(services) {
           .join('')}
       </div>
       <p class="fine ee-services-foot">
-        Email <a href="mailto:matt.halma@gmail.com">matt.halma@gmail.com</a>
+        Email <a href="mailto:mhalma@opensourcemed.info">mhalma@opensourcemed.info</a>
       </p>
     </div>`;
 }
@@ -10267,8 +10267,8 @@ function landSalesMinimap(lv, centre) {
 }
 
 /**
- * Value-first conversion step: choose interventions → email for full report →
- * inquiry to matt.halma@gmail.com
+ * Value-first conversion step: choose interventions → download the full report →
+ * inquiry as an email draft to mhalma@opensourcemed.info
  */
 function nextStepsSection(r, idSuffix = 'main') {
   const menu = r?.action_menu;
@@ -10280,7 +10280,6 @@ function nextStepsSection(r, idSuffix = 'main') {
     state.selectedInterventions = items.filter((i) => i.default_selected).map((i) => i.id);
   }
   const selected = new Set(state.selectedInterventions);
-  const unlocked = !!state.reportUnlocked;
   const rootId = `next-steps-${idSuffix}`;
 
   const groupOrder = [
@@ -10333,8 +10332,8 @@ function nextStepsSection(r, idSuffix = 'main') {
   const flow = (r.service_packages?.flow || [
     { step: 1, label: 'Your site insights', description: 'Free analysis' },
     { step: 2, label: 'Choose interventions', description: 'Select what you want' },
-    { step: 3, label: 'Full report', description: 'Download with email' },
-    { step: 4, label: 'Inquire', description: 'Talk to Land Intelligence' },
+    { step: 3, label: 'Full report', description: 'Download the PDF' },
+    { step: 4, label: 'Inquire', description: 'Email Land Intelligence' },
   ])
     .map(
       (s, i) => `
@@ -10369,49 +10368,35 @@ function nextStepsSection(r, idSuffix = 'main') {
         ${groupsHtml}
       </div>
 
-      <!-- Step: email for full report -->
+      <!-- Step: full report -->
       <div class="next-step-panel report-unlock-panel">
         <h3>Get your full report</h3>
         <p class="fine">
-          Enter your email to download the complete site analysis (map, water, soils, plantings, and your selections).
-          We’ll only use this to send your report and follow up if you inquire.
+          Download the complete site analysis as a PDF: map, water, soils, plantings, and your selections.
         </p>
         <div class="report-unlock-form">
-          <label class="sr-only" for="report-email-input-${esc(idSuffix)}">Email</label>
-          <input type="email" id="report-email-input-${esc(idSuffix)}" class="report-email-input" data-report-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" ${unlocked ? 'readonly' : ''} autocomplete="email" />
-          <button type="button" class="btn" data-unlock-report ${unlocked ? 'disabled' : ''}>
-            ${unlocked ? 'Report unlocked' : 'Unlock full report'}
-          </button>
-          <button type="button" class="btn btn-secondary" data-download-report ${unlocked ? '' : 'disabled'} title="${unlocked ? 'Download PDF' : 'Enter email first'}">
-            Download PDF
-          </button>
+          <button type="button" class="btn" data-download-report>Download PDF</button>
         </div>
-        <p class="fine report-unlock-status" ${unlocked ? '' : 'hidden'}>
-          ${unlocked ? `Unlocked for ${esc(state.reportEmail)}. Download anytime.` : ''}
-        </p>
       </div>
 
       <!-- Step: inquiry -->
       <div class="next-step-panel inquiry-panel">
         <h3>Make an inquiry</h3>
         <p class="fine">
-          Send your selected interventions and site report summary to Land Intelligence.
-          We’ll follow up to schedule a site walk.
+          Email your selected interventions and a site summary to Land Intelligence at
+          <a href="mailto:mhalma@opensourcemed.info">mhalma@opensourcemed.info</a>.
+          This opens a draft in your own email app; nothing is sent until you press send.
         </p>
         <div class="inquiry-form">
           <label>
             <span class="mono">Your name</span>
             <input type="text" class="report-email-input" data-inquiry-name placeholder="Name" autocomplete="name" />
           </label>
-          <label>
-            <span class="mono">Email</span>
-            <input type="email" class="report-email-input" data-inquiry-email placeholder="you@example.com" value="${esc(state.reportEmail || '')}" autocomplete="email" />
-          </label>
           <label class="inquiry-message-label">
             <span class="mono">Message (optional)</span>
             <textarea class="inquiry-message" data-inquiry-message rows="3" placeholder="Goals, timeline, access notes…"></textarea>
           </label>
-          <button type="button" class="btn" data-send-inquiry>Send inquiry with my selections</button>
+          <button type="button" class="btn" data-send-inquiry>Email my selections</button>
           <p class="fine inquiry-status" data-inquiry-status hidden></p>
         </div>
       </div>
@@ -10486,114 +10471,16 @@ function bindNextStepsInteractions(r) {
       });
     });
 
-    const unlockBtn = root.querySelector('[data-unlock-report]');
-    const downloadBtn = root.querySelector('[data-download-report]');
-    const emailInput = root.querySelector('[data-report-email]');
-    const unlockStatus = root.querySelector('.report-unlock-status');
-
-    unlockBtn?.addEventListener('click', async () => {
-      const email = String(emailInput?.value || '').trim();
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (unlockStatus) {
-          unlockStatus.hidden = false;
-          unlockStatus.textContent = 'Please enter a valid email address.';
-        }
-        return;
-      }
-      unlockBtn.disabled = true;
-      unlockBtn.textContent = 'Unlocking…';
-
-      const markUnlocked = () => {
-        state.reportEmail = email;
-        state.reportUnlocked = true;
-        document.querySelectorAll('[data-next-steps]').forEach((el) => {
-          el.querySelectorAll('[data-download-report]').forEach((b) => {
-            b.disabled = false;
-          });
-          el.querySelectorAll('[data-report-email]').forEach((inp) => {
-            inp.value = email;
-            inp.readOnly = true;
-          });
-          el.querySelectorAll('[data-unlock-report]').forEach((b) => {
-            b.disabled = true;
-            b.textContent = 'Report unlocked';
-          });
-          el.querySelectorAll('.report-unlock-status').forEach((s) => {
-            s.hidden = false;
-            s.textContent = `Unlocked for ${email}. You can download the PDF now.`;
-          });
-          el.querySelectorAll('[data-inquiry-email]').forEach((inp) => {
-            if (!inp.value) inp.value = email;
-          });
-        });
-      };
-
-      try {
-        // Cap wait so a slow host never feels like a hung "sign-in"
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch('/api/lead', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            site_name: r.site_name,
-            source: 'full_report_download',
-          }),
-          signal: controller.signal,
-        });
-        clearTimeout(timer);
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Could not unlock report');
-        markUnlocked();
-      } catch (e) {
-        // Still unlock locally if the request timed out — email is for lead capture only
-        if (e?.name === 'AbortError') {
-          markUnlocked();
-          // Best-effort background retry without blocking UI
-          fetch('/api/lead', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              email,
-              site_name: r.site_name,
-              source: 'full_report_download_retry',
-            }),
-          }).catch(() => {});
-          return;
-        }
-        unlockBtn.disabled = false;
-        unlockBtn.textContent = 'Unlock full report';
-        if (unlockStatus) {
-          unlockStatus.hidden = false;
-          unlockStatus.textContent = e.message || 'Unlock failed';
-        }
-      }
-    });
-
-    downloadBtn?.addEventListener('click', () => {
-      // The only way to get a document out of the report is the gated,
-      // branded PDF export below — no unstyled browser-print fallback that
-      // could be reached without an email on file.
-      if (!state.reportUnlocked) return;
+    root.querySelector('[data-download-report]')?.addEventListener('click', () => {
       downloadFullPdf();
     });
 
-    root.querySelector('[data-send-inquiry]')?.addEventListener('click', async () => {
+    root.querySelector('[data-send-inquiry]')?.addEventListener('click', () => {
       const status = root.querySelector('[data-inquiry-status]');
-      const email = String(
-        root.querySelector('[data-inquiry-email]')?.value || state.reportEmail || ''
-      ).trim();
       const name = String(root.querySelector('[data-inquiry-name]')?.value || '').trim();
       const message = String(root.querySelector('[data-inquiry-message]')?.value || '').trim();
       const selectedIds = new Set(state.selectedInterventions || []);
-      const selectedItems = items
-        .filter((i) => selectedIds.has(i.id))
-        .map((i) => ({
-          id: i.id,
-          label: i.label,
-          category: i.category,
-        }));
+      const selectedItems = items.filter((i) => selectedIds.has(i.id));
       if (!selectedItems.length) {
         if (status) {
           status.hidden = false;
@@ -10601,69 +10488,33 @@ function bindNextStepsInteractions(r) {
         }
         return;
       }
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        if (status) {
-          status.hidden = false;
-          status.textContent = 'Enter a valid email so we can reply.';
-        }
-        return;
-      }
-      const btn = root.querySelector('[data-send-inquiry]');
-      if (btn) {
-        btn.disabled = true;
-        btn.textContent = 'Sending…';
-      }
-      try {
-        const report_summary = {
-          site_name: r.site_name,
-          area_ha: r.geometry?.area_ha,
-          location: {
-            nearest_town: r.location?.nearest_town,
-            municipality: r.location?.municipality,
-            lat: r.location?.latitude,
-            lng: r.location?.longitude,
-          },
-          elevation_m: r.topology?.elevation_m,
-          hardiness: r.climate?.plant_hardiness_zone || r.hardiness?.hardiness_zone,
-          wetlands_on_site: r.wetlands?.has_wetland_on_site,
-          small_water: r.small_water?.summary,
-          well_depth_m: r.predicted_well_depth?.estimated_depth_m,
-          plant_highlights: (r.planting_plan?.recommended || [])
-            .slice(0, 8)
-            .map((p) => p.common_name)
-            .filter(Boolean),
-          selected: selectedItems,
-        };
-        const res = await fetch('/api/inquiry', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email,
-            name,
-            message,
-            selected_items: selectedItems,
-            site_name: r.site_name,
-            location: r.location?.nearest_town || r.location?.municipality,
-            area_ha: r.geometry?.area_ha,
-            report_summary,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || 'Inquiry failed');
-        if (status) {
-          status.hidden = false;
-          status.textContent = data.message || 'Inquiry sent.';
-        }
-      } catch (e) {
-        if (status) {
-          status.hidden = false;
-          status.textContent = e.message || 'Could not send inquiry';
-        }
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.textContent = 'Send inquiry with my selections';
-        }
+      const siteName = r.site_name || 'Alberta parcel';
+      const place = r.location?.nearest_town || r.location?.municipality;
+      const lines = [
+        'Hello Land Intelligence,',
+        '',
+        `I'd like to discuss these interventions for ${siteName}:`,
+        ...selectedItems.map((it, i) => `  ${i + 1}. ${it.label || it.id}`),
+        '',
+        message ? `${message}\n` : null,
+        'Site summary:',
+        place ? `  Location: ${place}` : null,
+        r.geometry?.area_ha != null ? `  Area: ${r.geometry.area_ha} ha` : null,
+        r.location?.latitude != null ? `  Centre: ${r.location.latitude}, ${r.location.longitude}` : null,
+        r.predicted_well_depth?.estimated_depth_m != null
+          ? `  Predicted well depth: ${r.predicted_well_depth.estimated_depth_m} m`
+          : null,
+        '',
+        name ? `Thanks,\n${name}` : 'Thanks',
+      ].filter((x) => x != null);
+      const mailto =
+        'mailto:mhalma@opensourcemed.info' +
+        `?subject=${encodeURIComponent(`Site design inquiry — ${siteName}`)}` +
+        `&body=${encodeURIComponent(lines.join('\n').slice(0, 1800))}`;
+      window.location.href = mailto;
+      if (status) {
+        status.hidden = false;
+        status.textContent = 'Your email app should open with a draft. If it does not, write to mhalma@opensourcemed.info.';
       }
     });
   });
@@ -11256,26 +11107,10 @@ function el(tag, children, attrs = {}) {
 
 /**
  * Entry point for every "Download full PDF" affordance in the UI (the
- * always-visible rail button included). Enforces the same email-unlock gate
- * as the "next steps" panel's own download button — there is exactly one
- * path to a PDF, and it always requires an email on file first. Previously
- * this button bypassed the gate entirely, and each report section also had
- * its own ungated quick-download button; both bypasses are removed.
+ * always-visible rail button included). The PDF is not gated behind an email.
  */
 function requestFullPdfDownload() {
-  if (state.reportUnlocked) {
-    downloadFullPdf();
-    return;
-  }
-  const panel = document.querySelector('.report-unlock-panel');
-  if (panel) {
-    const paneEl = panel.closest('.report-pane');
-    if (paneEl?.id) switchReportPane(paneEl.id.replace(/^pane-/, ''));
-    panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    panel.classList.add('flash-attention');
-    setTimeout(() => panel.classList.remove('flash-attention'), 1600);
-    panel.querySelector('[data-report-email]')?.focus();
-  }
+  downloadFullPdf();
 }
 
 /**
@@ -12140,7 +11975,7 @@ function renderSectionPanes(r, ctx) {
 
       <div class="next-steps-cta panel" style="margin-top:1.25rem;padding:1rem 1.15rem">
         <h2 style="font-size:1.15rem;margin:0 0 0.4rem">Next: build your plan</h2>
-        <p class="fine" style="margin:0 0 0.75rem">Select interventions, unlock the PDF with email, and send an inquiry.</p>
+        <p class="fine" style="margin:0 0 0.75rem">Select interventions, download the PDF, and email us your selections.</p>
         <button type="button" class="btn" data-open-your-plan-findings onclick="window.__eeNav&&window.__eeNav('services')">Your plan →</button>
       </div>
     </div>

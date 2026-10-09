@@ -283,8 +283,11 @@ app.get('/api/planting/goals', (_req, res) => {
   }
 });
 
+/** Public contact address. Inquiries open the visitor's own mail app addressed here. */
+const CONTACT_EMAIL = process.env.CONTACT_EMAIL || 'mhalma@opensourcemed.info';
+
 /**
- * Capture email for full-report download unlock (lead).
+ * Record an email left with a report (lead log only; nothing is emailed).
  * Body: { email, name?, site_name?, source? }
  */
 app.post('/api/lead', async (req, res) => {
@@ -305,29 +308,8 @@ app.post('/api/lead', async (req, res) => {
       at: new Date().toISOString(),
     };
     appendLead(lead);
+    res.json({ ok: true, unlocked: true, email });
 
-    // Unlock immediately — don't make the user wait on Resend
-    res.json({ ok: true, unlocked: true, email, emailed: 'pending' });
-
-    // Notify team in the background (best-effort)
-    const to = inquiryDeliveryAddress();
-    const publicTo = inquiryPublicAddress();
-    const subject = `Full report download — ${lead.site_name || 'Alberta parcel'}`;
-    const text = [
-      'Someone unlocked the full site-design report.',
-      publicTo && publicTo !== to ? `Public contact (forward if needed): ${publicTo}` : null,
-      '',
-      `Email: ${email}`,
-      lead.name ? `Name: ${lead.name}` : null,
-      `Site: ${lead.site_name || '—'}`,
-      `Source: ${lead.source}`,
-      `At: ${lead.at}`,
-    ]
-      .filter(Boolean)
-      .join('\n');
-    sendViaResend({ to, replyTo: email, subject, text }).catch((e) => {
-      console.warn('lead notify email failed', e.message);
-    });
   } catch (e) {
     console.error('lead failed', e);
     if (!res.headersSent) {
@@ -337,7 +319,8 @@ app.post('/api/lead', async (req, res) => {
 });
 
 /**
- * Inquiry: selected interventions + report summary → matt.halma@gmail.com
+ * Inquiry: selected interventions + report summary → a mailto draft to CONTACT_EMAIL.
+ * Nothing is sent from the server; the inquiry is logged and the draft returned.
  * Body: {
  *   email, name?, phone?, message?,
  *   selected_items: [{ id, label, price_cad? }],
@@ -360,15 +343,11 @@ app.post('/api/inquiry', async (req, res) => {
       return res.status(400).json({ error: 'Select at least one intervention before inquiring' });
     }
 
-    const to = inquiryDeliveryAddress();
-    const publicTo = inquiryPublicAddress();
+    const to = CONTACT_EMAIL;
     const siteName = body.site_name || 'Alberta parcel';
     const subject = `Site design inquiry — ${siteName}`;
     const lines = [
       `New inquiry from site-design tool`,
-      publicTo && publicTo.toLowerCase() !== String(to).toLowerCase()
-        ? `Forward / EE public inbox: ${publicTo}`
-        : null,
       ``,
       `From: ${body.name || '—'} <${email}>`,
       body.phone ? `Phone: ${body.phone}` : null,
@@ -409,16 +388,6 @@ app.post('/api/inquiry', async (req, res) => {
     };
     appendLead(lead);
 
-    let sent = false;
-    let sendError = null;
-    try {
-      sent = await sendViaResend({ to, replyTo: email, subject, text });
-    } catch (e) {
-      sendError = e.message || String(e);
-      console.error('inquiry email failed', sendError);
-    }
-
-    // Fallback mailto only if Resend did not send
     const mailto =
       `mailto:${encodeURIComponent(to)}` +
       `?subject=${encodeURIComponent(subject)}` +
@@ -427,13 +396,9 @@ app.post('/api/inquiry', async (req, res) => {
     res.json({
       ok: true,
       to,
-      mailto: sent ? null : mailto,
-      emailed: !!sent,
-      message: sent
-        ? 'Inquiry sent to Land Intelligence. We will reply at your email.'
-        : sendError
-          ? `Could not email automatically (${sendError}). A draft will open so you can still send.`
-          : 'Inquiry saved. Open the email draft to send to Land Intelligence, or we will follow up from your details.',
+      mailto,
+      emailed: false,
+      message: 'Inquiry saved. Your email app will open with a draft to send to Land Intelligence.',
     });
   } catch (e) {
     console.error('inquiry failed', e);
@@ -454,135 +419,6 @@ function appendLead(lead) {
   } catch (e) {
     console.warn('lead log write failed', e.message);
   }
-}
-
-/** Where Resend delivers (Gmail / forwarding inbox until domain is verified). */
-function inquiryDeliveryAddress() {
-  return (
-    process.env.INQUIRY_TO ||
-    process.env.RESEND_FALLBACK_TO ||
-    'matt.halma@gmail.com'
-  );
-}
-
-/** Public Land Intelligence address shown in the body for human forwarding (optional). */
-function inquiryPublicAddress() {
-  return process.env.INQUIRY_PUBLIC_TO || 'matt.halma@gmail.com';
-}
-
-/**
- * Send email via Resend (https://resend.com).
- * Requires RESEND_API_KEY. Prefer a verified domain From address:
- *   INQUIRY_FROM="Land Intelligence <noreply@your-verified-domain>"
- *
- * Until a domain is verified, Resend only allows `onboarding@resend.dev`
- * and only delivers to the account owner email. We fall back to
- * RESEND_FALLBACK_TO (or the owner inbox) so inquiries still go out live.
- */
-async function sendViaResend({ to, replyTo, subject, text, html }) {
-  // Optional webhook first (Zapier / Make / Formspree)
-  const webhook = process.env.INQUIRY_WEBHOOK_URL;
-  if (webhook) {
-    const r = await fetch(webhook, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, replyTo, subject, text, source: 'site-design' }),
-    });
-    if (!r.ok) {
-      const body = await r.text().catch(() => '');
-      throw new Error(`webhook ${r.status}: ${body.slice(0, 200)}`);
-    }
-    return true;
-  }
-
-  const resendKey = process.env.RESEND_API_KEY;
-  if (!resendKey) {
-    console.warn('RESEND_API_KEY not set — inquiry emails will not send automatically');
-    return false;
-  }
-
-  const from =
-    process.env.INQUIRY_FROM ||
-    'Land Intelligence Site Design <onboarding@resend.dev>';
-  const intended = (Array.isArray(to) ? to : [to]).filter(Boolean);
-  const fallback =
-    process.env.RESEND_FALLBACK_TO ||
-    process.env.RESEND_OWNER_EMAIL ||
-    'matt.halma@gmail.com';
-
-  const result = await resendSendOnce({
-    resendKey,
-    from,
-    to: intended,
-    replyTo,
-    subject,
-    text,
-    html,
-  });
-  if (result.ok) {
-    console.log('Resend email sent', {
-      id: result.id,
-      to: intended,
-      subject: subject.slice(0, 80),
-    });
-    return true;
-  }
-
-  // Domain not verified yet — Resend only allows account-owner recipient
-  const needsFallback =
-    /only send testing emails|verify a domain|not authorized/i.test(result.error || '');
-  if (needsFallback && fallback && !intended.map((e) => e.toLowerCase()).includes(fallback.toLowerCase())) {
-    const note =
-      `\n\n---\nIntended recipient: ${intended.join(', ')}\n` +
-      `(Resend domain not verified yet — delivered to fallback inbox ${fallback}. ` +
-      `Verify your sending domain at resend.com/domains and set INQUIRY_FROM to that domain.)\n`;
-    const fb = await resendSendOnce({
-      resendKey,
-      from,
-      to: [fallback],
-      replyTo,
-      subject: `[for ${intended.join(', ')}] ${subject}`,
-      text: text + note,
-      html,
-    });
-    if (fb.ok) {
-      console.log('Resend email sent via fallback', {
-        id: fb.id,
-        to: fallback,
-        intended,
-      });
-      return true;
-    }
-    throw new Error(fb.error || result.error || 'Resend send failed');
-  }
-
-  throw new Error(result.error || 'Resend send failed');
-}
-
-async function resendSendOnce({ resendKey, from, to, replyTo, subject, text, html }) {
-  const payload = {
-    from,
-    to,
-    subject,
-    text,
-  };
-  if (replyTo) payload.reply_to = replyTo;
-  if (html) payload.html = html;
-
-  const r = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${resendKey}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  const body = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const msg = body?.message || body?.error || JSON.stringify(body).slice(0, 200);
-    return { ok: false, error: `Resend ${r.status}: ${msg}` };
-  }
-  return { ok: true, id: body.id };
 }
 
 /** Geo-feature overlay endpoint: draw parcel → 3D terrain feature layers */
