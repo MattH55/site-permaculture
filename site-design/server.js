@@ -467,7 +467,7 @@ function inquiryDeliveryAddress() {
 
 /** Public Land Intelligence address shown in the body for human forwarding (optional). */
 function inquiryPublicAddress() {
-  return process.env.INQUIRY_PUBLIC_TO || 'matt.halma@gmail.com';
+  return process.env.INQUIRY_PUBLIC_TO || 'mhalma@opensourcemed.info';
 }
 
 /**

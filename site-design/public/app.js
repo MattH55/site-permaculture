@@ -72,47 +72,47 @@ const EE_SERVICE_META = {
   water_earthworks_consult: {
     label: 'Water & earthworks consult',
     cta: 'Talk earthworks',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   well_drilling: {
     label: 'Groundwater well',
     cta: 'Plan a well',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   shelterbelt_design: {
     label: 'Shelterbelt design',
     cta: 'Design a shelterbelt',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   food_forest_design: {
     label: 'Food forest design',
     cta: 'Plan a food forest',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   soil_carbon_building: {
     label: 'Soil carbon building',
     cta: 'Build soil carbon',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   kitchen_garden_design: {
     label: 'Kitchen garden design',
     cta: 'Design Zone 1',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   solar_energy_package: {
     label: 'Solar + generator',
     cta: 'View energy packages',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   off_grid_garage: {
     label: 'Off-grid garage',
     cta: 'Reserve garage package',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
   full_site_design: {
     label: 'Full site design',
     cta: 'Book full design',
-    href: 'mailto:matt.halma@gmail.com',
+    href: 'mailto:mhalma@opensourcemed.info',
   },
 };
 
@@ -7109,7 +7109,7 @@ function servicesCtaSection(services) {
           .join('')}
       </div>
       <p class="fine ee-services-foot">
-        Email <a href="mailto:matt.halma@gmail.com">matt.halma@gmail.com</a>
+        Email <a href="mailto:mhalma@opensourcemed.info">mhalma@opensourcemed.info</a>
       </p>
     </div>`;
 }
@@ -10268,7 +10268,7 @@ function landSalesMinimap(lv, centre) {
 
 /**
  * Value-first conversion step: choose interventions → email for full report →
- * inquiry to matt.halma@gmail.com
+ * inquiry to mhalma@opensourcemed.info
  */
 function nextStepsSection(r, idSuffix = 'main') {
   const menu = r?.action_menu;
