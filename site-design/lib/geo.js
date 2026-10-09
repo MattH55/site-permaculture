@@ -112,7 +112,14 @@ export function centroid(ring) {
   return { longitude: x / n, latitude: y / n };
 }
 
-/** Build a lat/lng sampling grid inside bbox. */
+/**
+ * Build a lat/lng sampling grid over bbox — NORTH-UP, row 0 = bbox.north,
+ * col 0 = bbox.west, corners inclusive: the same `north - r/(rows-1)`
+ * convention every grid consumer uses (3D viewer, contours, pond siting,
+ * solar shading). This grid used to run south→north from cell centres,
+ * which flipped the fallback (non-HRDEM) terrain north-for-south in every
+ * one of those consumers.
+ */
 export function sampleGrid(bbox, maxPoints = 64) {
   const aspect =
     Math.max(bbox.east - bbox.west, 1e-9) /
@@ -131,9 +138,9 @@ export function sampleGrid(bbox, maxPoints = 64) {
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const lat =
-        bbox.south + ((r + 0.5) / rows) * (bbox.north - bbox.south);
+        bbox.north - (r / (rows - 1)) * (bbox.north - bbox.south);
       const lng =
-        bbox.west + ((c + 0.5) / cols) * (bbox.east - bbox.west);
+        bbox.west + (c / (cols - 1)) * (bbox.east - bbox.west);
       lats.push(lat);
       lngs.push(lng);
     }

@@ -4,6 +4,7 @@
  */
 
 import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset, priorFromSubregion } from './tree-scale.js';
+import { openWalkViewer } from './walk-viewer.js';
 
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
@@ -2448,11 +2449,6 @@ function terrain3dBlock(id, report) {
         </label>
         ${report?.canopy?.available && ((report.canopy.render_zones || []).length || report.canopy.tree_count) ? `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
-          <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
-          Forest canopy
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
           <span style="display:inline-block;width:10px;height:14px;background:#2f6e40;border-radius:2px 2px 1px 1px;vertical-align:middle"></span>
           Trees
@@ -2508,6 +2504,7 @@ function terrain3dBlock(id, report) {
           <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
+        <button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>
       </div>
       <div class="terrain-planning-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.9rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem;font-weight:600">
@@ -2839,6 +2836,41 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     renderer.setSize(el.clientWidth, el.clientHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     el.appendChild(renderer.domElement);
+
+    // --- Compass: a rose in the corner that turns with the camera so "N"
+    // always points to scene north (−z), plus N/E/S/W labels pinned to the
+    // terrain edges so orientation is readable in screenshots and the PDF.
+    const compassEl = document.createElement('div');
+    compassEl.className = 'terrain-compass';
+    compassEl.setAttribute('aria-label', 'Compass — N points to true north');
+    compassEl.style.cssText = 'position:absolute;top:8px;right:8px;width:56px;height:56px;pointer-events:none;z-index:3;';
+    compassEl.innerHTML = `
+      <svg viewBox="-32 -32 64 64" width="56" height="56" role="img" aria-hidden="true">
+        <circle r="29" fill="rgba(10,15,20,0.72)" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+        <g data-compass-rose>
+          <polygon points="0,-24 6,0 0,-4 -6,0" fill="#e24a3b"/>
+          <polygon points="0,24 6,0 0,4 -6,0" fill="#e8e0d0"/>
+          <text x="0" y="-13" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" fill="#fff">N</text>
+          <text x="15" y="3.5" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">E</text>
+          <text x="0" y="19" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">S</text>
+          <text x="-15" y="3.5" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">W</text>
+        </g>
+      </svg>`;
+    el.appendChild(compassEl);
+    const compassRose = compassEl.querySelector('[data-compass-rose]');
+    let lastCompassDeg = null;
+    const updateCompass = () => {
+      if (!compassRose || !camera) return;
+      // Heading of scene north on screen: with the camera south of the target
+      // (+z) looking north, N is up; camera east (+x) → N points right.
+      const dx = camera.position.x - controls.target.x;
+      const dz = camera.position.z - controls.target.z;
+      const deg = Math.round((Math.atan2(dx, dz) * 180) / Math.PI);
+      if (deg !== lastCompassDeg) {
+        lastCompassDeg = deg;
+        compassRose.setAttribute('transform', `rotate(${deg})`);
+      }
+    };
 
     // OrbitControls for mouse/touch interaction
     controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -3312,7 +3344,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // the near-tier polygon budget are each one obvious place to retune.
     const TREE_LOD = {
       nearMaxDistM: 25,      // ground distance from a structure that still counts as "near"
-      nearTierMaxCount: 40,  // full-geometry GLB budget — the tier a naive impostor swap would blow first
+      nearTierMaxCount: 40,  // (legacy) near-tier budget — all trees are 3D now, see maxTrees3d
+      maxTrees3d: 600,       // 3D-model budget for the dashboard twin (canopy.js emits ≤ 400)
     };
     const buildingCentroidsLatLon = (report?.buildings?.available ? (report.buildings.buildings || []) : [])
       .map((b) => {
@@ -3459,6 +3492,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // height in scene units and reading as giant objects. The canopy is a
     // textured surface sitting on the terrain, lifted by CHM using the same
     // heightScale as hills so it stays in visual proportion with the land.
+    // The dense-canopy "texture carpet" (a drape lifted to canopy height) is
+    // retired: every detected tree is now a 3D model (buildSparseTrees), so
+    // the carpet only hid them and read as a slab floating over the woodlot.
     const buildForestTexture = () => {
       while (groupForest.children.length) {
         const c = groupForest.children[0];
@@ -3466,80 +3502,29 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         c.geometry?.dispose();
         c.material?.dispose();
       }
-
-      const zoneCells = [];
-      const pushCell = (r, c, isEdge, heightM) => {
-        const x = gridToLocalX(c);
-        const z = gridToLocalZ(r);
-        const groundY = elevToLocalY(elevAtRC(r, c), exaggerate);
-        // Same vertical scale as the terrain mesh: 1 m of canopy = 1 m of
-        // relief. Cap so a bad CHM cell can't lift the carpet off the land.
-        const liftU = Math.min(
-          Math.max(heightM, 0.5) * heightScale * exaggerate,
-          meshSize * 0.22 * exaggerate
-        );
-        zoneCells.push({ r, c, x, groundY, z, isEdge, heightLiftU: liftU });
-      };
-
-      if (zoneRings.length) {
-        for (const { zone, ring, inset } of zoneRings) {
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const lng = west + (c / (cols - 1)) * (east - west);
-              const lat = north - (r / (rows - 1)) * (north - south);
-              if (!pointInPolygon2D(lng, lat, ring)) continue;
-              const isEdge = !pointInPolygon2D(lng, lat, inset);
-              const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
-              pushCell(r, c, isEdge, Math.max(chmH, 0.5));
-            }
-          }
-        }
-      } else if (report?.canopy?.chm) {
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols);
-            if (chmH == null || chmH < 0.75) continue;
-            pushCell(r, c, false, chmH);
-          }
-        }
-      }
-      if (!zoneCells.length) return;
-
-      renderDrapedForestTexture(groupForest, zoneCells, meshW, meshD, cols, rows, pbr);
     };
     buildForestTexture();
 
+    // Every detected tree as a 3D model (nature-kit CC0 GLBs scaled to the
+    // tree's measured height), dense woodlot included. Until the GLB
+    // templates resolve — or if GLTFLoader/WebGL can't — the cross-billboard
+    // impostors stand in so the parcel is never tree-less.
     const buildSparseTrees = () => {
       while (groupTrees.children.length) {
         const c = groupTrees.children[0];
         groupTrees.remove(c);
-        c.geometry?.dispose();
-        c.material?.dispose();
+        c.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
       }
       const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
       if (!instances.length) return;
-      const denseRings = denseCanopyZones.map((z) => z.geometry.coordinates[0]);
-      const denseInsets = denseRings.map((ring) => insetPolygon(ring, 0.72));
-      const sparse = [];
-      for (const t of instances) {
-        const lat = t.x, lng = t.y;
-        let deepInterior = false;
-        for (let i = 0; i < denseRings.length; i++) {
-          if (pointInPolygon2D(lng, lat, denseRings[i]) && pointInPolygon2D(lng, lat, denseInsets[i])) {
-            deepInterior = true;
-            break;
-          }
-        }
-        if (!deepInterior) sparse.push(t);
+      const sorted = [...instances].sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      if (pbr.treeTemplates && (pbr.treeTemplates.conifer || pbr.treeTemplates.deciduous)) {
+        renderNearTierTreeGeometry(groupTrees, sorted.slice(0, TREE_LOD.maxTrees3d), pbr.treeTemplates, {
+          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
+        });
+        return;
       }
-      // Near-tier trees (close to a structure) get full GLB geometry via
-      // buildNearTrees() instead — excluded here so they're never rendered
-      // twice. Computed from the same isNearBuilding() predicate buildNearTrees
-      // uses, so the two tiers stay mutually exclusive regardless of which one
-      // finishes loading its (async) assets first.
-      const mid = sparse.filter((t) => !isNearBuilding(t));
-      mid.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
-      renderPhotorealTreeBillboards(groupTrees, mid.slice(0, 120), {
+      renderPhotorealTreeBillboards(groupTrees, sorted.slice(0, 200), {
         latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
       });
     };
@@ -3549,20 +3534,15 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // (billboard-impostor-trees-instructions.md, Step 3.1). No-ops until
     // pbr.treeTemplates is populated by loadTreeImpostorAssets(); called again
     // once that resolves (see the loadPhotorealPbr().then() below).
+    // Near-tier pass retired — buildSparseTrees() draws every tree as 3D
+    // geometry. Kept as a clear-only no-op so the existing call sites and the
+    // "trees" layer toggle (which also covers groupNearTrees) stay valid.
     const buildNearTrees = () => {
       for (let i = groupNearTrees.children.length - 1; i >= 0; i--) {
         const c = groupNearTrees.children[i];
         groupNearTrees.remove(c);
         c.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
       }
-      if (!pbr.treeTemplates || !buildingCentroidsLatLon.length) return;
-      const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
-      if (!instances.length) return;
-      const near = instances.filter(isNearBuilding);
-      near.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
-      renderNearTierTreeGeometry(groupNearTrees, near.slice(0, TREE_LOD.nearTierMaxCount), pbr.treeTemplates, {
-        latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
-      });
     };
     buildNearTrees();
 
@@ -3614,6 +3594,17 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         groupRoads.add(mesh);
       }
     };
+
+    document.querySelectorAll(`[data-terrain-walk="${ctrlId}"]`).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        try {
+          openWalkViewer(report, { roads: () => roadsGeoJSON, prior: speciesPrior });
+        } catch (e) {
+          console.warn('walk viewer failed', e);
+          setError(`Walk view failed: ${e.message}`);
+        }
+      });
+    });
 
     // Fetch roads data async, then build
     fetch('/api/roads', {
@@ -3932,17 +3923,28 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     const buildHeatmap = (mode) => paintTerrainIncidence(mode);
 
+    // Sun positions in scene space (+x = east, +z = south, y = up — row 0 of
+    // the DEM is bbox.north and sits at z = −meshD/2). Morning sun rises in
+    // the east (+x), noon sits due south (+z) at the season's elevation,
+    // afternoon sun is in the west (−x). (The previous table was mirrored
+    // east–west and put the spring/summer noon sun north of the parcel.)
+    const sunPos = (azimuthDeg, elevationDeg, dist = meshSize * 2.5) => {
+      const az = (azimuthDeg * Math.PI) / 180;
+      const el = (elevationDeg * Math.PI) / 180;
+      // azimuth clockwise from north: north → −z, east → +x.
+      return [dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el), -dist * Math.cos(el) * Math.cos(az)];
+    };
     const shadowPos = {
       default: [meshSize * 0.5, meshSize * 2, meshSize * 0.3],
-      'spring-am': [-meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
-      'spring-noon': [0, meshSize * 2.2, -meshSize * 0.15],
-      'spring-pm': [meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
-      'summer-am': [-meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
-      'summer-noon': [0, meshSize * 2.6, 0],
-      'summer-pm': [meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
-      'winter-am': [-meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
-      'winter-noon': [0, meshSize * 0.85, meshSize * 0.55],
-      'winter-pm': [meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
+      'spring-am': sunPos(110, 25),
+      'spring-noon': sunPos(180, 37),
+      'spring-pm': sunPos(250, 25),
+      'summer-am': sunPos(95, 30),
+      'summer-noon': sunPos(180, 60),
+      'summer-pm': sunPos(265, 30),
+      'winter-am': sunPos(140, 8),
+      'winter-noon': sunPos(180, 13),
+      'winter-pm': sunPos(220, 8),
     };
     document.querySelectorAll(`[data-terrain-heatmap="${ctrlId}"]`).forEach((sel) => {
       sel.addEventListener('change', () => buildHeatmap(sel.value));
@@ -4000,9 +4002,48 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     buildContours();
 
     // Animation loop
+    // N/E/S/W labels at the four terrain edges (sprites always face the camera).
+    const groupCompassLabels = new THREE.Group(); groupCompassLabels.name = 'compass-labels';
+    scene.add(groupCompassLabels);
+    const buildCompassLabels = () => {
+      while (groupCompassLabels.children.length) {
+        const c = groupCompassLabels.children[0];
+        groupCompassLabels.remove(c);
+        c.material?.map?.dispose(); c.material?.dispose();
+      }
+      const y = elevToLocalY(zMin + relief, exaggerate) + Math.max(meshW, meshD) * 0.03;
+      const pad = Math.max(meshW, meshD) * 0.06;
+      const size = Math.max(meshW, meshD) * 0.09;
+      const labels = [
+        ['N', 0, -meshD / 2 - pad, '#e24a3b'],
+        ['S', 0, meshD / 2 + pad, '#f3ede0'],
+        ['E', meshW / 2 + pad, 0, '#f3ede0'],
+        ['W', -meshW / 2 - pad, 0, '#f3ede0'],
+      ];
+      for (const [text, x, z, color] of labels) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath(); ctx.arc(64, 64, 54, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(10,15,20,0.78)'; ctx.fill();
+        ctx.lineWidth = 4; ctx.strokeStyle = color; ctx.stroke();
+        ctx.fillStyle = color; ctx.font = '700 72px IBM Plex Mono, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(text, 64, 68);
+        const tex = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+        sprite.renderOrder = 40;
+        sprite.scale.set(size, size, 1);
+        sprite.position.set(x, y, z);
+        groupCompassLabels.add(sprite);
+      }
+    };
+    buildCompassLabels();
+
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       controls.update();
+      updateCompass();
       renderer.render(scene, camera);
     };
     animate();
@@ -4022,6 +4063,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // Disposal
     el._eeTerrain = {
+      scene, // exposed for diagnostics (e.g. headless layer audits)
       dispose() {
         if (animationId) cancelAnimationFrame(animationId);
         window.removeEventListener('resize', onResize);
@@ -4035,6 +4077,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           }
         });
         if (pondTimer) clearInterval(pondTimer);
+        compassEl.remove();
         renderer.dispose();
         el._eeTerrain = null;
       },
@@ -4067,6 +4110,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildBuildings();
         buildPlantingZones();
         buildPondWater();
+        buildCompassLabels();
         buildPlanningOverlay();
       });
     }
@@ -4402,7 +4446,22 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     : null);
   if (!bbox || bbox.length !== 4 || !features.length) return { setVisible() {}, dispose() {} };
   const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
-  const point = ([lng, lat], lift = 0.6) => {
+  // Vertical offsets below are in METRES and scaled exactly like the terrain
+  // relief ((z - zMin) * heightScale * exag), so a drape sits on the surface
+  // and a building is building-height. (They were raw scene units before —
+  // on a 10-unit mesh with ~0.1 units of relief, a 0.35-unit "lift" floated
+  // water bodies in the sky.) Horizontal sizes are true metres via mPerU.
+  const mToU = () => opts.heightScale * opts.exaggerate();
+  const midLatRad = ((bbox[1] + bbox[3]) / 2) * Math.PI / 180;
+  const mPerU = ((bbox[2] - bbox[0]) * 111_320 * Math.cos(midLatRad)) / Math.max(opts.meshW, 1e-9);
+  const insideBbox = ([lng, lat]) => lng >= bbox[0] && lng <= bbox[2] && lat >= bbox[1] && lat <= bbox[3];
+  const point = ([lng, lat], liftM = 0.3) => {
+    // Clamp to the terrain extent: mapped features (water bodies, wetlands)
+    // often continue past the parcel bbox, and a polygon drawn beyond the
+    // mesh edge has no ground under it — it reads as a slab floating in the
+    // sky off the north edge.
+    lng = Math.max(bbox[0], Math.min(bbox[2], lng));
+    lat = Math.max(bbox[1], Math.min(bbox[3], lat));
     const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
     // Terrain mesh (PlaneGeometry rotated -90° about X) places north at z=-meshD/2
     // and south at z=+meshD/2 — mirror latitude so features align with the parcel.
@@ -4411,13 +4470,13 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const row = Math.max(0, Math.min(opts.rows - 1, Math.round((1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1))));
     const elev = Number(opts.elevations[row * opts.cols + col]);
     // Match the terrain mesh elevation scale: (z - zMin) * heightScale * exag
-    const y = Number.isFinite(elev) ? (elev - opts.zMin) * opts.heightScale * opts.exaggerate() + lift : lift;
+    const y = (Number.isFinite(elev) ? (elev - opts.zMin) : 0) * mToU() + liftM * mToU();
     return new THREE.Vector3(x, y, z);
   };
   const polygonMesh = (ring, type) => {
-    const base = ring.map((c) => point(c, 0.35));
-    const height = type === 'building' ? 4 : 0.35;
-    const top = ring.map((c) => point(c, 0.35 + height));
+    const base = ring.map((c) => point(c, 0.15));
+    const heightM = type === 'building' ? 4 : 0.25;
+    const top = ring.map((c) => point(c, 0.15 + heightM));
     const vertices = [];
     const pushTri = (a, b, c) => vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     for (let i = 1; i < base.length - 2; i++) pushTri(top[0], top[i], top[i + 1]);
@@ -4434,12 +4493,17 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const type = feature.feature_type;
     const layer = feature.layer || feature.priority_group || type;
     const geom = feature.geometry;
+    // Skip features with no vertex inside the terrain extent.
+    const verts = geom?.type === 'Point' ? [geom.coordinates] : geom?.type === 'LineString' ? geom.coordinates : geom?.type === 'Polygon' ? (geom.coordinates?.[0] || []) : [];
+    if (!verts.some(insideBbox)) continue;
     let object = null;
     if (geom.type === 'Point') {
-      object = new THREE.Mesh(new THREE.BoxGeometry(1.5, type === 'building' ? 3 : 1.2, 1.5), material(type));
-      object.position.copy(point(geom.coordinates, type === 'building' ? 1.5 : 0.8));
+      const wU = 3 / mPerU; // 3 m marker
+      const hU = (type === 'building' ? 4 : 2) * mToU();
+      object = new THREE.Mesh(new THREE.BoxGeometry(wU, hU, wU), material(type));
+      object.position.copy(point(geom.coordinates, (type === 'building' ? 4 : 2) / 2));
     } else if (geom.type === 'LineString') {
-      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.8))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
+      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.5))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
     } else if (geom.type === 'Polygon') {
       const ring = geom.coordinates?.[0] || [];
       if (ring.length < 3) continue;
@@ -4664,6 +4728,32 @@ const TREE_GLB_ASSETS = {
 
 const _glbTemplateCache = new Map();
 /** Load (and cache) a GLB's scene graph as a reusable clone template. */
+/**
+ * The nature-kit GLBs ship with metallicFactor 1 (near-black under a plain
+ * directional/hemisphere light) and a stylised teal/salmon palette. Make
+ * them matte and recolour by material role: leaves → natural greens (conifer
+ * darker, deciduous lighter), bark/trunk → brown. Material names in the
+ * pack: "leafsDark"/"leafs…" for foliage, "woodBark…" for trunks.
+ */
+function matteTreeMaterials(root, kind = 'deciduous') {
+  const leaf = kind === 'conifer' ? 0x2f5d3a : 0x4f8f3a;
+  root.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    o.material = (Array.isArray(o.material) ? mats : mats[0] ? mats[0] : o.material);
+    for (let i = 0; i < mats.length; i++) {
+      const m = mats[i].clone(); // never recolour a shared template material in place twice
+      const name = String(m.name || '').toLowerCase();
+      if ('metalness' in m) { m.metalness = 0; m.roughness = 0.9; }
+      if (/leaf|leav|foliage|needle/.test(name)) m.color.setHex(leaf);
+      else if (/wood|bark|trunk/.test(name)) m.color.setHex(0x6b4a2e);
+      m.needsUpdate = true;
+      mats[i] = m;
+    }
+    if (mats.length) o.material = Array.isArray(o.material) ? mats : mats[0];
+  });
+  return root;
+}
+
 function loadTreeGlbTemplate(url) {
   if (_glbTemplateCache.has(url)) return _glbTemplateCache.get(url);
   const p = new Promise((resolve) => {
@@ -4814,7 +4904,7 @@ function renderNearTierTreeGeometry(group, trees, templates, opts) {
     const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
     const scale = hU / srcH;
 
-    const model = template.clone(true);
+    const model = matteTreeMaterials(template.clone(true), kind);
     model.scale.setScalar(scale);
     const p = latLonToLocal(t.x, t.y);
     model.position.set(p.x, p.y - box.min.y * scale, p.z);

@@ -4,18 +4,16 @@
  * Dataset: High Resolution Digital Elevation Model Mosaic
  * https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b
  * STAC: hrdem-mosaic-1m / hrdem-mosaic-2m / hrdem-lidar
- * CRS: EPSG:3979 (NAD83 CSRS / Canada Atlas Lambert), 1–2 m cells
+ * CRS: EPSG:3979 (NAD83 CSRS / Canada Atlas Lambert), 1–2 m cells — resampled
+ * here onto a north-up lat/lon grid (cog-lonlat-grid.js).
  */
 
-import { fromUrl } from 'geotiff';
-import { lonLatToEpsg3979 } from './vegetation-indices.js';
+import { sampleCogToLonLatGrid } from './cog-lonlat-grid.js';
 
 const STAC_SEARCH = 'https://datacube.services.geo.ca/stac/api/search';
 const HRDEM_DATASET =
   'https://open.canada.ca/data/en/dataset/0fe65119-e96e-4a57-8bfe-9d9245fba06b';
 const FETCH_MS = 28_000;
-const NODATA_LO = -1000;
-const NODATA_HI = 9000;
 
 /**
  * @param {{ west:number,south:number,east:number,north:number }} bbox
@@ -43,7 +41,9 @@ export async function sampleHrdemTerrain(bbox, opts = {}) {
   }
 
   try {
-    const grid = await sampleCogWindow(assetUrl, bbox, size);
+    // North-up lat/lon grid — see cog-lonlat-grid.js for why the raw
+    // EPSG:3979 window must not be used directly.
+    const grid = await sampleCogToLonLatGrid(assetUrl, bbox, size);
     if (!grid || !grid.elevations_m?.some((z) => z != null)) {
       return empty('no_samples');
     }
@@ -55,7 +55,10 @@ export async function sampleHrdemTerrain(bbox, opts = {}) {
       item_id: itemId,
       asset: prefer,
       resolution_m: collection?.includes('1m') ? 1 : 2,
-      crs: 'EPSG:3979',
+      source_crs: 'EPSG:3979',
+      crs: 'EPSG:4326',
+      grid_orientation: grid.grid_orientation,
+      source_grid_convergence_deg: grid.source_grid_convergence_deg,
       rows: grid.rows,
       cols: grid.cols,
       elevations_m: grid.elevations_m,
@@ -126,109 +129,6 @@ async function findHrdemAsset(bbox, prefer) {
     };
   }
   return null;
-}
-
-/**
- * Read a rectangular window from the COG covering the WGS84 bbox, downsample to size×size.
- */
-async function sampleCogWindow(href, bbox, size) {
-  const tiff = await fromUrl(href, { allowFullFile: false, blockSize: 65536 });
-  const img = await tiff.getImage();
-  const origin = img.getOrigin();
-  const res = img.getResolution();
-  const resX = res[0];
-  const resY = res[1]; // negative
-  const w = img.getWidth();
-  const h = img.getHeight();
-
-  // Project bbox corners to EPSG:3979
-  const corners = [
-    lonLatToEpsg3979(bbox.west, bbox.south),
-    lonLatToEpsg3979(bbox.east, bbox.south),
-    lonLatToEpsg3979(bbox.west, bbox.north),
-    lonLatToEpsg3979(bbox.east, bbox.north),
-  ];
-  const xs = corners.map((c) => c[0]);
-  const ys = corners.map((c) => c[1]);
-  let x0 = Math.min(...xs);
-  let x1 = Math.max(...xs);
-  let y0 = Math.min(...ys);
-  let y1 = Math.max(...ys);
-  // Pad slightly
-  const pad = Math.max((x1 - x0) * 0.05, (y1 - y0) * 0.05, 20);
-  x0 -= pad;
-  x1 += pad;
-  y0 -= pad;
-  y1 += pad;
-
-  let c0 = Math.floor((x0 - origin[0]) / resX);
-  let c1 = Math.ceil((x1 - origin[0]) / resX);
-  let r0 = Math.floor((y1 - origin[1]) / resY); // north → smaller row when resY < 0
-  let r1 = Math.ceil((y0 - origin[1]) / resY);
-  if (r0 > r1) [r0, r1] = [r1, r0];
-
-  c0 = clamp(c0, 0, w - 1);
-  c1 = clamp(c1, c0 + 1, w);
-  r0 = clamp(r0, 0, h - 1);
-  r1 = clamp(r1, r0 + 1, h);
-
-  // Cap raw read size (~4 M cells max)
-  const maxSide = 512;
-  let winW = c1 - c0;
-  let winH = r1 - r0;
-  if (winW > maxSide || winH > maxSide) {
-    const scale = Math.max(winW / maxSide, winH / maxSide);
-    const nc = Math.floor(winW / scale);
-    const nr = Math.floor(winH / scale);
-    const midC = Math.floor((c0 + c1) / 2);
-    const midR = Math.floor((r0 + r1) / 2);
-    c0 = clamp(midC - Math.floor(nc / 2), 0, w - 1);
-    c1 = clamp(c0 + nc, 1, w);
-    r0 = clamp(midR - Math.floor(nr / 2), 0, h - 1);
-    r1 = clamp(r0 + nr, 1, h);
-    winW = c1 - c0;
-    winH = r1 - r0;
-  }
-
-  const rasters = await Promise.race([
-    img.readRasters({
-      window: [c0, r0, c1, r1],
-      width: size,
-      height: size,
-      resampleMethod: 'bilinear',
-    }),
-    new Promise((_, reject) => {
-      setTimeout(() => reject(new Error('HRDEM raster read timed out')), 14_000);
-    }),
-  ]);
-  const band = rasters[0];
-  const elevations_m = new Array(size * size);
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  let n = 0;
-  for (let i = 0; i < band.length; i++) {
-    let z = band[i];
-    if (z == null || !Number.isFinite(z) || z < NODATA_LO || z > NODATA_HI) {
-      elevations_m[i] = null;
-      continue;
-    }
-    z = round1(z);
-    elevations_m[i] = z;
-    min = Math.min(min, z);
-    max = Math.max(max, z);
-    sum += z;
-    n++;
-  }
-  if (!n) return null;
-  return {
-    rows: size,
-    cols: size,
-    elevations_m,
-    min: round1(min),
-    max: round1(max),
-    mean: round1(sum / n),
-  };
 }
 
 function empty(code, message) {
