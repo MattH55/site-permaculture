@@ -4,6 +4,7 @@
  */
 
 import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset, priorFromSubregion } from './tree-scale.js';
+import { openWalkViewer } from './walk-viewer.js';
 
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
@@ -2448,11 +2449,6 @@ function terrain3dBlock(id, report) {
         </label>
         ${report?.canopy?.available && ((report.canopy.render_zones || []).length || report.canopy.tree_count) ? `
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
-          <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="forest-texture" />
-          <span style="display:inline-block;width:12px;height:12px;background:#3d8a52;border-radius:3px;vertical-align:middle"></span>
-          Forest canopy
-        </label>
-        <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
           <span style="display:inline-block;width:10px;height:14px;background:#2f6e40;border-radius:2px 2px 1px 1px;vertical-align:middle"></span>
           Trees
@@ -2508,6 +2504,7 @@ function terrain3dBlock(id, report) {
           <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
+        <button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>
       </div>
       <div class="terrain-planning-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.9rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem;font-weight:600">
@@ -3347,7 +3344,8 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // the near-tier polygon budget are each one obvious place to retune.
     const TREE_LOD = {
       nearMaxDistM: 25,      // ground distance from a structure that still counts as "near"
-      nearTierMaxCount: 40,  // full-geometry GLB budget — the tier a naive impostor swap would blow first
+      nearTierMaxCount: 40,  // (legacy) near-tier budget — all trees are 3D now, see maxTrees3d
+      maxTrees3d: 600,       // 3D-model budget for the dashboard twin (canopy.js emits ≤ 400)
     };
     const buildingCentroidsLatLon = (report?.buildings?.available ? (report.buildings.buildings || []) : [])
       .map((b) => {
@@ -3494,6 +3492,9 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // height in scene units and reading as giant objects. The canopy is a
     // textured surface sitting on the terrain, lifted by CHM using the same
     // heightScale as hills so it stays in visual proportion with the land.
+    // The dense-canopy "texture carpet" (a drape lifted to canopy height) is
+    // retired: every detected tree is now a 3D model (buildSparseTrees), so
+    // the carpet only hid them and read as a slab floating over the woodlot.
     const buildForestTexture = () => {
       while (groupForest.children.length) {
         const c = groupForest.children[0];
@@ -3501,80 +3502,29 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         c.geometry?.dispose();
         c.material?.dispose();
       }
-
-      const zoneCells = [];
-      const pushCell = (r, c, isEdge, heightM) => {
-        const x = gridToLocalX(c);
-        const z = gridToLocalZ(r);
-        const groundY = elevToLocalY(elevAtRC(r, c), exaggerate);
-        // Same vertical scale as the terrain mesh: 1 m of canopy = 1 m of
-        // relief. Cap so a bad CHM cell can't lift the carpet off the land.
-        const liftU = Math.min(
-          Math.max(heightM, 0.5) * heightScale * exaggerate,
-          meshSize * 0.22 * exaggerate
-        );
-        zoneCells.push({ r, c, x, groundY, z, isEdge, heightLiftU: liftU });
-      };
-
-      if (zoneRings.length) {
-        for (const { zone, ring, inset } of zoneRings) {
-          for (let r = 0; r < rows; r++) {
-            for (let c = 0; c < cols; c++) {
-              const lng = west + (c / (cols - 1)) * (east - west);
-              const lat = north - (r / (rows - 1)) * (north - south);
-              if (!pointInPolygon2D(lng, lat, ring)) continue;
-              const isEdge = !pointInPolygon2D(lng, lat, inset);
-              const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols) ?? zone.avg_canopy_height_m;
-              pushCell(r, c, isEdge, Math.max(chmH, 0.5));
-            }
-          }
-        }
-      } else if (report?.canopy?.chm) {
-        for (let r = 0; r < rows; r++) {
-          for (let c = 0; c < cols; c++) {
-            const chmH = sampleChmHeight(report?.canopy?.chm, r, c, rows, cols);
-            if (chmH == null || chmH < 0.75) continue;
-            pushCell(r, c, false, chmH);
-          }
-        }
-      }
-      if (!zoneCells.length) return;
-
-      renderDrapedForestTexture(groupForest, zoneCells, meshW, meshD, cols, rows, pbr);
     };
     buildForestTexture();
 
+    // Every detected tree as a 3D model (nature-kit CC0 GLBs scaled to the
+    // tree's measured height), dense woodlot included. Until the GLB
+    // templates resolve — or if GLTFLoader/WebGL can't — the cross-billboard
+    // impostors stand in so the parcel is never tree-less.
     const buildSparseTrees = () => {
       while (groupTrees.children.length) {
         const c = groupTrees.children[0];
         groupTrees.remove(c);
-        c.geometry?.dispose();
-        c.material?.dispose();
+        c.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
       }
       const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
       if (!instances.length) return;
-      const denseRings = denseCanopyZones.map((z) => z.geometry.coordinates[0]);
-      const denseInsets = denseRings.map((ring) => insetPolygon(ring, 0.72));
-      const sparse = [];
-      for (const t of instances) {
-        const lat = t.x, lng = t.y;
-        let deepInterior = false;
-        for (let i = 0; i < denseRings.length; i++) {
-          if (pointInPolygon2D(lng, lat, denseRings[i]) && pointInPolygon2D(lng, lat, denseInsets[i])) {
-            deepInterior = true;
-            break;
-          }
-        }
-        if (!deepInterior) sparse.push(t);
+      const sorted = [...instances].sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      if (pbr.treeTemplates && (pbr.treeTemplates.conifer || pbr.treeTemplates.deciduous)) {
+        renderNearTierTreeGeometry(groupTrees, sorted.slice(0, TREE_LOD.maxTrees3d), pbr.treeTemplates, {
+          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
+        });
+        return;
       }
-      // Near-tier trees (close to a structure) get full GLB geometry via
-      // buildNearTrees() instead — excluded here so they're never rendered
-      // twice. Computed from the same isNearBuilding() predicate buildNearTrees
-      // uses, so the two tiers stay mutually exclusive regardless of which one
-      // finishes loading its (async) assets first.
-      const mid = sparse.filter((t) => !isNearBuilding(t));
-      mid.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
-      renderPhotorealTreeBillboards(groupTrees, mid.slice(0, 120), {
+      renderPhotorealTreeBillboards(groupTrees, sorted.slice(0, 200), {
         latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
       });
     };
@@ -3584,20 +3534,15 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     // (billboard-impostor-trees-instructions.md, Step 3.1). No-ops until
     // pbr.treeTemplates is populated by loadTreeImpostorAssets(); called again
     // once that resolves (see the loadPhotorealPbr().then() below).
+    // Near-tier pass retired — buildSparseTrees() draws every tree as 3D
+    // geometry. Kept as a clear-only no-op so the existing call sites and the
+    // "trees" layer toggle (which also covers groupNearTrees) stay valid.
     const buildNearTrees = () => {
       for (let i = groupNearTrees.children.length - 1; i >= 0; i--) {
         const c = groupNearTrees.children[i];
         groupNearTrees.remove(c);
         c.traverse?.((o) => { o.geometry?.dispose?.(); o.material?.dispose?.(); });
       }
-      if (!pbr.treeTemplates || !buildingCentroidsLatLon.length) return;
-      const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
-      if (!instances.length) return;
-      const near = instances.filter(isNearBuilding);
-      near.sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
-      renderNearTierTreeGeometry(groupNearTrees, near.slice(0, TREE_LOD.nearTierMaxCount), pbr.treeTemplates, {
-        latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
-      });
     };
     buildNearTrees();
 
@@ -3649,6 +3594,17 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         groupRoads.add(mesh);
       }
     };
+
+    document.querySelectorAll(`[data-terrain-walk="${ctrlId}"]`).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        try {
+          openWalkViewer(report, { roads: () => roadsGeoJSON, prior: speciesPrior });
+        } catch (e) {
+          console.warn('walk viewer failed', e);
+          setError(`Walk view failed: ${e.message}`);
+        }
+      });
+    });
 
     // Fetch roads data async, then build
     fetch('/api/roads', {
@@ -4498,7 +4454,14 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
   const mToU = () => opts.heightScale * opts.exaggerate();
   const midLatRad = ((bbox[1] + bbox[3]) / 2) * Math.PI / 180;
   const mPerU = ((bbox[2] - bbox[0]) * 111_320 * Math.cos(midLatRad)) / Math.max(opts.meshW, 1e-9);
+  const insideBbox = ([lng, lat]) => lng >= bbox[0] && lng <= bbox[2] && lat >= bbox[1] && lat <= bbox[3];
   const point = ([lng, lat], liftM = 0.3) => {
+    // Clamp to the terrain extent: mapped features (water bodies, wetlands)
+    // often continue past the parcel bbox, and a polygon drawn beyond the
+    // mesh edge has no ground under it — it reads as a slab floating in the
+    // sky off the north edge.
+    lng = Math.max(bbox[0], Math.min(bbox[2], lng));
+    lat = Math.max(bbox[1], Math.min(bbox[3], lat));
     const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
     // Terrain mesh (PlaneGeometry rotated -90° about X) places north at z=-meshD/2
     // and south at z=+meshD/2 — mirror latitude so features align with the parcel.
@@ -4530,6 +4493,9 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const type = feature.feature_type;
     const layer = feature.layer || feature.priority_group || type;
     const geom = feature.geometry;
+    // Skip features with no vertex inside the terrain extent.
+    const verts = geom?.type === 'Point' ? [geom.coordinates] : geom?.type === 'LineString' ? geom.coordinates : geom?.type === 'Polygon' ? (geom.coordinates?.[0] || []) : [];
+    if (!verts.some(insideBbox)) continue;
     let object = null;
     if (geom.type === 'Point') {
       const wU = 3 / mPerU; // 3 m marker
@@ -4762,11 +4728,24 @@ const TREE_GLB_ASSETS = {
 
 const _glbTemplateCache = new Map();
 /** Load (and cache) a GLB's scene graph as a reusable clone template. */
+/**
+ * The nature-kit GLBs ship with metallicFactor 1, which under a plain
+ * directional/hemisphere light (no environment map) renders as near-black.
+ * They are painted wood and leaves — make them matte.
+ */
+function matteTreeMaterials(root) {
+  root.traverse((o) => {
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    for (const m of mats) { if ('metalness' in m) { m.metalness = 0; m.roughness = 0.85; m.needsUpdate = true; } }
+  });
+  return root;
+}
+
 function loadTreeGlbTemplate(url) {
   if (_glbTemplateCache.has(url)) return _glbTemplateCache.get(url);
   const p = new Promise((resolve) => {
     if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') return resolve(null);
-    new THREE.GLTFLoader().load(url, (gltf) => resolve(gltf.scene), undefined, () => resolve(null));
+    new THREE.GLTFLoader().load(url, (gltf) => resolve(matteTreeMaterials(gltf.scene)), undefined, () => resolve(null));
   });
   _glbTemplateCache.set(url, p);
   return p;
