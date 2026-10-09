@@ -2840,6 +2840,41 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     el.appendChild(renderer.domElement);
 
+    // --- Compass: a rose in the corner that turns with the camera so "N"
+    // always points to scene north (−z), plus N/E/S/W labels pinned to the
+    // terrain edges so orientation is readable in screenshots and the PDF.
+    const compassEl = document.createElement('div');
+    compassEl.className = 'terrain-compass';
+    compassEl.setAttribute('aria-label', 'Compass — N points to true north');
+    compassEl.style.cssText = 'position:absolute;top:8px;right:8px;width:56px;height:56px;pointer-events:none;z-index:3;';
+    compassEl.innerHTML = `
+      <svg viewBox="-32 -32 64 64" width="56" height="56" role="img" aria-hidden="true">
+        <circle r="29" fill="rgba(10,15,20,0.72)" stroke="rgba(255,255,255,0.55)" stroke-width="1"/>
+        <g data-compass-rose>
+          <polygon points="0,-24 6,0 0,-4 -6,0" fill="#e24a3b"/>
+          <polygon points="0,24 6,0 0,4 -6,0" fill="#e8e0d0"/>
+          <text x="0" y="-13" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="9" font-weight="700" fill="#fff">N</text>
+          <text x="15" y="3.5" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">E</text>
+          <text x="0" y="19" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">S</text>
+          <text x="-15" y="3.5" text-anchor="middle" font-family="IBM Plex Mono,monospace" font-size="8" fill="#ddd">W</text>
+        </g>
+      </svg>`;
+    el.appendChild(compassEl);
+    const compassRose = compassEl.querySelector('[data-compass-rose]');
+    let lastCompassDeg = null;
+    const updateCompass = () => {
+      if (!compassRose || !camera) return;
+      // Heading of scene north on screen: with the camera south of the target
+      // (+z) looking north, N is up; camera east (+x) → N points right.
+      const dx = camera.position.x - controls.target.x;
+      const dz = camera.position.z - controls.target.z;
+      const deg = Math.round((Math.atan2(dx, dz) * 180) / Math.PI);
+      if (deg !== lastCompassDeg) {
+        lastCompassDeg = deg;
+        compassRose.setAttribute('transform', `rotate(${deg})`);
+      }
+    };
+
     // OrbitControls for mouse/touch interaction
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.target.set(0, relief * heightScale * exaggerate * 0.3, 0);
@@ -3932,17 +3967,28 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     const buildHeatmap = (mode) => paintTerrainIncidence(mode);
 
+    // Sun positions in scene space (+x = east, +z = south, y = up — row 0 of
+    // the DEM is bbox.north and sits at z = −meshD/2). Morning sun rises in
+    // the east (+x), noon sits due south (+z) at the season's elevation,
+    // afternoon sun is in the west (−x). (The previous table was mirrored
+    // east–west and put the spring/summer noon sun north of the parcel.)
+    const sunPos = (azimuthDeg, elevationDeg, dist = meshSize * 2.5) => {
+      const az = (azimuthDeg * Math.PI) / 180;
+      const el = (elevationDeg * Math.PI) / 180;
+      // azimuth clockwise from north: north → −z, east → +x.
+      return [dist * Math.cos(el) * Math.sin(az), dist * Math.sin(el), -dist * Math.cos(el) * Math.cos(az)];
+    };
     const shadowPos = {
       default: [meshSize * 0.5, meshSize * 2, meshSize * 0.3],
-      'spring-am': [-meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
-      'spring-noon': [0, meshSize * 2.2, -meshSize * 0.15],
-      'spring-pm': [meshSize * 0.9, meshSize * 0.7, meshSize * 0.2],
-      'summer-am': [-meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
-      'summer-noon': [0, meshSize * 2.6, 0],
-      'summer-pm': [meshSize * 1.0, meshSize * 1.1, meshSize * 0.25],
-      'winter-am': [-meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
-      'winter-noon': [0, meshSize * 0.85, meshSize * 0.55],
-      'winter-pm': [meshSize * 0.7, meshSize * 0.35, meshSize * 0.45],
+      'spring-am': sunPos(110, 25),
+      'spring-noon': sunPos(180, 37),
+      'spring-pm': sunPos(250, 25),
+      'summer-am': sunPos(95, 30),
+      'summer-noon': sunPos(180, 60),
+      'summer-pm': sunPos(265, 30),
+      'winter-am': sunPos(140, 8),
+      'winter-noon': sunPos(180, 13),
+      'winter-pm': sunPos(220, 8),
     };
     document.querySelectorAll(`[data-terrain-heatmap="${ctrlId}"]`).forEach((sel) => {
       sel.addEventListener('change', () => buildHeatmap(sel.value));
@@ -4000,9 +4046,48 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     buildContours();
 
     // Animation loop
+    // N/E/S/W labels at the four terrain edges (sprites always face the camera).
+    const groupCompassLabels = new THREE.Group(); groupCompassLabels.name = 'compass-labels';
+    scene.add(groupCompassLabels);
+    const buildCompassLabels = () => {
+      while (groupCompassLabels.children.length) {
+        const c = groupCompassLabels.children[0];
+        groupCompassLabels.remove(c);
+        c.material?.map?.dispose(); c.material?.dispose();
+      }
+      const y = elevToLocalY(zMin + relief, exaggerate) + Math.max(meshW, meshD) * 0.03;
+      const pad = Math.max(meshW, meshD) * 0.06;
+      const size = Math.max(meshW, meshD) * 0.09;
+      const labels = [
+        ['N', 0, -meshD / 2 - pad, '#e24a3b'],
+        ['S', 0, meshD / 2 + pad, '#f3ede0'],
+        ['E', meshW / 2 + pad, 0, '#f3ede0'],
+        ['W', -meshW / 2 - pad, 0, '#f3ede0'],
+      ];
+      for (const [text, x, z, color] of labels) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 128; canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.beginPath(); ctx.arc(64, 64, 54, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(10,15,20,0.78)'; ctx.fill();
+        ctx.lineWidth = 4; ctx.strokeStyle = color; ctx.stroke();
+        ctx.fillStyle = color; ctx.font = '700 72px IBM Plex Mono, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(text, 64, 68);
+        const tex = new THREE.CanvasTexture(canvas);
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+        sprite.renderOrder = 40;
+        sprite.scale.set(size, size, 1);
+        sprite.position.set(x, y, z);
+        groupCompassLabels.add(sprite);
+      }
+    };
+    buildCompassLabels();
+
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       controls.update();
+      updateCompass();
       renderer.render(scene, camera);
     };
     animate();
@@ -4022,6 +4107,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // Disposal
     el._eeTerrain = {
+      scene, // exposed for diagnostics (e.g. headless layer audits)
       dispose() {
         if (animationId) cancelAnimationFrame(animationId);
         window.removeEventListener('resize', onResize);
@@ -4035,6 +4121,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
           }
         });
         if (pondTimer) clearInterval(pondTimer);
+        compassEl.remove();
         renderer.dispose();
         el._eeTerrain = null;
       },
@@ -4067,6 +4154,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
         buildBuildings();
         buildPlantingZones();
         buildPondWater();
+        buildCompassLabels();
         buildPlanningOverlay();
       });
     }
@@ -4402,7 +4490,15 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     : null);
   if (!bbox || bbox.length !== 4 || !features.length) return { setVisible() {}, dispose() {} };
   const material = (type) => new THREE.MeshBasicMaterial({ color: colors[type] || 0xaaaaaa, transparent: true, opacity: 0.78, side: THREE.DoubleSide });
-  const point = ([lng, lat], lift = 0.6) => {
+  // Vertical offsets below are in METRES and scaled exactly like the terrain
+  // relief ((z - zMin) * heightScale * exag), so a drape sits on the surface
+  // and a building is building-height. (They were raw scene units before —
+  // on a 10-unit mesh with ~0.1 units of relief, a 0.35-unit "lift" floated
+  // water bodies in the sky.) Horizontal sizes are true metres via mPerU.
+  const mToU = () => opts.heightScale * opts.exaggerate();
+  const midLatRad = ((bbox[1] + bbox[3]) / 2) * Math.PI / 180;
+  const mPerU = ((bbox[2] - bbox[0]) * 111_320 * Math.cos(midLatRad)) / Math.max(opts.meshW, 1e-9);
+  const point = ([lng, lat], liftM = 0.3) => {
     const x = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
     // Terrain mesh (PlaneGeometry rotated -90° about X) places north at z=-meshD/2
     // and south at z=+meshD/2 — mirror latitude so features align with the parcel.
@@ -4411,13 +4507,13 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const row = Math.max(0, Math.min(opts.rows - 1, Math.round((1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1))));
     const elev = Number(opts.elevations[row * opts.cols + col]);
     // Match the terrain mesh elevation scale: (z - zMin) * heightScale * exag
-    const y = Number.isFinite(elev) ? (elev - opts.zMin) * opts.heightScale * opts.exaggerate() + lift : lift;
+    const y = (Number.isFinite(elev) ? (elev - opts.zMin) : 0) * mToU() + liftM * mToU();
     return new THREE.Vector3(x, y, z);
   };
   const polygonMesh = (ring, type) => {
-    const base = ring.map((c) => point(c, 0.35));
-    const height = type === 'building' ? 4 : 0.35;
-    const top = ring.map((c) => point(c, 0.35 + height));
+    const base = ring.map((c) => point(c, 0.15));
+    const heightM = type === 'building' ? 4 : 0.25;
+    const top = ring.map((c) => point(c, 0.15 + heightM));
     const vertices = [];
     const pushTri = (a, b, c) => vertices.push(a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z);
     for (let i = 1; i < base.length - 2; i++) pushTri(top[0], top[i], top[i + 1]);
@@ -4436,10 +4532,12 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const geom = feature.geometry;
     let object = null;
     if (geom.type === 'Point') {
-      object = new THREE.Mesh(new THREE.BoxGeometry(1.5, type === 'building' ? 3 : 1.2, 1.5), material(type));
-      object.position.copy(point(geom.coordinates, type === 'building' ? 1.5 : 0.8));
+      const wU = 3 / mPerU; // 3 m marker
+      const hU = (type === 'building' ? 4 : 2) * mToU();
+      object = new THREE.Mesh(new THREE.BoxGeometry(wU, hU, wU), material(type));
+      object.position.copy(point(geom.coordinates, (type === 'building' ? 4 : 2) / 2));
     } else if (geom.type === 'LineString') {
-      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.8))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
+      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.5))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
     } else if (geom.type === 'Polygon') {
       const ring = geom.coordinates?.[0] || [];
       if (ring.length < 3) continue;

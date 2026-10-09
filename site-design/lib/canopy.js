@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fromUrl } from 'geotiff';
-import { lonLatToEpsg3979 } from './vegetation-indices.js';
+import { sampleCogToLonLatGrid } from './cog-lonlat-grid.js';
 import { cacheKey } from './geo.js';
 import { formFromDimensions } from './avi-species.js';
 
@@ -305,8 +305,8 @@ async function hrdemCanopy(bbox, size, _opts) {
   }
 
   const [dtmGrid, dsmGrid] = await Promise.all([
-    sampleCogWindow(dtm.href, bbox, size),
-    sampleCogWindow(dsm.href, bbox, size),
+    sampleCogToLonLatGrid(dtm.href, bbox, size),
+    sampleCogToLonLatGrid(dsm.href, bbox, size),
   ]);
   if (!dtmGrid || !dsmGrid) return { available: false, error: 'no_samples' };
 
@@ -392,92 +392,6 @@ async function findHrdemAsset(bbox, prefer) {
   return null;
 }
 
-/**
- * Read a rectangular window from a COG covering the WGS84 bbox, downsampled
- * to size×size. (Mirrors hrdem-terrain.js sampling.)
- */
-async function sampleCogWindow(href, bbox, size) {
-  const tiff = await fromUrl(href, { allowFullFile: false, blockSize: 65536 });
-  const img = await tiff.getImage();
-  const origin = img.getOrigin();
-  const res = img.getResolution();
-  const resX = res[0];
-  const resY = res[1];
-  const w = img.getWidth();
-  const h = img.getHeight();
-
-  const corners = [
-    lonLatToEpsg3979(bbox.west, bbox.south),
-    lonLatToEpsg3979(bbox.east, bbox.south),
-    lonLatToEpsg3979(bbox.west, bbox.north),
-    lonLatToEpsg3979(bbox.east, bbox.north),
-  ];
-  const xs = corners.map((c) => c[0]);
-  const ys = corners.map((c) => c[1]);
-  let x0 = Math.min(...xs);
-  let x1 = Math.max(...xs);
-  let y0 = Math.min(...ys);
-  let y1 = Math.max(...ys);
-  const pad = Math.max((x1 - x0) * 0.05, (y1 - y0) * 0.05, 20);
-  x0 -= pad;
-  x1 += pad;
-  y0 -= pad;
-  y1 += pad;
-
-  let c0 = Math.floor((x0 - origin[0]) / resX);
-  let c1 = Math.ceil((x1 - origin[0]) / resX);
-  let r0 = Math.floor((y1 - origin[1]) / resY);
-  let r1 = Math.ceil((y0 - origin[1]) / resY);
-  if (r0 > r1) [r0, r1] = [r1, r0];
-
-  c0 = clamp(c0, 0, w - 1);
-  c1 = clamp(c1, c0 + 1, w);
-  r0 = clamp(r0, 0, h - 1);
-  r1 = clamp(r1, r0 + 1, h);
-
-  const maxSide = 512;
-  let winW = c1 - c0;
-  let winH = r1 - r0;
-  if (winW > maxSide || winH > maxSide) {
-    const scale = Math.max(winW / maxSide, winH / maxSide);
-    const nc = Math.floor(winW / scale);
-    const nr = Math.floor(winH / scale);
-    const midC = Math.floor((c0 + c1) / 2);
-    const midR = Math.floor((r0 + r1) / 2);
-    c0 = clamp(midC - Math.floor(nc / 2), 0, w - 1);
-    c1 = clamp(c0 + nc, 1, w);
-    r0 = clamp(midR - Math.floor(nr / 2), 0, h - 1);
-    r1 = clamp(r0 + nr, 1, h);
-  }
-
-  const rasters = await img.readRasters({
-    window: [c0, r0, c1, r1],
-    width: size,
-    height: size,
-    resampleMethod: 'bilinear',
-  });
-  const band = rasters[0];
-  const elevations_m = new Array(size * size);
-  let min = Infinity;
-  let max = -Infinity;
-  let sum = 0;
-  let n = 0;
-  for (let i = 0; i < band.length; i++) {
-    let z = band[i];
-    if (z == null || !Number.isFinite(z) || z < NODATA_LO || z > NODATA_HI) {
-      elevations_m[i] = null;
-      continue;
-    }
-    z = round1(z);
-    elevations_m[i] = z;
-    min = Math.min(min, z);
-    max = Math.max(max, z);
-    sum += z;
-    n++;
-  }
-  if (!n) return null;
-  return { rows: size, cols: size, elevations_m, min: round1(min), max: round1(max), mean: round1(sum / n) };
-}
 
 /* ------------------------------------------------------------------ */
 /* GEE fallback: Meta/WRI Global Canopy Height                        */
