@@ -148,13 +148,27 @@ export function openWalkViewer(report, opts = {}) {
     scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xffd23f })));
   }
 
-  // Water bodies (mapped) — flat, slightly above ground.
+  // Water bodies (mapped) — clipped to the terrain extent, surface at the
+  // lowest ground inside the polygon (water finds its level); a darker rim
+  // ring reads as the bank.
+  const inExtent = (p) => p.x >= -widthM / 2 && p.x <= widthM / 2 && p.z >= -depthM / 2 && p.z <= depthM / 2;
   for (const wb of report?.surface_water?.water_bodies || []) {
     const r = wb.geometry?.coordinates?.[0];
     if (!r || r.length < 4) continue;
-    const pts2 = r.map(([lon, lat]) => toLocal(lat, lon));
-    const base = Math.min(...pts2.map((p) => heightAt(clampX(p.x), clampZ(p.z))));
-    scene.add(flatPolygon(pts2, base + 0.08, 0x2a9dc9, 0.85));
+    const raw = r.map(([lon, lat]) => toLocal(lat, lon));
+    if (!raw.some(inExtent)) continue;
+    const pts2 = raw.map((p) => ({ x: clampX(p.x), z: clampZ(p.z) }));
+    const base = Math.min(...pts2.map((p) => heightAt(p.x, p.z)));
+    const water = flatPolygon(pts2, base + 0.05, 0x2a7fb5, 0.88);
+    water.userData.feature = 'water_body';
+    scene.add(water);
+  }
+  // WAM-predicted streams — narrow ribbons that follow the ground.
+  for (const st of report?.surface_water?.predicted_streams || []) {
+    const line = st.geometry?.type === 'LineString' ? st.geometry.coordinates : null;
+    if (!line || line.length < 2) continue;
+    const pts = line.map(([lon, lat]) => toLocal(lat, lon)).filter(inExtent);
+    if (pts.length > 1) scene.add(ribbon(pts, 1.5, 0.08, 0x3aa0c8, heightAt));
   }
   // Recommended pond.
   const ps = report?.pond_scenarios;
@@ -168,26 +182,59 @@ export function openWalkViewer(report, opts = {}) {
     const rim = new THREE.Mesh(new THREE.RingGeometry(rM, rM * 1.15, 40), new THREE.MeshLambertMaterial({ color: 0x7a5c3e, side: THREE.DoubleSide }));
     rim.rotation.x = -Math.PI / 2; rim.position.set(p.x, y + 0.12, p.z); scene.add(rim);
   }
-  // Buildings (footprint × height).
+  // Buildings: walls extruded from the detected footprint, roof by type.
+  // Walls stop at the eave on gable roofs and the ridge runs along the long
+  // axis (same rule the dashboard twin uses).
+  const WALL = { siding: 0xd9d2c3, brick: 0x9a5a44, stucco: 0xe4dcc8, metal: 0x9aa3a8, wood: 0xa8865a };
+  const ROOF = { asphalt_shingle: 0x4a4440, metal: 0x6f7b80, tile: 0x8c4a3a, wood: 0x6b4a2e };
+  let buildingCount = 0;
   for (const b of report?.buildings?.buildings || []) {
     const r = b.geometry?.coordinates?.[0] || b.footprint?.coordinates?.[0];
     if (!r || r.length < 4) continue;
-    const pts2 = r.map(([lon, lat]) => toLocal(lat, lon));
-    const base = Math.min(...pts2.map((p) => heightAt(clampX(p.x), clampZ(p.z))));
-    const h = Math.max(Number(b.height_m) || 4, 2.5);
+    const raw = r.map(([lon, lat]) => toLocal(lat, lon));
+    if (!raw.some(inExtent)) continue;
+    const closed = raw[0].x === raw[raw.length - 1].x && raw[0].z === raw[raw.length - 1].z ? raw.slice(0, -1) : raw;
+    const pts2 = closed.map((p) => ({ x: clampX(p.x), z: clampZ(p.z) }));
+    const base = Math.min(...pts2.map((p) => heightAt(p.x, p.z)));
+    const totalH = Math.max(Number(b.height_m) || 4.5, 2.5);
+    const gable = b.roof_type === 'gable' || (b.roof_type == null && totalH >= 4);
+    const wallH = gable ? totalH * 0.72 : totalH;
+    const wallMat = new THREE.MeshLambertMaterial({ color: WALL[b.wall_material] || WALL.siding });
+    const roofMat = new THREE.MeshLambertMaterial({ color: ROOF[b.roof_material] || ROOF.asphalt_shingle, side: THREE.DoubleSide });
     const shape = new THREE.Shape(pts2.map((p) => new THREE.Vector2(p.x, -p.z)));
-    const g = new THREE.ExtrudeGeometry(shape, { depth: h, bevelEnabled: false });
+    const g = new THREE.ExtrudeGeometry(shape, { depth: wallH, bevelEnabled: false });
     g.rotateX(-Math.PI / 2);
-    const m = new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color: 0xb8a892 }));
-    m.position.y = base; scene.add(m);
+    const walls = new THREE.Mesh(g, [wallMat, gable ? wallMat : roofMat]);
+    walls.position.y = base;
+    scene.add(walls);
+    if (gable) {
+      const roof = gableRoof(pts2, base + wallH, totalH - wallH, roofMat);
+      if (roof) scene.add(roof);
+    }
+    buildingCount++;
   }
-  // Roads (async GeoJSON from the dashboard, if it has them).
+  // Roads (async GeoJSON from the dashboard, if it has them) — ribbons that
+  // follow the ground, width and surface colour by OSM highway class.
+  let roadCount = 0;
+  const roadStyle = (props = {}) => {
+    const hw = props.highway || 'road';
+    if (['motorway', 'trunk', 'primary'].includes(hw)) return { w: 9, color: 0x5a5a5a };
+    if (['secondary', 'tertiary'].includes(hw)) return { w: 7, color: 0x6a6a68 };
+    if (['track', 'path', 'footway', 'bridleway'].includes(hw)) return { w: 2.5, color: 0xb59a6a };
+    if (['service', 'driveway'].includes(hw) || props.service) return { w: 3.5, color: 0xa8a090 };
+    const gravel = /gravel|unpaved|dirt|ground/.test(String(props.surface || ''));
+    return { w: 6, color: gravel ? 0xb0a48a : 0x7a7a78 };
+  };
   Promise.resolve(typeof opts.roads === 'function' ? opts.roads() : opts.roads).then((gj) => {
     for (const f of gj?.features || []) {
       if (f.geometry?.type !== 'LineString') continue;
-      const pts = f.geometry.coordinates.map(([lon, lat]) => { const p = toLocal(lat, lon); return new THREE.Vector3(p.x, heightAt(clampX(p.x), clampZ(p.z)) + 0.15, p.z); });
-      if (pts.length > 1) scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0xe8dcb0 })));
+      const pts = f.geometry.coordinates.map(([lon, lat]) => toLocal(lat, lon)).filter(inExtent);
+      if (pts.length < 2) continue;
+      const st = roadStyle(f.properties);
+      scene.add(ribbon(pts, st.w, 0.12, st.color, heightAt));
+      roadCount++;
     }
+    statusEl.textContent = statusEl.textContent.replace(/ · roads.*$/, '') + ` · ${roadCount} road${roadCount === 1 ? '' : 's'}`;
   }).catch(() => {});
 
   // Trees — every detected instance as a 3D model at its measured height.
@@ -204,7 +251,7 @@ export function openWalkViewer(report, opts = {}) {
       const srcH = Math.max(box.max.y - box.min.y, 0.001);
       const hM = Math.max(2, Math.min(30, Number(t.height_m) || 6));
       const s = hM / srcH;
-      const m = tpl.clone(true);
+      const m = matteTreeMaterials(tpl.clone(true), kind);
       m.scale.setScalar(s);
       const p = toLocal(t.x, t.y); // canopy.js stores x = lat, y = lon
       if (p.x < -widthM / 2 || p.x > widthM / 2 || p.z < -depthM / 2 || p.z > depthM / 2) return;
@@ -212,7 +259,7 @@ export function openWalkViewer(report, opts = {}) {
       m.rotation.y = jitter(i * 31 + 7) * Math.PI * 2;
       treeGroup.add(m); placed++;
     });
-    statusEl.textContent = `${placed} trees · ${Math.round(widthM)} × ${Math.round(depthM)} m · relief ${relief.toFixed(1)} m`;
+    statusEl.textContent = `${placed} trees · ${buildingCount} building${buildingCount === 1 ? '' : 's'} · ${Math.round(widthM)} × ${Math.round(depthM)} m · relief ${relief.toFixed(1)} m${roadCount ? ` · ${roadCount} roads` : ''}`;
   }).catch((e) => { statusEl.textContent = `trees failed to load: ${e.message}`; });
 
   // ---------- player / avatar ----------
@@ -351,14 +398,27 @@ export function openWalkViewer(report, opts = {}) {
 // ---------- helpers ----------
 const _tpl = new Map();
 /**
- * The nature-kit GLBs ship with metallicFactor 1, which under a plain
- * directional/hemisphere light (no environment map) renders as near-black.
- * They are painted wood and leaves — make them matte.
+ * The nature-kit GLBs ship with metallicFactor 1 (near-black under a plain
+ * directional/hemisphere light) and a stylised teal/salmon palette. Make
+ * them matte and recolour by material role: leaves → natural greens (conifer
+ * darker, deciduous lighter), bark/trunk → brown. Material names in the
+ * pack: "leafsDark"/"leafs…" for foliage, "woodBark…" for trunks.
  */
-function matteTreeMaterials(root) {
+function matteTreeMaterials(root, kind = 'deciduous') {
+  const leaf = kind === 'conifer' ? 0x2f5d3a : 0x4f8f3a;
   root.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-    for (const m of mats) { if ('metalness' in m) { m.metalness = 0; m.roughness = 0.85; m.needsUpdate = true; } }
+    o.material = (Array.isArray(o.material) ? mats : mats[0] ? mats[0] : o.material);
+    for (let i = 0; i < mats.length; i++) {
+      const m = mats[i].clone(); // never recolour a shared template material in place twice
+      const name = String(m.name || '').toLowerCase();
+      if ('metalness' in m) { m.metalness = 0; m.roughness = 0.9; }
+      if (/leaf|leav|foliage|needle/.test(name)) m.color.setHex(leaf);
+      else if (/wood|bark|trunk/.test(name)) m.color.setHex(0x6b4a2e);
+      m.needsUpdate = true;
+      mats[i] = m;
+    }
+    if (mats.length) o.material = Array.isArray(o.material) ? mats : mats[0];
   });
   return root;
 }
@@ -368,7 +428,7 @@ function loadTreeTemplates() {
     if (_tpl.has(url)) return _tpl.get(url);
     const p = new Promise((resolve) => {
       if (typeof THREE.GLTFLoader !== 'function') return resolve(null);
-      new THREE.GLTFLoader().load(url, (g) => resolve(matteTreeMaterials(g.scene)), undefined, () => resolve(null));
+      new THREE.GLTFLoader().load(url, (g) => resolve(g.scene), undefined, () => resolve(null));
     });
     _tpl.set(url, p);
     return p;
@@ -390,6 +450,62 @@ function jitter(i) { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Ma
 
 function compassName(deg) {
   return ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'][Math.round(deg / 45) % 8];
+}
+
+/**
+ * A flat ribbon of width `w` along a polyline, each vertex sitting `lift`
+ * above the ground there, so roads and streams drape over the relief.
+ */
+function ribbon(pts, w, lift, color, heightAt) {
+  const half = w / 2;
+  const verts = [];
+  const idx = [];
+  for (let i = 0; i < pts.length; i++) {
+    const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
+    let dx = b.x - a.x, dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    dx /= len; dz /= len;
+    const nx = -dz, nz = dx; // left normal
+    const p = pts[i];
+    const yl = heightAt(p.x + nx * half, p.z + nz * half) + lift;
+    const yr = heightAt(p.x - nx * half, p.z - nz * half) + lift;
+    verts.push(p.x + nx * half, yl, p.z + nz * half, p.x - nx * half, yr, p.z - nz * half);
+    if (i > 0) {
+      const k = (i - 1) * 2;
+      idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, new THREE.MeshLambertMaterial({ color, side: THREE.DoubleSide }));
+}
+
+/** Gable roof over a footprint: ridge along the longer bbox axis. */
+function gableRoof(pts2, eaveY, riseM, material) {
+  if (pts2.length < 3 || riseM <= 0) return null;
+  const xs = pts2.map((p) => p.x), zs = pts2.map((p) => p.z);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minZ = Math.min(...zs), maxZ = Math.max(...zs);
+  const alongX = (maxX - minX) >= (maxZ - minZ);
+  const ridgeY = eaveY + riseM;
+  const v = [];
+  const tri = (a, b, c) => v.push(...a, ...b, ...c);
+  if (alongX) {
+    const mz = (minZ + maxZ) / 2;
+    tri([minX, eaveY, minZ], [maxX, eaveY, minZ], [maxX, ridgeY, mz]); tri([minX, eaveY, minZ], [maxX, ridgeY, mz], [minX, ridgeY, mz]);
+    tri([maxX, eaveY, maxZ], [minX, eaveY, maxZ], [minX, ridgeY, mz]); tri([maxX, eaveY, maxZ], [minX, ridgeY, mz], [maxX, ridgeY, mz]);
+    tri([minX, eaveY, minZ], [minX, ridgeY, mz], [minX, eaveY, maxZ]); tri([maxX, eaveY, maxZ], [maxX, ridgeY, mz], [maxX, eaveY, minZ]);
+  } else {
+    const mx = (minX + maxX) / 2;
+    tri([minX, eaveY, minZ], [minX, eaveY, maxZ], [mx, ridgeY, maxZ]); tri([minX, eaveY, minZ], [mx, ridgeY, maxZ], [mx, ridgeY, minZ]);
+    tri([maxX, eaveY, maxZ], [maxX, eaveY, minZ], [mx, ridgeY, minZ]); tri([maxX, eaveY, maxZ], [mx, ridgeY, minZ], [mx, ridgeY, maxZ]);
+    tri([minX, eaveY, minZ], [mx, ridgeY, minZ], [maxX, eaveY, minZ]); tri([maxX, eaveY, maxZ], [mx, ridgeY, maxZ], [minX, eaveY, maxZ]);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, material);
 }
 
 function flatPolygon(pts2, y, color, opacity) {

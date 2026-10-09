@@ -4729,14 +4729,27 @@ const TREE_GLB_ASSETS = {
 const _glbTemplateCache = new Map();
 /** Load (and cache) a GLB's scene graph as a reusable clone template. */
 /**
- * The nature-kit GLBs ship with metallicFactor 1, which under a plain
- * directional/hemisphere light (no environment map) renders as near-black.
- * They are painted wood and leaves — make them matte.
+ * The nature-kit GLBs ship with metallicFactor 1 (near-black under a plain
+ * directional/hemisphere light) and a stylised teal/salmon palette. Make
+ * them matte and recolour by material role: leaves → natural greens (conifer
+ * darker, deciduous lighter), bark/trunk → brown. Material names in the
+ * pack: "leafsDark"/"leafs…" for foliage, "woodBark…" for trunks.
  */
-function matteTreeMaterials(root) {
+function matteTreeMaterials(root, kind = 'deciduous') {
+  const leaf = kind === 'conifer' ? 0x2f5d3a : 0x4f8f3a;
   root.traverse((o) => {
     const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
-    for (const m of mats) { if ('metalness' in m) { m.metalness = 0; m.roughness = 0.85; m.needsUpdate = true; } }
+    o.material = (Array.isArray(o.material) ? mats : mats[0] ? mats[0] : o.material);
+    for (let i = 0; i < mats.length; i++) {
+      const m = mats[i].clone(); // never recolour a shared template material in place twice
+      const name = String(m.name || '').toLowerCase();
+      if ('metalness' in m) { m.metalness = 0; m.roughness = 0.9; }
+      if (/leaf|leav|foliage|needle/.test(name)) m.color.setHex(leaf);
+      else if (/wood|bark|trunk/.test(name)) m.color.setHex(0x6b4a2e);
+      m.needsUpdate = true;
+      mats[i] = m;
+    }
+    if (mats.length) o.material = Array.isArray(o.material) ? mats : mats[0];
   });
   return root;
 }
@@ -4745,7 +4758,7 @@ function loadTreeGlbTemplate(url) {
   if (_glbTemplateCache.has(url)) return _glbTemplateCache.get(url);
   const p = new Promise((resolve) => {
     if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') return resolve(null);
-    new THREE.GLTFLoader().load(url, (gltf) => resolve(matteTreeMaterials(gltf.scene)), undefined, () => resolve(null));
+    new THREE.GLTFLoader().load(url, (gltf) => resolve(gltf.scene), undefined, () => resolve(null));
   });
   _glbTemplateCache.set(url, p);
   return p;
@@ -4891,7 +4904,7 @@ function renderNearTierTreeGeometry(group, trees, templates, opts) {
     const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
     const scale = hU / srcH;
 
-    const model = template.clone(true);
+    const model = matteTreeMaterials(template.clone(true), kind);
     model.scale.setScalar(scale);
     const p = latLonToLocal(t.x, t.y);
     model.position.set(p.x, p.y - box.min.y * scale, p.z);
