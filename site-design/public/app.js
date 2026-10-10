@@ -10699,11 +10699,18 @@ function pdfOpts(filename, opts = {}) {
       logging: false,
       letterRendering: true,
       allowTaint: false,
+      scrollX: 0,
       scrollY: 0,
-      // Match the A4 content width (210mm − 10mm − 10mm = 190mm ≈ 718px @96dpi).
-      // A larger window lets the layout reflow wider than the page and the
-      // right edge gets sliced off the PDF.
-      windowWidth: 718,
+      // html2canvas clones the whole document for every capture. Skip the live
+      // app (maps, 3D scene, report panes) and keep only html2pdf's overlay,
+      // which holds the content being captured; this cuts capture time ~10x.
+      ignoreElements: (node) =>
+        node.parentElement === document.body &&
+        !node.classList.contains('html2pdf__overlay') &&
+        !['STYLE', 'LINK', 'SCRIPT'].includes(node.tagName),
+      // html2pdf sizes its capture container to the A4 content width; leave
+      // the window width alone (a narrower windowWidth shifts the centred
+      // container and clips its left side).
       foreignObjectRendering: false,
     },
     jsPDF: {
@@ -10714,10 +10721,13 @@ function pdfOpts(filename, opts = {}) {
     pagebreak: {
       mode: ['avoid', 'css', 'legacy'],
       avoid: [
+        // Whole tables are not listed: the full-report export marks blocks
+        // .pdf-keep by measured height, so long tables break between rows.
         'h2', 'h3', 'h4',
         '.summary-grid', '.well-range-card', '.rec-card', '.prox-card', '.pkg-card',
-        '.intervention-card', '.econ-table', '.findings-accordion', '.flag', 'table',
+        '.intervention-card', '.flag',
         'tr', '.quote-item', '.quote-total-card', '.stat', '.report-block > p',
+        '.pdf-keep',
       ],
     },
     ...opts,
@@ -10844,252 +10854,287 @@ function preparePdfClone(clone) {
   // across a page boundary.
   clone.querySelectorAll('h2, h3, h4').forEach((el) => { el.style.pageBreakAfter = 'avoid'; el.style.breakAfter = 'avoid-page'; });
   clone.querySelectorAll('tr').forEach((el) => { el.style.pageBreakInside = 'avoid'; el.style.breakInside = 'avoid'; });
-  clone.querySelectorAll('.summary-grid, .well-range-card, .rec-card, .prox-card, .pkg-card, .intervention-card, .econ-table, .findings-accordion, .flag, table, .quote-item, .quote-total-card, .stat').forEach((el) => {
+  // Tables are left breakable (rows stay whole); a page-long table kept in
+  // one piece leaves a near-empty page in front of it.
+  clone.querySelectorAll('.summary-grid, .well-range-card, .rec-card, .prox-card, .pkg-card, .intervention-card, .flag, .quote-item, .quote-total-card, .stat').forEach((el) => {
     el.style.pageBreakInside = 'avoid';
     el.style.breakInside = 'avoid';
   });
 }
 
-/**
- * Pin the detached PDF root to the exact A4 content width so every
- * percentage width inside resolves correctly before html2canvas rasterizes.
- *
- * A detached element has no containing-block width, so max-width:100% does
- * nothing and html2canvas renders the element at its intrinsic (overflowing)
- * width — the right edge of the PDF gets sliced. Attaching it inside a
- * fixed-width off-screen container gives it a real 190mm content width
- * (A4 210mm − 10mm+10mm page margins) to fit within.
- *
- * @param {HTMLElement} doc - the detached PDF root (full report or section wrapper)
- * @param {number} [widthPx=718] - content width in px (~190mm at 96dpi)
- * @returns {() => void} cleanup function (removes container + restores margins)
- */
-function clampPdfToWidth(doc, widthPx = 718) {
-  const host = document.createElement('div');
-  host.setAttribute('aria-hidden', 'true');
-  host.style.cssText =
-    `position:fixed;left:-10000px;top:0;width:${widthPx}px;` +
-    'margin:0;padding:0;border:0;overflow:visible;pointer-events:none;';
-  doc.style.width = '100%';
-  doc.style.maxWidth = 'none';
-  doc.style.margin = '0';
-  doc.style.padding = '0';
-  doc.style.overflow = 'hidden';
-  const body = document.body || document.documentElement;
-  body.appendChild(host);
-  host.appendChild(doc);
-
-  const prevBody = body.style.margin;
-  const prevHtml = document.documentElement.style.margin;
-  body.style.margin = '0';
-  document.documentElement.style.margin = '0';
-
-  return function release() {
-    const r = document.documentElement.style.margin;
-    body.style.margin = prevBody;
-    document.documentElement.style.margin = prevHtml;
-    if (doc.parentNode) doc.parentNode.removeChild(doc);
-    if (host.parentNode) host.parentNode.removeChild(host);
-  };
-}
+const PDF_BASE_CSS =
+  'font-family:"Source Serif 4",Georgia,serif;color:#16211b;background:#fff;font-size:10pt;line-height:1.5;';
 
 /**
- * Build a print-ready PDF document from the report data.
- * Creates a detached DOM tree with professional layout, TOC, branded sections,
- * and footer with page number — then renders via html2pdf.
+ * Build the parts of the full PDF: a title page, a contents page (filled in
+ * once real page numbers are known) and one detached node per report section.
+ *
+ * Each part is rasterized on its own. Rasterizing the whole report as one
+ * canvas exceeds the browser's maximum canvas height on a normal report
+ * (40+ A4 pages), which produced a PDF of blank pages.
  */
-function buildPdfDocument(reportEl) {
+function buildPdfParts(reportEl) {
   const r = state.report || {};
-  const doc = document.createElement('div');
-  doc.style.cssText = 'font-family:"Source Serif 4",Georgia,serif;color:#16211b;background:#fff;font-size:10pt;line-height:1.5;';
 
-  /* ── Title Page ── */
-  // min-height stays under the A4 content height (297mm − 24mm margins =
-  // 273mm) so the title page never pushes content off the first page.
-  const titlePage = el('div', null, {
-    cssText: 'text-align:center;padding:40px 30px 30px;page-break-after:always;min-height:255mm;max-height:270mm;box-sizing:border-box;display:flex;flex-direction:column;justify-content:center;',
+  /* ── Title page ── */
+  const title = el('div', null, {
+    cssText: `${PDF_BASE_CSS}text-align:center;padding:70mm 30px 0;box-sizing:border-box;`,
   });
-
-  const brandBlock = el('div', null, { cssText: 'margin-bottom:40px;' });
-  brandBlock.appendChild(el('div', null, {
+  title.appendChild(el('div', null, {
     textContent: 'LAND INTELLIGENCE',
-    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:#5b3a73;text-transform:uppercase;',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:11px;letter-spacing:2px;color:#5b3a73;margin-bottom:36px;',
   }));
-  brandBlock.appendChild(el('div', null, {
-    textContent: 'Land Intelligence',
-    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:600;font-size:13px;color:#46584c;margin-top:2px;',
-  }));
-  titlePage.appendChild(brandBlock);
-
-  titlePage.appendChild(el('h1', null, {
+  title.appendChild(el('h1', null, {
     textContent: r.site_name || 'Site Design Report',
     cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:800;font-size:28px;color:#16211b;margin:0 0 12px;line-height:1.15;',
   }));
-
-  const metaLine = el('p', null, {
-    cssText: 'font-size:13px;color:#46584c;margin:0 0 6px;',
-  });
   const parts = [];
   if (r.location?.nearest_town || r.location?.municipality) parts.push(r.location.nearest_town || r.location.municipality);
   if (r.geometry?.area_ha != null) parts.push(`${r.geometry.area_ha} ha`);
   if (r.climate?.plant_hardiness_zone) parts.push(`Zone ${r.climate.plant_hardiness_zone}`);
-  metaLine.textContent = parts.join(' · ');
-  titlePage.appendChild(metaLine);
-
-  titlePage.appendChild(el('p', null, {
+  title.appendChild(el('p', null, { textContent: parts.join(' · '), cssText: 'font-size:13px;color:#46584c;margin:0 0 6px;' }));
+  title.appendChild(el('p', null, {
     textContent: new Date().toLocaleDateString('en-CA', { year: 'numeric', month: 'long', day: 'numeric' }),
     cssText: 'font-size:11px;color:#888;margin-top:40px;',
   }));
-
-  titlePage.appendChild(el('p', null, {
-    textContent: 'Land Intelligence',
-    cssText: 'font-size:10px;color:#aaa;margin-top:4px;',
+  title.appendChild(el('p', null, {
+    textContent: 'Planning guidance for conversation with Land Intelligence — not engineered drawings, a survey, or a crime risk assessment.',
+    cssText: 'font-size:8px;color:#999;margin:60px auto 0;font-style:italic;max-width:400px;',
   }));
 
-  titlePage.appendChild(el('p', null, {
-    textContent: 'Planning guidance for conversation with Land Intelligence — not engineered drawings or a crime risk assessment.',
-    cssText: 'font-size:8px;color:#bbb;margin-top:50px;font-style:italic;max-width:400px;margin-left:auto;margin-right:auto;',
-  }));
+  /* ── Contents page (rows filled after the sections are paginated) ── */
+  const toc = el('div', null, { cssText: `${PDF_BASE_CSS}padding:4px 4px 0;` });
 
-  doc.appendChild(titlePage);
-
-  /* ── Table of Contents ── */
-  const tocData = getReportSectionList();
-  const tocPage = el('div', null, { cssText: 'padding:20px 0 30px;page-break-after:always;' });
-  tocPage.appendChild(el('h2', null, {
-    textContent: 'Contents',
-    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:20px;color:#16211b;margin:0 0 16px;padding-bottom:8px;border-bottom:2px solid #5b3a73;',
-  }));
-
-  const tocList = el('div', null, { cssText: 'display:flex;flex-direction:column;gap:6px;' });
-  tocData.forEach((s) => {
-    const row = el('div', null, { cssText: 'display:flex;align-items:baseline;gap:8px;' });
-    row.appendChild(el('span', null, {
-      textContent: s.label,
-      cssText: 'font-size:10pt;color:#16211b;flex:1;',
-    }));
-    // Dotted leader
-    const dots = el('span', null, {
-      cssText: 'display:inline-block;flex:1;border-bottom:1px dotted #ccc;height:1px;min-width:20px;',
-    });
-    row.appendChild(dots);
-    row.appendChild(el('span', null, {
-      textContent: String(s.page),
-      cssText: 'font-family:"IBM Plex Mono",monospace;font-size:9px;color:#888;',
-    }));
-    tocList.appendChild(row);
-  });
-  tocPage.appendChild(tocList);
-  doc.appendChild(tocPage);
-
-  /* ── Report Body ── */
-  const bodyWrapper = el('div', null, { cssText: 'padding:0 4px;width:100%;max-width:170mm;box-sizing:border-box;' });
-
-  // Clone report content but strip interactive elements that don't render well in PDF
+  /* ── Sections ── */
   const clone = reportEl.cloneNode(true);
-  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form, .report-unlock-panel, .inquiry-panel, .flow-steps').forEach((el) => el.remove());
-
-  // Harden layout: clip overflow, keep cards/rows unsplit, nothing wider than A4
+  clone.querySelectorAll('.btn-pdf-section, .minimap-embed, .report-map, .leaflet-container, .terrain-3d-host, .terrain-3d-controls, .terrain-semantic-controls, .cesium-container, .btn-view-2d, .btn-view-3d, .overview-actions, .next-steps-cta, .site-findings-block, .findings-jump, .plant-list-toolbar, .ee-services-grid, .ee-services-cta, .actions, .report-unlock-form, .inquiry-form, .report-unlock-panel, .inquiry-panel, .flow-steps').forEach((n) => n.remove());
   preparePdfClone(clone);
 
-  // Report blocks are rendered inside the report's outer `.panel` wrapper.
-  // Do not restrict this query to direct children: that would silently omit
-  // every section from the full export and leave only the title shell.
-  const blocks = clone.querySelectorAll('.report-block');
-  blocks.forEach((block, i) => {
-    if (i > 0) {
-      // Insert page break before sections after the first
-      block.style.pageBreakBefore = 'always';
-    }
-    // Add branded section header
+  // Report blocks sit inside the report's outer `.panel` wrapper, so the
+  // query must not be restricted to direct children.
+  const sections = [];
+  const seen = new Set();
+  clone.querySelectorAll('.report-block').forEach((block) => {
+    const text = block.textContent.replace(/\s+/g, ' ').trim();
+    // The report repeats a few cards across panes (e.g. precipitation);
+    // include each distinct section once.
+    if (!text || seen.has(text)) return;
+    seen.add(text);
+    const n = sections.length + 1;
     const h2 = block.querySelector('h2');
-    if (h2) {
-      const sectionLabel = h2.textContent.trim();
-      const headerBar = el('div', null, {
-        cssText: 'display:flex;align-items:center;gap:8px;margin:0 0 1rem;padding:6px 8px;background:#f7f8f3;border-bottom:1px solid #c8cec1;',
-      });
-      headerBar.appendChild(el('span', null, {
-        textContent: `${i + 1}.`,
-        cssText: 'font-family:"IBM Plex Mono",monospace;font-size:8px;color:#5b3a73;letter-spacing:0.5px;',
-      }));
-      headerBar.appendChild(el('span', null, {
-        textContent: sectionLabel,
-        cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:14px;color:#16211b;',
-      }));
-      h2.replaceWith(headerBar);
-    }
-    bodyWrapper.appendChild(block);
+    const label = (h2?.textContent || block.querySelector('h3')?.textContent || `Section ${n}`).trim().replace(/\s+/g, ' ');
+    const headerBar = el('div', null, {
+      cssText: 'display:flex;align-items:baseline;gap:8px;margin:0 0 1rem;padding:6px 8px;background:#f7f8f3;border-bottom:2px solid #5b3a73;',
+    });
+    headerBar.appendChild(el('span', null, {
+      textContent: `${n}.`,
+      cssText: 'font-family:"IBM Plex Mono",monospace;font-size:9px;color:#5b3a73;',
+    }));
+    headerBar.appendChild(el('span', null, {
+      textContent: label,
+      cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:14px;color:#16211b;',
+    }));
+    if (h2) h2.replaceWith(headerBar);
+    else block.prepend(headerBar);
+    block.style.pageBreakBefore = '';
+    block.style.margin = '0';
+    const wrap = el('div', null, { cssText: `${PDF_BASE_CSS}padding:0 4px;` });
+    wrap.appendChild(block);
+    sections.push({ label, node: wrap });
   });
 
-  doc.appendChild(bodyWrapper);
+  return { title, toc, sections };
+}
 
-  /* ── Footer stamp on every page ── */
-  // html2pdf doesn't support native PDF footers, so we add a discreet footer note
-  // to the last section instead
-  const lastBlock = bodyWrapper.lastElementChild;
-  if (lastBlock) {
-    lastBlock.appendChild(el('div', null, {
-      cssText: 'margin-top:2rem;padding-top:12px;border-top:1px solid #c8cec1;text-align:center;',
-    })).textContent = '© Land Intelligence';
-  }
+// A4 content box at html2pdf's 96 dpi: 190 mm wide, 273 mm tall.
+const PDF_CONTENT_W = 718;
+const PDF_CONTENT_H = 1031;
 
-  return doc;
+// Layout rules for the PDF, scoped to .pdf-root so they never touch the live UI.
+const PDF_SCOPED_CSS = `
+  .pdf-root *, .pdf-root *::before, .pdf-root *::after { box-sizing: border-box; max-width: 100% !important; min-width: 0 !important; }
+  .pdf-root table { width: 100% !important; }
+  .pdf-root img, .pdf-root canvas { max-width: 100% !important; height: auto; }
+  .pdf-root [class*="table-wrap"], .pdf-root .json-box { overflow: visible !important; }
+  .pdf-root details > summary { display: none !important; }
+  .pdf-root .econ-table { font-size: 7.5pt !important; }
+  .pdf-root .econ-table td, .pdf-root .econ-table th { padding: 3px 4px !important; }
+  .pdf-root .drivers-table { table-layout: fixed !important; }
+  .pdf-root .drivers-table th:nth-child(1) { width: 34%; }
+  .pdf-root .drivers-table th:nth-child(2) { width: 26%; }
+  .pdf-root .drivers-table td, .pdf-root .drivers-table td * { white-space: normal !important; overflow-wrap: anywhere !important; }
+`;
+
+/** A detached group root that carries the scoped PDF stylesheet with it. */
+function pdfRoot() {
+  const root = el('div', null, { className: 'pdf-root' });
+  const style = document.createElement('style');
+  style.textContent = PDF_SCOPED_CSS;
+  root.appendChild(style);
+  return root;
+}
+
+/** Wrap each small heading with the block after it so it never ends a page alone. */
+function keepHeadingsWithNext(node, keepMax, figureMax = keepMax) {
+  // Measure everything first, then restructure, so layout is computed once.
+  const pairs = [];
+  node.querySelectorAll('h3, h4, .topo-label').forEach((h) => {
+    const next = h.nextElementSibling;
+    const parent = h.parentElement;
+    if (!next || !parent || getComputedStyle(parent).display !== 'block') return;
+    const span = next.getBoundingClientRect().bottom - h.getBoundingClientRect().top;
+    const isFigure = next.matches('svg, figure, img, canvas') || !!next.querySelector('svg, img, canvas');
+    if (span > 0 && span <= (isFigure ? figureMax : keepMax)) pairs.push([h, next]);
+  });
+  pairs.forEach(([h, next]) => {
+    if (!h.parentElement || next.previousElementSibling !== h) return;
+    const wrap = el('div', null, { className: 'pdf-keep' });
+    h.parentElement.insertBefore(wrap, h);
+    wrap.appendChild(h);
+    wrap.appendChild(next);
+  });
 }
 
 /**
- * Return a list of report sections with placeholder page numbers.
- * Real page numbers require post-render measurement; these are estimates.
+ * Lay each section out at the PDF content width to measure it, mark small
+ * blocks (cards, grids, paragraphs, charts) as keep-together, then pack short
+ * sections onto shared pages. Each group starts a new page; a section taller
+ * than a page gets a group of its own.
  */
-function getReportSectionList() {
-  const r = state.report || {};
-  const sections = [
-    { label: 'Your parcel', skip: false },
-    { label: 'Topology', skip: false },
-    { label: 'Proximity & context', skip: false },
-    { label: 'Crime map', skip: !r.crime },
-    { label: 'Solar incidence & viability', skip: !r.solar },
-    { label: 'Temperature profile', skip: !r.temperature },
-    { label: 'Wildlife — White-tailed Deer', skip: !r.deer },
-    { label: 'Access & mobility', skip: false },
-    { label: 'Legal land description', skip: false },
-    { label: 'Regional demographics', skip: !r.demographics },
-    { label: 'Tree canopy cover', skip: !r.tree_cover },
-    { label: 'Climate hardiness · flood · zoning', skip: false },
-    { label: 'Land value', skip: !r.land_value },
-    { label: 'Recommended plantings', skip: !(r.planting_plan?.recommended?.length) },
-    { label: 'Predicted well depth', skip: !r.predicted_well_depth },
-    { label: 'Provincial elevation contours', skip: !r.provincial_contours },
-    { label: 'Wind & shelterbelt', skip: !r.wind },
-    { label: 'Biodiversity', skip: !r.biodiversity },
-    { label: 'Soil survey & tests', skip: !(r.soil_survey || r.soil_tests || r.soil_profile) },
-    { label: 'Planting zones', skip: !(r.planting_zones?.length) },
-    { label: 'Where each plant grows best', skip: !r.plant_zone_matrix?.available },
-    { label: 'Solar hours heatmap', skip: !r.solar_horizon_shading?.available },
-    { label: 'Water collection budget', skip: !r.water_collection },
-    { label: 'Pond water through droughts', skip: !r.pond_scenarios?.available },
-    { label: 'Geology & minerals', skip: !r.minerals },
-    { label: 'Small water sources', skip: !r.small_water },
-    { label: 'Wetlands', skip: !r.wetlands },
-    { label: 'Placement recommendations', skip: !(r.recommendations?.length) },
-    { label: 'Distance & context', skip: false },
-    { label: 'Jurisdiction crime context', skip: !r.jurisdiction_crime },
-    { label: 'Precipitation', skip: !r.precipitation },
-    { label: 'Land fecundity assessment', skip: !r.fecundity },
-    { label: 'Matching packages', skip: !r.service_packages },
-    { label: 'Estimated investment', skip: !r.quote },
-  ].filter((s) => !s.skip);
+function packPdfSections(sections) {
+  const host = pdfRoot();
+  host.setAttribute('aria-hidden', 'true');
+  host.style.cssText = `position:absolute;left:-20000px;top:0;width:${PDF_CONTENT_W}px;`;
+  document.body.appendChild(host);
+  // Charts and figures stay whole up to most of a page; other blocks only up
+  // to half a page, so a long table breaks between rows instead of leaving a
+  // mostly empty page behind it.
+  const figureMax = PDF_CONTENT_H * 0.85;
+  const blockMax = PDF_CONTENT_H * 0.5;
+  const sel = 'p, li, blockquote, tr, [class*="card"], [class*="stat"], [class*="note"], [class*="callout"], [class*="flag"], [class*="panel"]';
+  try {
+    sections.forEach((s) => {
+      host.appendChild(s.node);
+      keepHeadingsWithNext(s.node, blockMax, figureMax);
+      const keep = [];
+      s.node.querySelectorAll('*').forEach((n) => {
+        // SVG elements have no offsetHeight; measure every element by its box.
+        const h = n.getBoundingClientRect().height;
+        if (!h) return;
+        const tag = n.tagName.toLowerCase();
+        if (tag === 'svg' || tag === 'figure' || tag === 'img' || tag === 'canvas') {
+          if (h <= figureMax) keep.push(n);
+          return;
+        }
+        // A spacer inserted inside a grid or flex row cannot push one card
+        // down, so card rows are kept whole up to most of a page.
+        const d = getComputedStyle(n).display;
+        if (d === 'grid' || d === 'flex' || d === 'inline-flex') {
+          if (h <= figureMax) keep.push(n);
+          return;
+        }
+        if (h <= blockMax && n.matches(sel)) keep.push(n);
+      });
+      keep.forEach((n) => n.classList.add('pdf-keep'));
+      s.height = s.node.offsetHeight;
+      host.removeChild(s.node);
+    });
+  } finally {
+    host.remove();
+  }
 
-  // Assign rough page numbers based on expected content volume
-  const pageAssignments = {};
-  let currentPage = 2; // title + TOC take pages 1-2
-  sections.forEach((s) => {
-    pageAssignments[s.label] = currentPage;
-    // Estimate pages: most sections ~1 page, some take more
-    const extraPages = (s.label === 'Recommended plantings' || s.label === 'Biodiversity') ? 1 : 0;
-    currentPage += 1 + extraPages;
+  const gap = 22;
+  const groups = [];
+  let cur = null;
+  sections.forEach((s, i) => {
+    const fits = cur && cur.height + gap + s.height <= PDF_CONTENT_H * 0.96;
+    if (!fits) {
+      cur = { node: pdfRoot(), height: 0, members: [] };
+      groups.push(cur);
+    } else {
+      s.node.style.marginTop = `${gap}px`;
+      cur.height += gap;
+    }
+    cur.node.appendChild(s.node);
+    cur.height += s.height;
+    cur.members.push(i);
   });
-  sections.forEach((s) => { s.page = pageAssignments[s.label]; });
-  return sections;
+  return groups;
+}
+
+/**
+ * html2canvas draws an inline SVG from its own width/height attributes and
+ * cannot resolve CSS variables or stylesheet rules inside it. Charts here set
+ * only a viewBox and use CSS colours, so they came out enlarged, cropped or
+ * blank. Pin each SVG to its laid-out size and inline its resolved paint.
+ */
+function fixPdfSvgs(container) {
+  if (!container) return;
+  container.querySelectorAll('svg').forEach((svg) => {
+    const box = svg.getBoundingClientRect();
+    if (box.width > 0 && box.height > 0) {
+      const w = Math.round(box.width);
+      const h = Math.round(box.height);
+      svg.setAttribute('width', String(w));
+      svg.setAttribute('height', String(h));
+      svg.style.width = `${w}px`;
+      svg.style.height = `${h}px`;
+    }
+    [svg, ...svg.querySelectorAll('*')].forEach((n) => {
+      const cs = getComputedStyle(n);
+      ['fill', 'stroke', 'stroke-width', 'stop-color', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-dasharray'].forEach((prop) => {
+        const v = cs.getPropertyValue(prop);
+        if (v) n.setAttribute(prop, v);
+      });
+      if (n.tagName.toLowerCase() === 'text' || n.tagName.toLowerCase() === 'tspan') {
+        n.setAttribute('font-family', cs.fontFamily);
+        n.setAttribute('font-size', cs.fontSize);
+        n.setAttribute('font-weight', cs.fontWeight);
+      }
+    });
+  });
+}
+
+/**
+ * html2pdf pushes a keep-together block to the next page by inserting an
+ * empty spacer before it, sized with a page height that differs from the
+ * one used to slice the canvas by a fraction of a pixel per page. The block's
+ * top border then shows as a sliver at the foot of the previous page. Re-size
+ * each spacer so the block starts a few pixels below the slicing boundary.
+ */
+function nudgePdfSpacers(container) {
+  if (!container) return;
+  const scale = pdfOpts('x').html2canvas.scale;
+  const width = container.getBoundingClientRect().width;
+  const sliceH = Math.floor(width * scale * (273 / 190)) / scale;
+  const origin = () => container.getBoundingClientRect().top;
+  container.querySelectorAll('div').forEach((d) => {
+    const st = d.getAttribute('style') || '';
+    if (d.childNodes.length || !/^display:\s*block;\s*height:\s*[\d.]+px;?$/.test(st.trim())) return;
+    const next = d.nextElementSibling;
+    if (!next) return;
+    const top = next.getBoundingClientRect().top - origin();
+    const into = top % sliceH;
+    // Just short of a boundary (sliver) or exactly on it: move 4px past it.
+    const shift = into > sliceH / 2 ? sliceH - into + 4 : into < 4 ? 4 - into : 0;
+    if (shift > 0) d.style.height = `${parseFloat(d.style.height) + shift}px`;
+  });
+}
+
+/** Fill the contents page once each section's first page is known. */
+function fillPdfToc(toc, sections, starts) {
+  toc.textContent = '';
+  toc.appendChild(el('h2', null, {
+    textContent: 'Contents',
+    cssText: 'font-family:"Bricolage Grotesque",sans-serif;font-weight:700;font-size:20px;color:#16211b;margin:0 0 14px;padding-bottom:8px;border-bottom:2px solid #5b3a73;',
+  }));
+  sections.forEach((s, i) => {
+    const row = el('div', null, { cssText: 'display:flex;align-items:baseline;gap:8px;padding:3px 0;border-bottom:1px dotted #d6dbd0;font-size:9.5pt;' });
+    row.appendChild(el('span', null, { textContent: `${i + 1}.`, cssText: 'font-family:"IBM Plex Mono",monospace;font-size:8.5px;color:#5b3a73;width:22px;' }));
+    row.appendChild(el('span', null, { textContent: s.label, cssText: 'flex:1;color:#16211b;' }));
+    row.appendChild(el('span', null, { textContent: String(starts[i]), cssText: 'font-family:"IBM Plex Mono",monospace;font-size:9px;color:#46584c;' }));
+    toc.appendChild(row);
+  });
 }
 
 /**
@@ -11115,7 +11160,11 @@ function requestFullPdfDownload() {
 
 /**
  * Download the full site design report as one PDF document.
- * Uses buildPdfDocument() for professional layout with TOC, branded sections, footer.
+ *
+ * Title page, contents with real page numbers, then each report section
+ * starting on a new page, with a page footer on every page after the title.
+ * Sections are rasterized one at a time and appended to the same jsPDF
+ * document, so no canvas ever exceeds the browser's size limit.
  */
 async function downloadFullPdf() {
   if (typeof html2pdf === 'undefined') {
@@ -11130,22 +11179,71 @@ async function downloadFullPdf() {
     const reportEl = $('report');
     if (!reportEl) throw new Error('No report to export');
 
-    const doc = buildPdfDocument(reportEl);
     const r = state.report || {};
     const site = (r.site_name || 'site-report').replace(/[^\w.-]+/g, '_').substring(0, 40);
     const fname = `${site}_full_report.pdf`;
+    const { title, toc, sections } = buildPdfParts(reportEl);
+    if (!sections.length) throw new Error('No report sections to export');
 
-    // Pin the detached document to the A4 content width so every percentage
-    // width inside resolves against the real page width before capture.
-    const release = clampPdfToWidth(doc);
-    try {
-      await html2pdf()
-        .set(pdfOpts(fname))
-        .from(doc)
-        .save();
-    } finally {
-      release();
+    const groups = packPdfSections(sections);
+    const starts = new Array(sections.length);
+    let worker = html2pdf().set(pdfOpts(fname)).from(title).toPdf();
+    for (const g of groups) {
+      worker = worker
+        .get('pdf')
+        .then((pdf) => {
+          pdf.addPage();
+          const page = pdf.internal.getNumberOfPages();
+          g.members.forEach((i) => { starts[i] = page; });
+        })
+        .from(g.node)
+        .toContainer()
+        .get('container')
+        .then((c) => { fixPdfSvgs(c); nudgePdfSpacers(c); })
+        .toCanvas()
+        .toPdf();
     }
+
+    // Contents: rendered last (now that page numbers are known), then moved
+    // to sit right after the title page. Section numbers shift by the number
+    // of contents pages.
+    let tocFirst = 0;
+    worker = worker
+      .get('pdf')
+      .then((pdf) => {
+        fillPdfToc(toc, sections, starts.map((p) => p + 1));
+        pdf.addPage();
+        tocFirst = pdf.internal.getNumberOfPages();
+      })
+      .from(toc)
+      .toContainer()
+      .toCanvas()
+      .toPdf()
+      .get('pdf')
+      .then((pdf) => {
+        const total = pdf.internal.getNumberOfPages();
+        const tocPages = total - tocFirst + 1;
+        if (tocPages > 1) {
+          // Rare: a contents list longer than one page shifts every section
+          // by one more page; the numbers printed are then off by the extra
+          // contents pages, so note it in the log for follow-up.
+          console.warn(`PDF contents spans ${tocPages} pages`);
+        }
+        for (let i = 0; i < tocPages; i += 1) pdf.movePage(tocFirst + i, 2 + i);
+
+        const label = (r.site_name || 'Site report').slice(0, 70);
+        const w = pdf.internal.pageSize.getWidth();
+        const h = pdf.internal.pageSize.getHeight();
+        for (let p = 2; p <= total; p += 1) {
+          pdf.setPage(p);
+          pdf.setFontSize(7.5);
+          pdf.setTextColor(120, 128, 120);
+          pdf.text(`Land Intelligence · ${label}`, 10, h - 5);
+          pdf.text(`Page ${p} of ${total}`, w - 10, h - 5, { align: 'right' });
+        }
+      });
+
+    await worker.save();
   } catch (err) {
     console.error('Full PDF generation failed:', err);
     setError(`PDF failed: ${err.message}`);
