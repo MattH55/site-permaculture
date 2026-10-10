@@ -93,6 +93,7 @@ export function canopySourceNote(dataSource) {
 
 const memCache = new Map(); // key -> result (in-process fast path)
 const MEM_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days — sources are quasi-static
+const CANOPY_CACHE_VERSION = 'v3-northup-trees';
 
 function ensureCacheDir() {
   try {
@@ -158,7 +159,10 @@ export async function buildCanopyLayer(bbox, opts = {}) {
   const size = Math.min(Math.max(opts.size ?? 96, 16), 128);
   const window = Math.min(Math.max(opts.window ?? DEFAULT_WINDOW, 8), 64);
 
-  const key = cacheKey(bbox);
+  // Versioned: bump when tree/zone geometry changes so cached layers built
+  // by older code (e.g. the north↔south-mirrored tree positions) can't be
+  // served after a fix.
+  const key = `${CANOPY_CACHE_VERSION}-${cacheKey(bbox)}`;
   if (!opts.force) {
     const hit = memCache.get(key) || readCached(key);
     if (hit && hit.available !== undefined) {
@@ -785,7 +789,12 @@ function watershedToTrees(inv, m, n, maxH, bbox, ring, cellAreaM2, win, dataSour
     if (crownRadiusM < 0.3) continue;
 
     const [cx, cy] = b.centroid;
-    const lat = bbox.south + ((cy + 0.5) / m) * (bbox.north - bbox.south);
+    // The CHM window grid is NORTH-FIRST (row 0 = bbox.north): it comes from
+    // sampleCogToLonLatGrid() and the render-zone code above reads it the same
+    // way (bbox.north - r/m · span). This line previously counted rows up from
+    // bbox.south, mirroring every tree north↔south across the parcel so trees
+    // never sat on the crowns visible in the satellite imagery.
+    const lat = bbox.north - ((cy + 0.5) / m) * (bbox.north - bbox.south);
     const lng = bbox.west + ((cx + 0.5) / n) * (bbox.east - bbox.west);
     if (!pointInRing(lat, lng, ring)) continue;
 

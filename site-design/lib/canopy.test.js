@@ -100,6 +100,22 @@ test('extractTrees: 3 synthetic cones → ≥2 instances with sane fields', () =
   }
 });
 
+test('extractTrees: a tree in the north-west of the CHM lands in the north-west of the bbox', () => {
+  // Regression: tree latitude was counted up from bbox.south while the CHM
+  // grid is north-first, mirroring every tree north↔south.
+  const chm = synthConeGrid(32, [{ r: 6, c: 6, rad: 4, h: 12 }]);
+  const res = extractTrees(chm, bbox, {
+    size: 32, window: 8, ring, data_source: 'SYNTH', source_info: null,
+    confidence: 'moderate', parcel_area_m2: 200 * 200,
+  });
+  assert.ok(res.tree_count >= 1, 'should find the cone');
+  const midLat = (bbox.north + bbox.south) / 2;
+  const midLon = (bbox.east + bbox.west) / 2;
+  const t = res.tree_instances.sort((a, b) => b.height_m - a.height_m)[0];
+  assert.ok(t.x > midLat, `tree should be in the NORTH half (lat ${t.x} > ${midLat})`);
+  assert.ok(t.y < midLon, `tree should be in the WEST half (lon ${t.y} < ${midLon})`);
+});
+
 test('extractTrees: flat CHM (no peaks) → 0 trees', () => {
   const chm = {
     rows: 32,

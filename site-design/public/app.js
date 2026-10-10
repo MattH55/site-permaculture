@@ -2452,6 +2452,17 @@ function terrain3dBlock(id, report) {
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
           <span style="display:inline-block;width:10px;height:14px;background:#2f6e40;border-radius:2px 2px 1px 1px;vertical-align:middle"></span>
           Trees
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem" title="Large parcels make true-scale trees tiny — enlarge them for readability">
+          <span>Tree size</span>
+          <select data-terrain-tree-size="${esc(id)}" class="fine" style="font-size:0.78rem">
+            <option value="auto" selected>Auto</option>
+            <option value="1">True size</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+            <option value="5">5×</option>
+          </select>
+          <span data-terrain-tree-size-note="${esc(id)}" class="fine" style="opacity:0.75"></span>
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="roads" />
@@ -3346,6 +3357,21 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       nearMaxDistM: 25,      // ground distance from a structure that still counts as "near"
       nearTierMaxCount: 40,  // (legacy) near-tier budget — all trees are 3D now, see maxTrees3d
       maxTrees3d: 600,       // 3D-model budget for the dashboard twin (canopy.js emits ≤ 400)
+      // "Auto" tree size: boost so the median tree is at least this fraction
+      // of the mesh's long side tall (≈ a few pixels → clearly a tree).
+      autoMinFraction: 0.035,
+      autoMaxMultiplier: 5,
+    };
+    // Tree size: 'auto' picks a multiplier from the parcel scale; numbers are
+    // explicit (1 = true scale). Set from the twin's Tree size control.
+    const treeSize = { mode: 'auto', multiplier: 1 };
+    const resolveTreeMultiplier = () => {
+      if (treeSize.mode !== 'auto') return Math.max(1, Number(treeSize.mode) || 1);
+      const hs = (report?.canopy?.tree_instances || []).map((t) => Number(t.height_m) || 0).filter((h) => h > 0).sort((a, b) => a - b);
+      if (!hs.length) return 1;
+      const medianU = hs[Math.floor(hs.length / 2)] / metersPerSceneUnit;
+      const wantU = Math.max(meshW, meshD) * TREE_LOD.autoMinFraction;
+      return Math.min(TREE_LOD.autoMaxMultiplier, Math.max(1, Math.round((wantU / Math.max(medianU, 1e-6)) * 2) / 2));
     };
     const buildingCentroidsLatLon = (report?.buildings?.available ? (report.buildings.buildings || []) : [])
       .map((b) => {
@@ -3518,12 +3544,21 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
       if (!instances.length) return;
       const sorted = [...instances].sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      treeSize.multiplier = resolveTreeMultiplier();
+      const sizeNote = document.querySelector(`[data-terrain-tree-size-note="${ctrlId}"]`);
       if (pbr.treeTemplates && (pbr.treeTemplates.conifer || pbr.treeTemplates.deciduous)) {
         renderNearTierTreeGeometry(groupTrees, sorted.slice(0, TREE_LOD.maxTrees3d), pbr.treeTemplates, {
-          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
+          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior, sizeMultiplier: treeSize.multiplier,
         });
+        groupTrees.userData.representation = '3d-models';
+        if (sizeNote) {
+          sizeNote.textContent = `${Math.min(sorted.length, TREE_LOD.maxTrees3d)} trees as 3D models`
+            + (treeSize.multiplier > 1 ? ` · drawn ${treeSize.multiplier}× true size` : ' · true size');
+        }
         return;
       }
+      groupTrees.userData.representation = 'billboards';
+      if (sizeNote) sizeNote.textContent = `${Math.min(sorted.length, 200)} trees · loading 3D models…`;
       renderPhotorealTreeBillboards(groupTrees, sorted.slice(0, 200), {
         latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
       });
@@ -3595,6 +3630,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
     };
 
+    document.querySelectorAll(`[data-terrain-tree-size="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => { treeSize.mode = sel.value; buildSparseTrees(); });
+    });
+
     document.querySelectorAll(`[data-terrain-walk="${ctrlId}"]`).forEach((btn) => {
       btn.addEventListener('click', () => {
         try {
@@ -3637,12 +3676,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     buildBuildings();
 
-    loadPhotorealPbr(pbr).then(() => loadTreeImpostorAssets(pbr)).then(() => {
-      buildForestTexture();
-      buildSparseTrees();
-      buildNearTrees();
-      buildBuildings();
-    });
+    // Tree models load on their own, first: they are tiny (~30 KB for all
+    // three GLBs) and previously only appeared after the whole PBR texture +
+    // atlas-bake chain resolved, with no error handling — one stalled
+    // texture or a failed offscreen bake left the parcel showing flat
+    // billboards instead of 3D trees.
+    if (typeof THREE.GLTFLoader === 'function' && !pbr.treeTemplates) {
+      Promise.all([
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.conifer),
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduous),
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduousB),
+      ]).then(([conifer, deciduous, deciduousB]) => {
+        if (!conifer && !deciduous && !deciduousB) {
+          console.warn('Tree GLB models failed to load — keeping billboard trees');
+          return;
+        }
+        pbr.treeTemplates = { conifer, deciduous, deciduousB };
+        buildSparseTrees();
+      }).catch((e) => console.warn('Tree model load failed', e));
+    }
+    loadPhotorealPbr(pbr)
+      .then(() => loadTreeImpostorAssets(pbr))
+      .catch((e) => console.warn('PBR/impostor assets failed (non-fatal)', e))
+      .then(() => {
+        buildForestTexture();
+        buildSparseTrees();
+        buildNearTrees();
+        buildBuildings();
+      });
 
     const plantingBandHex = { excellent: 0x2f6e40, good: 0x5a8f3a, fair: 0xc4a035, poor: 0xa33b2b };
     // "Where does it grow best?" — when a plant is picked, zones are coloured
@@ -4063,7 +4124,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // Disposal
     el._eeTerrain = {
-      scene, // exposed for diagnostics (e.g. headless layer audits)
+      scene, camera, controls, // exposed for diagnostics (e.g. headless layer audits)
       dispose() {
         if (animationId) cancelAnimationFrame(animationId);
         window.removeEventListener('resize', onResize);
@@ -4901,7 +4962,11 @@ function renderNearTierTreeGeometry(group, trees, templates, opts) {
     const box = new THREE.Box3().setFromObject(template);
     const srcH = Math.max(box.max.y - box.min.y, 0.001);
     const dims = treeInstanceDimensions(t, metersPerSceneUnit);
-    const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
+    // sizeMultiplier > 1 is the twin's "Tree size" control: on a large parcel
+    // a true-scale 10 m tree is a speck. The cap scales with it so a boosted
+    // tree can't swallow a small lot either.
+    const mult = Math.max(1, Number(opts.sizeMultiplier) || 1);
+    const hU = cappedTreeHeightU(dims.heightU * mult, meshSize, 0.08 * Math.min(mult, 2.5));
     const scale = hU / srcH;
 
     const model = matteTreeMaterials(template.clone(true), kind);
