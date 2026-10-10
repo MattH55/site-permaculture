@@ -93,6 +93,7 @@ export function canopySourceNote(dataSource) {
 
 const memCache = new Map(); // key -> result (in-process fast path)
 const MEM_TTL_MS = 1000 * 60 * 60 * 24 * 7; // 7 days — sources are quasi-static
+const CANOPY_CACHE_VERSION = 'v3-northup-trees';
 
 function ensureCacheDir() {
   try {
@@ -158,7 +159,10 @@ export async function buildCanopyLayer(bbox, opts = {}) {
   const size = Math.min(Math.max(opts.size ?? 96, 16), 128);
   const window = Math.min(Math.max(opts.window ?? DEFAULT_WINDOW, 8), 64);
 
-  const key = cacheKey(bbox);
+  // Versioned: bump when tree/zone geometry changes so cached layers built
+  // by older code (e.g. the north↔south-mirrored tree positions) can't be
+  // served after a fix.
+  const key = `${CANOPY_CACHE_VERSION}-${cacheKey(bbox)}`;
   if (!opts.force) {
     const hit = memCache.get(key) || readCached(key);
     if (hit && hit.available !== undefined) {
@@ -581,6 +585,7 @@ function extractTrees(chm, bbox, ctx) {
       suppression_cells: baseSup,
       min_height_m: MIN_CHM_M,
       max_instances: 400,
+      dense_cover_threshold: ctx.dense_cover_threshold ?? null,
     },
     bbox: { ...bbox },
     _meta: { source_info: ctx.source_info || null },
@@ -785,7 +790,12 @@ function watershedToTrees(inv, m, n, maxH, bbox, ring, cellAreaM2, win, dataSour
     if (crownRadiusM < 0.3) continue;
 
     const [cx, cy] = b.centroid;
-    const lat = bbox.south + ((cy + 0.5) / m) * (bbox.north - bbox.south);
+    // The CHM window grid is NORTH-FIRST (row 0 = bbox.north): it comes from
+    // sampleCogToLonLatGrid() and the render-zone code above reads it the same
+    // way (bbox.north - r/m · span). This line previously counted rows up from
+    // bbox.south, mirroring every tree north↔south across the parcel so trees
+    // never sat on the crowns visible in the satellite imagery.
+    const lat = bbox.north - ((cy + 0.5) / m) * (bbox.north - bbox.south);
     const lng = bbox.west + ((cx + 0.5) / n) * (bbox.east - bbox.west);
     if (!pointInRing(lat, lng, ring)) continue;
 
@@ -1094,3 +1104,136 @@ function clamp(v, lo, hi) {
 
 
 
+
+/**
+ * Drop tree instances that are really building roofs. The CHM is DSM − DTM,
+ * i.e. height of ANYTHING above bare ground, so a 6 m house reads exactly
+ * like a 6 m tree to the watershed crown detector. Any detected "tree" whose
+ * peak falls inside a building footprint (or within `bufferM` of its edge —
+ * eaves overhang and footprints are approximate) is removed.
+ *
+ * Pure and idempotent: safe to apply to a cached canopy layer.
+ *
+ * @param {Array<{x:number,y:number}>} trees canopy tree_instances (x = lat, y = lon)
+ * @param {Array<{geometry?:object, footprint?:object}>} footprints building records
+ * @param {number} [bufferM=1.5]
+ * @returns {{trees: Array, removed: number}}
+ */
+export function removeTreesOnBuildings(trees, footprints, bufferM = 1.5) {
+  const list = Array.isArray(trees) ? trees : [];
+  const rings = footprintRings(footprints);
+  if (!rings.length || !list.length) return { trees: list, removed: 0 };
+  const kept = list.filter((t) => {
+    const lat = t.x;
+    const lon = t.y;
+    const mLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+    for (const ring of rings) {
+      if (pointInRing(lat, lon, ring)) return false;
+      if (bufferM > 0) {
+        for (let i = 0; i < ring.length - 1; i++) {
+          if (segmentDistanceM(lat, lon, ring[i], ring[i + 1], mLon) <= bufferM) return false;
+        }
+      }
+    }
+    return true;
+  });
+  return { trees: kept, removed: list.length - kept.length };
+}
+
+/**
+ * Remove building roofs from a canopy layer: drops roof-peak "trees"
+ * (removeTreesOnBuildings) AND zeroes CHM cells under building footprints,
+ * then recomputes canopy_cover_pct, render_zones and tree_render_tiers from
+ * the masked CHM. Without the CHM mask a subdivision reads as ~40 % "canopy"
+ * and every block of houses becomes a dense-forest render zone.
+ *
+ * Pure (returns a new layer) and idempotent.
+ *
+ * @param {object} canopy layer from buildCanopyLayer
+ * @param {Array<{geometry?:object, footprint?:object}>} footprints
+ * @param {number} [bufferM=1.5]
+ * @returns {object}
+ */
+export function maskCanopyRoofs(canopy, footprints, bufferM = 1.5) {
+  if (!canopy?.available) return canopy;
+  const rings = footprintRings(footprints);
+  if (!rings.length) return canopy;
+  const out = { ...canopy };
+  const { trees, removed } = removeTreesOnBuildings(canopy.tree_instances, footprints, bufferM);
+  if (removed) {
+    out.tree_instances = trees;
+    out.tree_count = trees.length;
+    out.roof_peaks_removed = (canopy.roof_peaks_removed || 0) + removed;
+  }
+  const chm = canopy.chm;
+  const bbox = canopy.bbox;
+  const rows = chm?.rows;
+  const cols = chm?.cols;
+  if (!bbox || !Array.isArray(chm?.values_m) || !rows || !cols || chm.values_m.length !== rows * cols) return out;
+
+  const values = chm.values_m.slice();
+  const latSpan = bbox.north - bbox.south;
+  const lonSpan = bbox.east - bbox.west;
+  const mLon = 111_320 * Math.cos((((bbox.north + bbox.south) / 2) * Math.PI) / 180);
+  const padLat = bufferM / 111_320;
+  const padLon = bufferM / mLon;
+  let masked = 0;
+  for (const ring of rings) {
+    let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+    for (const [lon, lat] of ring) {
+      if (lat < minLat) minLat = lat; if (lat > maxLat) maxLat = lat;
+      if (lon < minLon) minLon = lon; if (lon > maxLon) maxLon = lon;
+    }
+    // Row 0 = north edge; cell centres at (r + 0.5) / rows.
+    const r0 = Math.max(0, Math.floor(((bbox.north - (maxLat + padLat)) / latSpan) * rows - 0.5));
+    const r1 = Math.min(rows - 1, Math.ceil(((bbox.north - (minLat - padLat)) / latSpan) * rows - 0.5));
+    const c0 = Math.max(0, Math.floor((((minLon - padLon) - bbox.west) / lonSpan) * cols - 0.5));
+    const c1 = Math.min(cols - 1, Math.ceil((((maxLon + padLon) - bbox.west) / lonSpan) * cols - 0.5));
+    for (let r = r0; r <= r1; r++) {
+      const lat = bbox.north - ((r + 0.5) / rows) * latSpan;
+      for (let c = c0; c <= c1; c++) {
+        const i = r * cols + c;
+        if (values[i] == null || values[i] === 0) continue;
+        const lon = bbox.west + ((c + 0.5) / cols) * lonSpan;
+        let hit = pointInRing(lat, lon, ring);
+        for (let k = 0; !hit && bufferM > 0 && k < ring.length - 1; k++) {
+          hit = segmentDistanceM(lat, lon, ring[k], ring[k + 1], mLon) <= bufferM;
+        }
+        if (hit) { values[i] = 0; masked++; }
+      }
+    }
+  }
+  if (!masked) return out;
+
+  const win = canopy.extraction?.window_cells || 1;
+  const coverGrid = downsample(values, rows, cols, win);
+  let coverCells = 0;
+  let totalValid = 0;
+  for (const h of coverGrid.cells) {
+    if (h == null) continue;
+    totalValid++;
+    if (h >= MIN_CHM_M) coverCells++;
+  }
+  out.chm = { ...chm, values_m: values };
+  out.canopy_cover_pct = totalValid ? Math.round((coverCells / totalValid) * 100) : 0;
+  out.render_zones = classifyCanopyRenderZones(coverGrid, bbox, canopy.extraction?.dense_cover_threshold);
+  out.tree_render_tiers = buildTreeRenderTiers(out.render_zones);
+  out.roof_cells_masked = (canopy.roof_cells_masked || 0) + masked;
+  out.canopy_cover_pct_before_roof_mask = canopy.canopy_cover_pct_before_roof_mask ?? canopy.canopy_cover_pct;
+  return out;
+}
+
+function footprintRings(footprints) {
+  return (footprints || [])
+    .map((b) => b?.geometry?.coordinates?.[0] || b?.footprint?.coordinates?.[0])
+    .filter((r) => Array.isArray(r) && r.length >= 4 && Array.isArray(r[0]));
+}
+
+function segmentDistanceM(lat, lon, a, b, mLon) {
+  const mLat = 111_320;
+  const px = (lon - a[0]) * mLon, py = (lat - a[1]) * mLat;
+  const bx = (b[0] - a[0]) * mLon, by = (b[1] - a[1]) * mLat;
+  const len2 = bx * bx + by * by;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / len2)) : 0;
+  return Math.hypot(px - t * bx, py - t * by);
+}

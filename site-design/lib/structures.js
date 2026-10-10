@@ -19,10 +19,8 @@
  * OSM-only when it's unset or unreachable, rather than failing the layer.
  */
 
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-];
+
+import { overpassQuery } from './overpass.js';
 // Read lazily (not a module-load-time const) so it can be configured/tested
 // per-call rather than locked in at first import.
 function msFootprintsUrl() { return process.env.MS_BUILDING_FOOTPRINTS_URL || null; }
@@ -119,19 +117,14 @@ async function fetchOsmBuildings(bbox, opts) {
 out geom;
 `.trim();
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 20_000);
-      const res = await fetchImpl(endpoint, {
-        method: 'POST',
-        body: query,
-        signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-      clearTimeout(timer);
-      if (!res.ok) continue;
-      const data = await res.json();
+  const r = await overpassQuery(query, { timeoutMs: 20_000, deadlineMs: 30_000, fetchImpl });
+  if (!r.ok) {
+    console.warn('[structures] Overpass failed:', r.error);
+    return { available: false, error: 'overpass_unreachable', detail: r.error, footprints: [] };
+  }
+  {
+    {
+      const data = r.data;
       const footprints = (data.elements || [])
         .filter((el) => el.type === 'way' && el.geometry?.length >= 3)
         .map((el) => normalizeFootprint(
@@ -140,11 +133,8 @@ out geom;
         ))
         .filter(Boolean);
       return { available: true, footprints };
-    } catch {
-      continue;
     }
   }
-  return { available: false, error: 'overpass_unreachable', footprints: [] };
 }
 
 function normalizeFootprint(geometry, meta) {

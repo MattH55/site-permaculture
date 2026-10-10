@@ -10,10 +10,8 @@
  * classification tags (highway type, surface, name).
  */
 
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-];
+
+import { overpassQuery } from './overpass.js';
 
 /**
  * Fetch road ways from OSM Overpass within a bounding box.
@@ -30,25 +28,10 @@ export async function fetchRoadsOsm(bbox, timeoutMs = 15_000) {
 out geom;
 `.trim();
 
-  for (const endpoint of OVERPASS_ENDPOINTS) {
-    try {
-      const ctrl = new AbortController();
-      const t = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        body: query,
-        signal: ctrl.signal,
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      });
-      clearTimeout(t);
-      if (!res.ok) continue;
-      const data = await res.json();
-      return osmToGeoJSON(data);
-    } catch {
-      continue;
-    }
-  }
-  return { type: 'FeatureCollection', features: [] };
+  const r = await overpassQuery(query, { timeoutMs, deadlineMs: timeoutMs * 2 });
+  if (r.ok) return osmToGeoJSON(r.data);
+  console.warn('[roads] Overpass failed:', r.error);
+  return { type: 'FeatureCollection', features: [], error: r.error };
 }
 
 function osmToGeoJSON(osmData) {

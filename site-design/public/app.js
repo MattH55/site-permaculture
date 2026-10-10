@@ -6,6 +6,13 @@
 import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset, priorFromSubregion } from './tree-scale.js';
 import { openWalkViewer } from './walk-viewer.js';
 
+/**
+ * Walk-the-land viewer is parked until the 3D map renders trees, buildings,
+ * roads and water reliably from real data. Flip to true to show the
+ * "Walk the land" button again (public/walk-viewer.js is unchanged).
+ */
+const ENABLE_WALK_VIEW = false;
+
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
   terrace: 'Terrace',
@@ -2389,7 +2396,7 @@ function terrain3dBlock(id, report) {
   );
   const semantic = report?.semantic_terrain;
   const surfaceWater = report?.surface_water;
-  const semanticCounts = semantic?.features?.reduce((m, f) => {
+  const semanticCounts = semantic?.features?.filter((f) => !SEMANTIC_TYPES_DRAWN_ELSEWHERE.has(f.feature_type)).reduce((m, f) => {
     const key = f.layer || f.priority_group || f.feature_type;
     m[key] = (m[key] || 0) + 1;
     return m;
@@ -2452,6 +2459,17 @@ function terrain3dBlock(id, report) {
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="trees" />
           <span style="display:inline-block;width:10px;height:14px;background:#2f6e40;border-radius:2px 2px 1px 1px;vertical-align:middle"></span>
           Trees
+        </label>
+        <label class="fine" style="display:flex;align-items:center;gap:0.35rem" title="Large parcels make true-scale trees tiny — enlarge them for readability">
+          <span>Tree size</span>
+          <select data-terrain-tree-size="${esc(id)}" class="fine" style="font-size:0.78rem">
+            <option value="auto" selected>Auto</option>
+            <option value="1">True size</option>
+            <option value="2">2×</option>
+            <option value="3">3×</option>
+            <option value="5">5×</option>
+          </select>
+          <span data-terrain-tree-size-note="${esc(id)}" class="fine" style="opacity:0.75"></span>
         </label>` : ''}
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem">
           <input type="checkbox" checked data-terrain-toggle="${esc(id)}" data-layer="roads" />
@@ -2504,7 +2522,7 @@ function terrain3dBlock(id, report) {
           <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
-        <button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>
+        ${ENABLE_WALK_VIEW ? `<button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>` : ''}
       </div>
       <div class="terrain-planning-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.9rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem;font-weight:600">
@@ -3346,6 +3364,21 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       nearMaxDistM: 25,      // ground distance from a structure that still counts as "near"
       nearTierMaxCount: 40,  // (legacy) near-tier budget — all trees are 3D now, see maxTrees3d
       maxTrees3d: 600,       // 3D-model budget for the dashboard twin (canopy.js emits ≤ 400)
+      // "Auto" tree size: boost so the median tree is at least this fraction
+      // of the mesh's long side tall (≈ a few pixels → clearly a tree).
+      autoMinFraction: 0.035,
+      autoMaxMultiplier: 5,
+    };
+    // Tree size: 'auto' picks a multiplier from the parcel scale; numbers are
+    // explicit (1 = true scale). Set from the twin's Tree size control.
+    const treeSize = { mode: 'auto', multiplier: 1 };
+    const resolveTreeMultiplier = () => {
+      if (treeSize.mode !== 'auto') return Math.max(1, Number(treeSize.mode) || 1);
+      const hs = (report?.canopy?.tree_instances || []).map((t) => Number(t.height_m) || 0).filter((h) => h > 0).sort((a, b) => a - b);
+      if (!hs.length) return 1;
+      const medianU = hs[Math.floor(hs.length / 2)] / metersPerSceneUnit;
+      const wantU = Math.max(meshW, meshD) * TREE_LOD.autoMinFraction;
+      return Math.min(TREE_LOD.autoMaxMultiplier, Math.max(1, Math.round((wantU / Math.max(medianU, 1e-6)) * 2) / 2));
     };
     const buildingCentroidsLatLon = (report?.buildings?.available ? (report.buildings.buildings || []) : [])
       .map((b) => {
@@ -3518,12 +3551,21 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       const instances = report?.canopy?.available ? (report.canopy.tree_instances || []) : [];
       if (!instances.length) return;
       const sorted = [...instances].sort((a, b) => (b.height_m || 0) - (a.height_m || 0));
+      treeSize.multiplier = resolveTreeMultiplier();
+      const sizeNote = document.querySelector(`[data-terrain-tree-size-note="${ctrlId}"]`);
       if (pbr.treeTemplates && (pbr.treeTemplates.conifer || pbr.treeTemplates.deciduous)) {
         renderNearTierTreeGeometry(groupTrees, sorted.slice(0, TREE_LOD.maxTrees3d), pbr.treeTemplates, {
-          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior,
+          latLonToLocal, metersPerSceneUnit, meshSize, prior: speciesPrior, sizeMultiplier: treeSize.multiplier,
         });
+        groupTrees.userData.representation = '3d-models';
+        if (sizeNote) {
+          sizeNote.textContent = `${Math.min(sorted.length, TREE_LOD.maxTrees3d)} trees as 3D models`
+            + (treeSize.multiplier > 1 ? ` · drawn ${treeSize.multiplier}× true size` : ' · true size');
+        }
         return;
       }
+      groupTrees.userData.representation = 'billboards';
+      if (sizeNote) sizeNote.textContent = `${Math.min(sorted.length, 200)} trees · loading 3D models…`;
       renderPhotorealTreeBillboards(groupTrees, sorted.slice(0, 200), {
         latLonToLocal, metersPerSceneUnit, meshSize, pbr, prior: speciesPrior,
       });
@@ -3595,6 +3637,10 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
       }
     };
 
+    document.querySelectorAll(`[data-terrain-tree-size="${ctrlId}"]`).forEach((sel) => {
+      sel.addEventListener('change', () => { treeSize.mode = sel.value; buildSparseTrees(); });
+    });
+
     document.querySelectorAll(`[data-terrain-walk="${ctrlId}"]`).forEach((btn) => {
       btn.addEventListener('click', () => {
         try {
@@ -3637,12 +3683,34 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
     };
     buildBuildings();
 
-    loadPhotorealPbr(pbr).then(() => loadTreeImpostorAssets(pbr)).then(() => {
-      buildForestTexture();
-      buildSparseTrees();
-      buildNearTrees();
-      buildBuildings();
-    });
+    // Tree models load on their own, first: they are tiny (~30 KB for all
+    // three GLBs) and previously only appeared after the whole PBR texture +
+    // atlas-bake chain resolved, with no error handling — one stalled
+    // texture or a failed offscreen bake left the parcel showing flat
+    // billboards instead of 3D trees.
+    if (typeof THREE.GLTFLoader === 'function' && !pbr.treeTemplates) {
+      Promise.all([
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.conifer),
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduous),
+        loadTreeGlbTemplate(TREE_GLB_ASSETS.deciduousB),
+      ]).then(([conifer, deciduous, deciduousB]) => {
+        if (!conifer && !deciduous && !deciduousB) {
+          console.warn('Tree GLB models failed to load — keeping billboard trees');
+          return;
+        }
+        pbr.treeTemplates = { conifer, deciduous, deciduousB };
+        buildSparseTrees();
+      }).catch((e) => console.warn('Tree model load failed', e));
+    }
+    loadPhotorealPbr(pbr)
+      .then(() => loadTreeImpostorAssets(pbr))
+      .catch((e) => console.warn('PBR/impostor assets failed (non-fatal)', e))
+      .then(() => {
+        buildForestTexture();
+        buildSparseTrees();
+        buildNearTrees();
+        buildBuildings();
+      });
 
     const plantingBandHex = { excellent: 0x2f6e40, good: 0x5a8f3a, fair: 0xc4a035, poor: 0xa33b2b };
     // "Where does it grow best?" — when a plant is picked, zones are coloured
@@ -4063,7 +4131,7 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
 
     // Disposal
     el._eeTerrain = {
-      scene, // exposed for diagnostics (e.g. headless layer audits)
+      scene, camera, controls, // exposed for diagnostics (e.g. headless layer audits)
       dispose() {
         if (animationId) cancelAnimationFrame(animationId);
         window.removeEventListener('resize', onResize);
@@ -4426,6 +4494,19 @@ function mountTerrain3dViewer(hostId, report, topo, analysis, ctrlId) {
   }
 }
 
+// OSM buildings and roads arrive in semantic_terrain too, but the twin draws
+// them through its dedicated layers (extruded/textured buildings from
+// report.buildings, road ribbons from /api/roads). Drawing them again here
+// stacked flat orange boxes on every house and 1-px lines on every road.
+const SEMANTIC_TYPES_DRAWN_ELSEWHERE = new Set(['building', 'road']);
+
+// Line widths in true metres by feature (water by its mapped type); a
+// minimum on-screen width keeps a 3 m creek visible on a 1 km parcel.
+const SEMANTIC_LINE_WIDTH_M = {
+  river: 10, canal: 6, stream: 3, brook: 2, drain: 1.5, ditch: 1.5, predicted_stream: 2,
+  water: 3, valley_talweg: 1.5, keyline_line: 1.5, keyline_guide: 1, railway: 3, pipeline: 1, power: 1,
+};
+
 function mountSemanticTerrainObjects(scene, payload, opts) {
   const features = payload?.features || [];
   const groups = new Map();
@@ -4473,6 +4554,98 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     const y = (Number.isFinite(elev) ? (elev - opts.zMin) : 0) * mToU() + liftM * mToU();
     return new THREE.Vector3(x, y, z);
   };
+  // Bilinear ground elevation (m) - the terrain mesh interpolates between
+  // grid vertices, so a ribbon sampled at the nearest vertex dips under the
+  // surface mid-cell on slopes.
+  const groundM = (lng, lat) => {
+    const fc = ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9)) * (opts.cols - 1);
+    const fr = (1 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * (opts.rows - 1);
+    const c0 = Math.max(0, Math.min(opts.cols - 2, Math.floor(fc)));
+    const r0 = Math.max(0, Math.min(opts.rows - 2, Math.floor(fr)));
+    const tc = Math.max(0, Math.min(1, fc - c0));
+    const tr = Math.max(0, Math.min(1, fr - r0));
+    const at = (r, c) => { const v = Number(opts.elevations[r * opts.cols + c]); return Number.isFinite(v) ? v : opts.zMin; };
+    const top = at(r0, c0) * (1 - tc) + at(r0, c0 + 1) * tc;
+    const bot = at(r0 + 1, c0) * (1 - tc) + at(r0 + 1, c0 + 1) * tc;
+    return top * (1 - tr) + bot * tr;
+  };
+  const toX = (lng) => ((lng - bbox[0]) / Math.max(bbox[2] - bbox[0], 1e-9) - 0.5) * opts.meshW;
+  const toZ = (lat) => (0.5 - (lat - bbox[1]) / Math.max(bbox[3] - bbox[1], 1e-9)) * opts.meshD;
+  // Cut a line at the terrain edge (rather than clamping vertices onto it,
+  // which dragged off-parcel river reaches along the border) and densify to
+  // ~half a grid cell so the drape follows the ground between vertices.
+  const clipLine = (coords) => {
+    const stepLng = (bbox[2] - bbox[0]) / Math.max(opts.cols - 1, 1) / 2;
+    const stepLat = (bbox[3] - bbox[1]) / Math.max(opts.rows - 1, 1) / 2;
+    const runs = [];
+    let run = [];
+    for (let i = 0; i < coords.length; i++) {
+      const pts = [coords[i]];
+      if (i + 1 < coords.length) {
+        const a = coords[i];
+        const b = coords[i + 1];
+        const n = Math.min(200, Math.ceil(Math.max(Math.abs(b[0] - a[0]) / stepLng, Math.abs(b[1] - a[1]) / stepLat)));
+        for (let k = 1; k < n; k++) pts.push([a[0] + (b[0] - a[0]) * (k / n), a[1] + (b[1] - a[1]) * (k / n)]);
+      }
+      for (const pt of pts) {
+        if (insideBbox(pt)) run.push(pt);
+        else if (run.length) { if (run.length > 1) runs.push(run); run = []; }
+      }
+    }
+    if (run.length > 1) runs.push(run);
+    return runs;
+  };
+  const overlayMaterial = (color, opacity) => new THREE.MeshBasicMaterial({
+    color, transparent: opacity < 1, opacity, side: THREE.DoubleSide,
+    depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
+  });
+  const ribbonMesh = (coords, widthM, liftM, color, opacity) => {
+    const halfU = (widthM / mPerU) / 2;
+    const pts = coords.map(([lng, lat]) => [toX(lng), (groundM(lng, lat) - opts.zMin + liftM) * mToU(), toZ(lat)]);
+    const verts = [];
+    const idx = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 1)];
+      const b = pts[Math.min(pts.length - 1, i + 1)];
+      let dx = b[0] - a[0];
+      let dz = b[2] - a[2];
+      const len = Math.hypot(dx, dz) || 1;
+      dx /= len; dz /= len;
+      const [x, y, z] = pts[i];
+      verts.push(x - dz * halfU, y, z + dx * halfU, x + dz * halfU, y, z - dx * halfU);
+      if (i > 0) { const k = (i - 1) * 2; idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2); }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+    geometry.setIndex(idx);
+    const mesh = new THREE.Mesh(geometry, overlayMaterial(color, opacity));
+    mesh.renderOrder = 4;
+    return mesh;
+  };
+  // Open water (lakes, ponds, rivers mapped as areas): a flat surface at the
+  // shoreline's water level, triangulated with earcut via ShapeGeometry (the
+  // old fan triangulation broke on concave shorelines). LiDAR DEMs flatten
+  // water to its surface, so the low quartile of the shoreline elevations
+  // is the water level.
+  const waterPolygonMesh = (rings) => {
+    const clampLL = ([lng, lat]) => [Math.max(bbox[0], Math.min(bbox[2], lng)), Math.max(bbox[1], Math.min(bbox[3], lat))];
+    const outer = rings[0].map(clampLL);
+    const shape = new THREE.Shape(outer.map(([lng, lat]) => new THREE.Vector2(toX(lng), toZ(lat))));
+    for (const hole of rings.slice(1)) {
+      shape.holes.push(new THREE.Path(hole.map(clampLL).map(([lng, lat]) => new THREE.Vector2(toX(lng), toZ(lat)))));
+    }
+    const shoreM = outer.map(([lng, lat]) => groundM(lng, lat)).sort((a, b) => a - b);
+    const levelM = shoreM[Math.floor(shoreM.length * 0.25)] ?? opts.zMin;
+    const geometry = new THREE.ShapeGeometry(shape);
+    const pos = geometry.attributes.position;
+    const y = (levelM - opts.zMin + 0.25) * mToU();
+    for (let i = 0; i < pos.count; i++) pos.setXYZ(i, pos.getX(i), y, pos.getY(i));
+    pos.needsUpdate = true;
+    geometry.computeVertexNormals();
+    const mesh = new THREE.Mesh(geometry, overlayMaterial(colors.water, 0.85));
+    mesh.renderOrder = 4;
+    return mesh;
+  };
   const polygonMesh = (ring, type) => {
     const base = ring.map((c) => point(c, 0.15));
     const heightM = type === 'building' ? 4 : 0.25;
@@ -4489,12 +4662,45 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
     geometry.computeVertexNormals();
     return new THREE.Mesh(geometry, material(type));
   };
+  const minLineU = opts.meshW * 0.005;
   for (const feature of features) {
     const type = feature.feature_type;
+    if (SEMANTIC_TYPES_DRAWN_ELSEWHERE.has(type)) continue;
     const layer = feature.layer || feature.priority_group || type;
     const geom = feature.geometry;
+    if (!geom) continue;
+    // Lines are clipped to the terrain below (a river can cross the parcel
+    // with no vertex inside it); other features need a vertex inside.
+    if (geom.type === 'LineString') {
+      const isWater = type === 'water';
+      const subtype = feature.attributes?.type;
+      const widthM = (isWater && SEMANTIC_LINE_WIDTH_M[subtype]) || SEMANTIC_LINE_WIDTH_M[type] || 1.5;
+      const minM = (isWater ? minLineU : minLineU * 0.5) * mPerU;
+      const runs = clipLine(geom.coordinates || []);
+      if (!runs.length) continue;
+      const lineGroup = new THREE.Group();
+      for (const run of runs) {
+        lineGroup.add(ribbonMesh(run, Math.max(widthM, minM), isWater ? 0.3 : 0.5, colors[type] || 0xaaaaaa, isWater ? 0.92 : 0.85));
+      }
+      lineGroup.userData.semanticFeature = feature;
+      if (!groups.has(layer)) groups.set(layer, new THREE.Group());
+      groups.get(layer).add(lineGroup);
+      continue;
+    }
+    if (type === 'water' && (geom.type === 'Polygon' || geom.type === 'MultiPolygon')) {
+      const polys = geom.type === 'Polygon' ? [geom.coordinates] : geom.coordinates;
+      if (!polys.some((rings) => (rings?.[0] || []).some(insideBbox))) continue;
+      const waterGroup = new THREE.Group();
+      for (const rings of polys) {
+        if ((rings?.[0]?.length || 0) >= 4) waterGroup.add(waterPolygonMesh(rings));
+      }
+      waterGroup.userData.semanticFeature = feature;
+      if (!groups.has(layer)) groups.set(layer, new THREE.Group());
+      groups.get(layer).add(waterGroup);
+      continue;
+    }
     // Skip features with no vertex inside the terrain extent.
-    const verts = geom?.type === 'Point' ? [geom.coordinates] : geom?.type === 'LineString' ? geom.coordinates : geom?.type === 'Polygon' ? (geom.coordinates?.[0] || []) : [];
+    const verts = geom.type === 'Point' ? [geom.coordinates] : geom.type === 'Polygon' ? (geom.coordinates?.[0] || []) : [];
     if (!verts.some(insideBbox)) continue;
     let object = null;
     if (geom.type === 'Point') {
@@ -4502,8 +4708,6 @@ function mountSemanticTerrainObjects(scene, payload, opts) {
       const hU = (type === 'building' ? 4 : 2) * mToU();
       object = new THREE.Mesh(new THREE.BoxGeometry(wU, hU, wU), material(type));
       object.position.copy(point(geom.coordinates, (type === 'building' ? 4 : 2) / 2));
-    } else if (geom.type === 'LineString') {
-      object = new THREE.Line(new THREE.BufferGeometry().setFromPoints(geom.coordinates.map((c) => point(c, 0.5))), new THREE.LineBasicMaterial({ color: colors[type] || 0xaaaaaa }));
     } else if (geom.type === 'Polygon') {
       const ring = geom.coordinates?.[0] || [];
       if (ring.length < 3) continue;
@@ -4901,7 +5105,11 @@ function renderNearTierTreeGeometry(group, trees, templates, opts) {
     const box = new THREE.Box3().setFromObject(template);
     const srcH = Math.max(box.max.y - box.min.y, 0.001);
     const dims = treeInstanceDimensions(t, metersPerSceneUnit);
-    const hU = cappedTreeHeightU(dims.heightU, meshSize, 0.08);
+    // sizeMultiplier > 1 is the twin's "Tree size" control: on a large parcel
+    // a true-scale 10 m tree is a speck. The cap scales with it so a boosted
+    // tree can't swallow a small lot either.
+    const mult = Math.max(1, Number(opts.sizeMultiplier) || 1);
+    const hU = cappedTreeHeightU(dims.heightU * mult, meshSize, 0.08 * Math.min(mult, 2.5));
     const scale = hU / srcH;
 
     const model = matteTreeMaterials(template.clone(true), kind);

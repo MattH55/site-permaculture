@@ -6,6 +6,8 @@
  * The output is deliberately renderer-agnostic normalized feature objects.
  */
 
+
+import { overpassQuery } from './overpass.js';
 const OVERPASS = 'https://overpass-api.de/api/interpreter';
 const DATASET_URL = 'https://www.openstreetmap.org/';
 const FETCH_MS = 22_000;
@@ -36,17 +38,9 @@ export async function fetchSemanticTerrain(bbox, opts = {}) {
   const query = buildOverpassQuery(aoi);
 
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_MS);
-    const res = await fetch(OVERPASS, {
-      method: 'POST',
-      body: new URLSearchParams({ data: query }),
-      signal: ctrl.signal,
-      headers: { Accept: 'application/json' },
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`Overpass ${res.status}`);
-    const data = await res.json();
+    const r = await overpassQuery(query, { timeoutMs: FETCH_MS, deadlineMs: FETCH_MS * 2 });
+    if (!r.ok) throw new Error(`Overpass: ${r.error}`);
+    const data = r.data;
     const features = (data.elements || [])
       .map(normalizeElement)
       .filter(Boolean)

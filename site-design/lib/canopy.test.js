@@ -100,6 +100,22 @@ test('extractTrees: 3 synthetic cones → ≥2 instances with sane fields', () =
   }
 });
 
+test('extractTrees: a tree in the north-west of the CHM lands in the north-west of the bbox', () => {
+  // Regression: tree latitude was counted up from bbox.south while the CHM
+  // grid is north-first, mirroring every tree north↔south.
+  const chm = synthConeGrid(32, [{ r: 6, c: 6, rad: 4, h: 12 }]);
+  const res = extractTrees(chm, bbox, {
+    size: 32, window: 8, ring, data_source: 'SYNTH', source_info: null,
+    confidence: 'moderate', parcel_area_m2: 200 * 200,
+  });
+  assert.ok(res.tree_count >= 1, 'should find the cone');
+  const midLat = (bbox.north + bbox.south) / 2;
+  const midLon = (bbox.east + bbox.west) / 2;
+  const t = res.tree_instances.sort((a, b) => b.height_m - a.height_m)[0];
+  assert.ok(t.x > midLat, `tree should be in the NORTH half (lat ${t.x} > ${midLat})`);
+  assert.ok(t.y < midLon, `tree should be in the WEST half (lon ${t.y} < ${midLon})`);
+});
+
 test('extractTrees: flat CHM (no peaks) → 0 trees', () => {
   const chm = {
     rows: 32,
@@ -177,4 +193,65 @@ test('watershedBasins: returns an array with well-formed basins', () => {
     assert.ok(Number.isFinite(b.minInv));
     assert.ok(Array.isArray(b.centroid) && b.centroid.length === 2);
   }
+});
+
+test('removeTreesOnBuildings drops CHM "trees" that are really roofs', async () => {
+  const { removeTreesOnBuildings } = await import('./canopy.js');
+  const lat0 = 53.55, lon0 = -113.45;
+  const dLat = (m) => m / 111320, dLon = (m) => m / (111320 * Math.cos(lat0 * Math.PI / 180));
+  const house = { geometry: { type: 'Polygon', coordinates: [[
+    [lon0, lat0], [lon0 + dLon(12), lat0], [lon0 + dLon(12), lat0 + dLat(9)], [lon0, lat0 + dLat(9)], [lon0, lat0],
+  ]] } };
+  const onRoof = { x: lat0 + dLat(4.5), y: lon0 + dLon(6), height_m: 6 };
+  const underEave = { x: lat0 + dLat(4.5), y: lon0 + dLon(12.8), height_m: 6 }; // 0.8 m outside the wall
+  const yardTree = { x: lat0 + dLat(4.5), y: lon0 + dLon(25), height_m: 9 };   // 13 m away
+  const r = removeTreesOnBuildings([onRoof, underEave, yardTree], [house]);
+  assert.equal(r.removed, 2);
+  assert.deepEqual(r.trees, [yardTree]);
+  // Idempotent, and a no-op without footprints.
+  assert.equal(removeTreesOnBuildings(r.trees, [house]).removed, 0);
+  assert.equal(removeTreesOnBuildings([onRoof], []).removed, 0);
+});
+
+test('maskCanopyRoofs zeroes CHM under footprints and recomputes cover + zones', async () => {
+  const { maskCanopyRoofs } = await import('./canopy.js');
+  // 20×20 CHM over a ~200 m square; a 6 m "house" fills the north-west
+  // quarter, a real 8 m tree clump sits in the south-east.
+  const bbox = { west: -113.4515, south: 53.5491, east: -113.4485, north: 53.5509 };
+  const rows = 20, cols = 20;
+  const values = new Array(rows * cols).fill(0);
+  for (let r = 0; r < 10; r++) for (let c = 0; c < 10; c++) values[r * cols + c] = 6;
+  for (let r = 15; r < 18; r++) for (let c = 15; c < 18; c++) values[r * cols + c] = 8;
+  const lonAt = (c) => bbox.west + (c / cols) * (bbox.east - bbox.west);
+  const latAt = (r) => bbox.north - (r / rows) * (bbox.north - bbox.south);
+  const house = { geometry: { type: 'Polygon', coordinates: [[
+    [lonAt(0), latAt(0)], [lonAt(10), latAt(0)], [lonAt(10), latAt(10)], [lonAt(0), latAt(10)], [lonAt(0), latAt(0)],
+  ]] } };
+  const canopy = {
+    available: true, bbox, canopy_cover_pct: 27,
+    chm: { rows, cols, values_m: values },
+    extraction: { window_cells: 20 }, // windows per side
+    tree_instances: [
+      { x: latAt(5), y: lonAt(5), height_m: 6 },      // roof peak
+      { x: latAt(16.5), y: lonAt(16.5), height_m: 8 }, // real tree
+    ],
+    tree_count: 2,
+  };
+  const out = maskCanopyRoofs(canopy, [house], 0);
+  assert.equal(out.tree_count, 1);
+  assert.equal(out.roof_peaks_removed, 1);
+  assert.equal(out.roof_cells_masked, 100);
+  assert.equal(out.canopy_cover_pct, 2); // 9 tree cells of 400
+  assert.equal(out.canopy_cover_pct_before_roof_mask, 27);
+  assert.ok(out.render_zones.length >= 1);
+  for (const z of out.render_zones) {
+    for (const [lon, lat] of z.geometry.coordinates[0]) {
+      assert.ok(lat < latAt(10) + 1e-9 || lon > lonAt(10) - 1e-9, 'no canopy zone left on the roof');
+    }
+  }
+  assert.equal(canopy.chm.values_m[0], 6, 'input not mutated');
+  // Idempotent.
+  const again = maskCanopyRoofs(out, [house], 0);
+  assert.equal(again.canopy_cover_pct, 2);
+  assert.equal(again.tree_count, 1);
 });

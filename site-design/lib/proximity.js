@@ -5,6 +5,7 @@
 
 import { esriEnvelope } from './geo.js';
 
+import { overpassQuery } from './overpass.js';
 const AB = 'https://geospatial.alberta.ca/titan/rest/services';
 
 /** Alberta population centres / cities (approx centroids + StatCan-ish populations). */
@@ -234,32 +235,10 @@ out center tags 60;
     'https://overpass.kumi.systems/api/interpreter',
   ];
 
-  let lastErr;
-  for (const url of endpoints) {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 22000);
-    try {
-      const res = await fetch(url, {
-        method: 'POST',
-        body: `data=${encodeURIComponent(query)}`,
-        signal: ctrl.signal,
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          Accept: 'application/json',
-          'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture site report)',
-        },
-      });
-      if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      const data = await res.json();
-      const best = pickNearestWaterElement(data.elements || [], lat, lng);
-      if (best) return best;
-    } catch (e) {
-      lastErr = e;
-    } finally {
-      clearTimeout(t);
-    }
-  }
-  if (lastErr) throw lastErr;
+  const r = await overpassQuery(query, { timeoutMs: 22_000, deadlineMs: 30_000, endpoints });
+  if (!r.ok) throw new Error(r.error || 'Overpass failed');
+  const best = pickNearestWaterElement(r.data.elements || [], lat, lng);
+  if (best) return best;
   return null;
 }
 

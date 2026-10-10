@@ -14,6 +14,7 @@
 
 import { fromUrl } from 'geotiff';
 
+import { overpassQuery } from './overpass.js';
 // ── CRS helpers (lon/lat ↔ Alberta 10TM AEP EPSG:3400) ──────────────────────
 
 const DEG2RAD = Math.PI / 180;
@@ -432,17 +433,9 @@ export async function fetchTransportation(bbox, opts = {}) {
   const features = [];
 
   try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), FETCH_MS);
-    const res = await fetch(OVERPASS, {
-      method: 'POST',
-      body: new URLSearchParams({ data: query }),
-      signal: ctrl.signal,
-      headers: { Accept: 'application/json' },
-    });
-    clearTimeout(timer);
-    if (!res.ok) throw new Error(`Overpass ${res.status}`);
-    const data = await res.json();
+    const r = await overpassQuery(query, { timeoutMs: FETCH_MS, deadlineMs: FETCH_MS * 2 });
+    if (!r.ok) throw new Error(`Overpass: ${r.error}`);
+    const data = r.data;
 
     for (const elem of (data.elements || [])) {
       if (elem.tags?.highway) {

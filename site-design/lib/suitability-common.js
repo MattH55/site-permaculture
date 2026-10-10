@@ -101,11 +101,43 @@ export function pointInPolygon(lon, lat, ring) {
   return inside;
 }
 
+/**
+ * Outer rings of a feature's polygon geometry. Mapped "water bodies" mix
+ * Polygons, MultiPolygons and LineStrings (streams, ditches): only polygons
+ * have an inside, so lines/points yield no rings. (Taking coordinates[0]
+ * blindly made a LineString's first POINT look like a ring and threw
+ * "number … is not iterable", failing the whole report near any mapped
+ * stream; a MultiPolygon's first polygon was misread the same way.)
+ */
+export function polygonOuterRings(feature) {
+  const g = feature?.geometry || feature;
+  if (!g || !Array.isArray(g.coordinates)) return [];
+  if (g.type === 'Polygon') return isRing(g.coordinates[0]) ? [g.coordinates[0]] : [];
+  if (g.type === 'MultiPolygon') return g.coordinates.map((poly) => poly?.[0]).filter(isRing);
+  if (!g.type && isRing(g.coordinates[0])) return [g.coordinates[0]]; // untyped legacy {coordinates:[ring]}
+  return [];
+}
+
+/** Every vertex ring/line of a geometry, for nearest-distance checks. */
+export function geometryLines(feature) {
+  const g = feature?.geometry || feature;
+  if (!g || !Array.isArray(g.coordinates)) return [];
+  switch (g.type) {
+    case 'Point': return isPoint(g.coordinates) ? [[g.coordinates]] : [];
+    case 'MultiPoint':
+    case 'LineString': return isRing(g.coordinates) ? [g.coordinates] : [];
+    case 'MultiLineString':
+    case 'Polygon': return g.coordinates.filter(isRing);
+    case 'MultiPolygon': return g.coordinates.flatMap((poly) => (Array.isArray(poly) ? poly.filter(isRing) : []));
+    default: return isRing(g.coordinates[0]) ? g.coordinates.filter(isRing) : [];
+  }
+}
+
+function isPoint(p) { return Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]); }
+function isRing(r) { return Array.isArray(r) && r.length > 0 && isPoint(r[0]); }
+
 export function pointInAnyPolygon(lon, lat, polygons) {
-  return (polygons || []).some((p) => {
-    const ring = p?.geometry?.coordinates?.[0] || p?.coordinates?.[0];
-    return Array.isArray(ring) && pointInPolygon(lon, lat, ring);
-  });
+  return (polygons || []).some((p) => polygonOuterRings(p).some((ring) => pointInPolygon(lon, lat, ring)));
 }
 
 /** Distance in metres from a point to the nearest vertex of a polygon/line ring. */
@@ -121,10 +153,7 @@ export function distanceToRingM(lat, lon, ring) {
 export function distanceToNearestFeatureM(lat, lon, features) {
   let best = Infinity;
   for (const f of features || []) {
-    const geom = f?.geometry || f;
-    const rings = geom?.type === 'LineString' ? [geom.coordinates] : (geom?.coordinates || []);
-    for (const ring of rings) {
-      if (!Array.isArray(ring)) continue;
+    for (const ring of geometryLines(f)) {
       const d = distanceToRingM(lat, lon, ring);
       if (d < best) best = d;
     }
