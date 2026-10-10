@@ -49,7 +49,7 @@ import { sampleHrdemTerrain } from './hrdem-terrain.js';
 import { getSurfaceWaterLayer } from './surface-water.js';
 import { getSoilData } from './soil-data.js';
 import { deriveKeylineAndFrost } from './keyline-frost.js';
-import { buildCanopyLayer } from './canopy.js';
+import { buildCanopyLayer, removeTreesOnBuildings } from './canopy.js';
 import { fetchSatelliteIndices, toFecundityPatch } from './satellite-indices.js';
 import { computePondSuitability } from './suitability-pond.js';
 import { computeSolarSuitability } from './suitability-solar.js';
@@ -634,6 +634,19 @@ export async function generateSiteReport(input = {}) {
     canopy,
     parcel_id: key,
   });
+
+  // Roofs are not trees: the CHM is height of anything above bare ground, so
+  // houses and barns otherwise show up as "trees" (in the 3D map, the shade
+  // model, FireSmart fuel and planting exclusions). Filter them out now that
+  // footprints have resolved — before any of those layers read the trees.
+  if (canopy?.available && Array.isArray(canopy.tree_instances) && record.buildings?.buildings?.length) {
+    const { trees, removed } = removeTreesOnBuildings(canopy.tree_instances, record.buildings.buildings);
+    if (removed) {
+      canopy.tree_instances = trees;
+      canopy.tree_count = trees.length;
+      canopy.roof_peaks_removed = (canopy.roof_peaks_removed || 0) + removed;
+    }
+  }
 
   // Re-run solar exposure with building shadows now that footprints have
   // resolved (the first pass above ran before the structures fetch

@@ -194,3 +194,21 @@ test('watershedBasins: returns an array with well-formed basins', () => {
     assert.ok(Array.isArray(b.centroid) && b.centroid.length === 2);
   }
 });
+
+test('removeTreesOnBuildings drops CHM "trees" that are really roofs', async () => {
+  const { removeTreesOnBuildings } = await import('./canopy.js');
+  const lat0 = 53.55, lon0 = -113.45;
+  const dLat = (m) => m / 111320, dLon = (m) => m / (111320 * Math.cos(lat0 * Math.PI / 180));
+  const house = { geometry: { type: 'Polygon', coordinates: [[
+    [lon0, lat0], [lon0 + dLon(12), lat0], [lon0 + dLon(12), lat0 + dLat(9)], [lon0, lat0 + dLat(9)], [lon0, lat0],
+  ]] } };
+  const onRoof = { x: lat0 + dLat(4.5), y: lon0 + dLon(6), height_m: 6 };
+  const underEave = { x: lat0 + dLat(4.5), y: lon0 + dLon(12.8), height_m: 6 }; // 0.8 m outside the wall
+  const yardTree = { x: lat0 + dLat(4.5), y: lon0 + dLon(25), height_m: 9 };   // 13 m away
+  const r = removeTreesOnBuildings([onRoof, underEave, yardTree], [house]);
+  assert.equal(r.removed, 2);
+  assert.deepEqual(r.trees, [yardTree]);
+  // Idempotent, and a no-op without footprints.
+  assert.equal(removeTreesOnBuildings(r.trees, [house]).removed, 0);
+  assert.equal(removeTreesOnBuildings([onRoof], []).removed, 0);
+});

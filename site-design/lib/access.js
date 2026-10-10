@@ -1,3 +1,4 @@
+import { overpassQuery as sharedOverpassQuery } from './overpass.js';
 /**
  * Access & mobility analysis for Alberta properties.
  *
@@ -13,10 +14,6 @@ const OSRM_NEAREST = [
   'https://routing.openstreetmap.de/routed-car/nearest/v1/driving',
 ];
 
-const OVERPASS_ENDPOINTS = [
-  'https://overpass-api.de/api/interpreter',
-  'https://overpass.kumi.systems/api/interpreter',
-];
 
 const VEHICLES = {
   truck: { label: 'Pickup truck (V8)', l_per_100km: 14.0, speed_kmh: 95 },
@@ -199,29 +196,13 @@ async function nominatimNameAt(lat, lng) {
 
 // ── Overpass fallback (geometry-aware distance) ──────────
 
+// Routed through the shared client (lib/overpass.js) so access queries share
+// the per-IP concurrency limit with every other Overpass caller instead of
+// firing at all endpoints at once.
 async function overpassQuery(query, timeoutMs = 12_000) {
-  const body = `data=${encodeURIComponent(query)}`;
-  const headers = {
-    'Content-Type': 'application/x-www-form-urlencoded',
-    Accept: 'application/json',
-    'User-Agent': 'LandIntelligenceSiteDesign/1.0 (permaculture access)',
-  };
-  const tryOne = async (url) => {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { method: 'POST', body, signal: ctrl.signal, headers });
-      if (!res.ok) throw new Error(`Overpass ${res.status}`);
-      return await res.json();
-    } finally {
-      clearTimeout(t);
-    }
-  };
-  try {
-    return await Promise.any(OVERPASS_ENDPOINTS.map((url) => tryOne(url)));
-  } catch (e) {
-    throw new Error(e?.errors?.[0]?.message || e.message || 'Overpass failed');
-  }
+  const r = await sharedOverpassQuery(query, { timeoutMs, deadlineMs: timeoutMs * 2 });
+  if (!r.ok) throw new Error(r.error || 'Overpass failed');
+  return r.data;
 }
 
 /** Minimum distance from point to a polyline (lat/lng vertices). */

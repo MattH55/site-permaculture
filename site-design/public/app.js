@@ -6,6 +6,13 @@
 import { groundSceneScale, treeInstanceDimensions, cappedTreeHeightU, resolveTreeAsset, priorFromSubregion } from './tree-scale.js';
 import { openWalkViewer } from './walk-viewer.js';
 
+/**
+ * Walk-the-land viewer is parked until the 3D map renders trees, buildings,
+ * roads and water reliably from real data. Flip to true to show the
+ * "Walk the land" button again (public/walk-viewer.js is unchanged).
+ */
+const ENABLE_WALK_VIEW = false;
+
 const ELEMENT_LABELS = {
   swale: 'Contour swale',
   terrace: 'Terrace',
@@ -2515,7 +2522,7 @@ function terrain3dBlock(id, report) {
           <span data-terrain-exag-val="${esc(id)}" style="min-width:2.2rem;font-variant-numeric:tabular-nums">1.0×</span>
         </label>
         <button type="button" class="btn-quiet" data-terrain-reset="${esc(id)}" style="font-size:0.8rem">Reset view</button>
-        <button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>
+        ${ENABLE_WALK_VIEW ? `<button type="button" class="btn" data-terrain-walk="${esc(id)}" style="font-size:0.8rem;padding:0.35rem 0.7rem" title="Walk around the property in first or third person">🚶 Walk the land</button>` : ''}
       </div>
       <div class="terrain-planning-controls" style="display:flex;flex-wrap:wrap;gap:0.5rem 0.9rem;align-items:center;margin-top:0.55rem;padding-top:0.5rem;border-top:1px solid var(--line)">
         <label class="fine" style="display:flex;align-items:center;gap:0.35rem;font-weight:600">

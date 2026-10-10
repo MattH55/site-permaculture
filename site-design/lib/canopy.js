@@ -1103,3 +1103,49 @@ function clamp(v, lo, hi) {
 
 
 
+
+/**
+ * Drop tree instances that are really building roofs. The CHM is DSM − DTM,
+ * i.e. height of ANYTHING above bare ground, so a 6 m house reads exactly
+ * like a 6 m tree to the watershed crown detector. Any detected "tree" whose
+ * peak falls inside a building footprint (or within `bufferM` of its edge —
+ * eaves overhang and footprints are approximate) is removed.
+ *
+ * Pure and idempotent: safe to apply to a cached canopy layer.
+ *
+ * @param {Array<{x:number,y:number}>} trees canopy tree_instances (x = lat, y = lon)
+ * @param {Array<{geometry?:object, footprint?:object}>} footprints building records
+ * @param {number} [bufferM=1.5]
+ * @returns {{trees: Array, removed: number}}
+ */
+export function removeTreesOnBuildings(trees, footprints, bufferM = 1.5) {
+  const list = Array.isArray(trees) ? trees : [];
+  const rings = (footprints || [])
+    .map((b) => b?.geometry?.coordinates?.[0] || b?.footprint?.coordinates?.[0])
+    .filter((r) => Array.isArray(r) && r.length >= 4 && Array.isArray(r[0]));
+  if (!rings.length || !list.length) return { trees: list, removed: 0 };
+  const kept = list.filter((t) => {
+    const lat = t.x;
+    const lon = t.y;
+    const mLon = 111_320 * Math.cos((lat * Math.PI) / 180);
+    for (const ring of rings) {
+      if (pointInRing(lat, lon, ring)) return false;
+      if (bufferM > 0) {
+        for (let i = 0; i < ring.length - 1; i++) {
+          if (segmentDistanceM(lat, lon, ring[i], ring[i + 1], mLon) <= bufferM) return false;
+        }
+      }
+    }
+    return true;
+  });
+  return { trees: kept, removed: list.length - kept.length };
+}
+
+function segmentDistanceM(lat, lon, a, b, mLon) {
+  const mLat = 111_320;
+  const px = (lon - a[0]) * mLon, py = (lat - a[1]) * mLat;
+  const bx = (b[0] - a[0]) * mLon, by = (b[1] - a[1]) * mLat;
+  const len2 = bx * bx + by * by;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / len2)) : 0;
+  return Math.hypot(px - t * bx, py - t * by);
+}
